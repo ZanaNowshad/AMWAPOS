@@ -271,6 +271,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         // sync
         "sync.status" => out(core.sync_status(tk()?)),
         "sync.pairing_code" => out(core.sync_issue_pairing_code(tk()?, opt(&args, "device_name")?)),
+        "sync.reset_hub_credentials" => out(core.sync_reset_hub_credentials(tk()?)),
         "sync.dead_letters" => out(core.sync_dead_letters(tk()?)),
         "sync.retry_dead_letter" => out(core.sync_retry_dead_letter(tk()?, &req::<String>(&args, "dead_id")?)),
         _ => Err(AppError::new(ErrorCode::NotFound, format!("Unknown command '{cmd}'."))),

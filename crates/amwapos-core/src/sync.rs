@@ -91,6 +91,12 @@ const PRIVATE_COLUMNS: &[(&str, &str)] = &[("devices", "credential_hash")];
 pub const PROTOCOL_VERSION: i64 = 1;
 pub const KEY_SYNC: &str = "local.sync";
 pub const SECRET_HUB_MASTER: &str = "amwapos.hub.master_secret";
+const KEY_HUB_SECRET: &str = "local.hub_secret";
+
+#[derive(Serialize, Deserialize)]
+struct HubSecretFingerprint {
+    fingerprint: String,
+}
 pub const SECRET_DEVICE_KEY: &str = "amwapos.sync.device_key";
 const PAIRING_TTL_MINUTES: i64 = 15;
 pub const DEFAULT_PORT: u16 = 47800;
@@ -564,15 +570,52 @@ impl AppCore {
         Ok(d)
     }
 
+    /// The hub's master secret (per-device keys are derived from it). Its SHA-256
+    /// fingerprint is kept in the database so a secret that disappeared from the
+    /// credential store (other Windows account, wiped store, restore onto new
+    /// hardware) is reported instead of being silently replaced, which would
+    /// invalidate every paired terminal without explanation.
     pub fn hub_master_secret(&self) -> AppResult<String> {
-        match self.secrets.get(SECRET_HUB_MASTER)? {
-            Some(s) => Ok(s),
-            None => {
+        let recorded: Option<HubSecretFingerprint> =
+            self.db.read(|c| Ok(settings::get_raw(c, KEY_HUB_SECRET)?.and_then(|v| serde_json::from_value(v).ok())))?;
+        match (self.secrets.get(SECRET_HUB_MASTER)?, recorded) {
+            (Some(s), Some(f)) if f.fingerprint == auth::sha256_hex(&s) => Ok(s),
+            (Some(_), Some(_)) => Err(AppError::new(
+                ErrorCode::Sync,
+                "The hub credential in secure storage does not match this store. Reset hub credentials and pair the terminals again.",
+            )),
+            (Some(s), None) => {
+                self.db.write(|tx| settings::put(tx, KEY_HUB_SECRET, &HubSecretFingerprint { fingerprint: auth::sha256_hex(&s) }, None))?;
+                Ok(s)
+            }
+            (None, Some(_)) => Err(AppError::new(
+                ErrorCode::Sync,
+                "The hub credential is missing from this computer's secure storage (was AMWAPOS started under a different Windows account?). \
+                 Sign in with the original account, or reset hub credentials and pair the terminals again.",
+            )),
+            (None, None) => {
                 let s = auth::random_token();
                 self.secrets.set(SECRET_HUB_MASTER, &s)?;
+                self.db.write(|tx| settings::put(tx, KEY_HUB_SECRET, &HubSecretFingerprint { fingerprint: auth::sha256_hex(&s) }, None))?;
                 Ok(s)
             }
         }
+    }
+
+    /// Replace the hub master secret. Every paired terminal must pair again.
+    pub fn sync_reset_hub_credentials(&self, token: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("sync.manage")?;
+        let d = self.require_hub()?;
+        let secret = auth::random_token();
+        self.secrets.set(SECRET_HUB_MASTER, &secret)?;
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            settings::put(tx, KEY_HUB_SECRET, &HubSecretFingerprint { fingerprint: auth::sha256_hex(&secret) }, Some(&s.user_id))?;
+            audit::record(tx, &actor, "sync.hub_credentials_reset", "device", Some(&d.device_id), None, None)?;
+            Ok(())
+        })?;
+        Ok(json!({ "ok": true, "terminals_must_pair_again": true }))
     }
 
     pub fn hub_device_key(&self, device_id: &str) -> AppResult<String> {

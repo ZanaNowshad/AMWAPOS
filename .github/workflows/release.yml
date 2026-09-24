@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-2022
+    env:
+      HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - run: cargo test --workspace
+      - run: npx tauri build --bundles nsis
+      # Authenticode signing runs only when a certificate is configured. Unsigned
+      # builds are published as such and must not be deployed to stores unreviewed.
+      - name: Sign installer
+        if: env.HAS_SIGNING_CERT == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP cert.pfx
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1
+          Get-ChildItem target/release/bundle/nsis/*.exe | ForEach-Object {
+            & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:WINDOWS_CERT_PASSWORD $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signing failed" }
+          }
+          Remove-Item $pfx
+      - name: SBOM
+        shell: pwsh
+        run: |
+          cargo install cargo-cyclonedx --locked
+          cargo cyclonedx --format json --all
+          npx --yes @cyclonedx/cyclonedx-npm --omit dev --output-file sbom-frontend.cdx.json
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item target/release/bundle/nsis/*.exe out/
+          Copy-Item sbom-frontend.cdx.json out/
+          Get-ChildItem -Recurse -Filter "*.cdx.json" crates, src-tauri | ForEach-Object { Copy-Item $_.FullName ("out/sbom-" + $_.Directory.Name + ".cdx.json") }
+      - name: SHA-256 checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem out -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } | Set-Content out/SHA256SUMS.txt
+          Get-Content out/SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: out/*

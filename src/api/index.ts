@@ -289,6 +289,7 @@ export const api = {
     join: (a: { hub_url: string; code: string; device_name: string; device_code: string }) =>
       call<T.SetupStatus>("sync.join", a),
     runNow: () => call<Record<string, number>>("sync.run_now"),
+    resetHubCredentials: () => call<Record<string, unknown>>("sync.reset_hub_credentials"),
     deadLetters: () => call<Record<string, unknown>[]>("sync.dead_letters"),
     retryDeadLetter: (dead_id: string) => call<Record<string, unknown>>("sync.retry_dead_letter", { dead_id }),
     unblock: (accept_new_hub: boolean) => call<Record<string, unknown>>("sync.unblock", { accept_new_hub }),

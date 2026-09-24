@@ -173,6 +173,7 @@ export function SyncPage() {
   const dead = useLoad(() => (has("sync.manage") ? api.sync.deadLetters() : Promise.resolve([])), []);
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
   const [enable, setEnable] = useState(false);
+  const [resetCreds, setResetCreds] = useState(false);
   const act = useAction();
   useEffect(() => {
     const t = setInterval(() => void st.reload(), 10000);
@@ -366,6 +367,11 @@ export function SyncPage() {
             <div className="tiny">
               Pair terminals on the store's trusted network. After pairing, every request is signed and revocable.
             </div>
+            {has("sync.manage") ? (
+              <Button size="sm" variant="ghost" onClick={() => setResetCreds(true)}>
+                Reset hub credentials…
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -412,6 +418,28 @@ export function SyncPage() {
             </tbody>
           </table>
         </div>
+      ) : null}
+      {resetCreds ? (
+        <Confirm
+          title="Reset hub credentials"
+          confirmLabel="Reset credentials"
+          danger
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => setResetCreds(false)}
+          onConfirm={async () => {
+            const r = await act.run(() => api.sync.resetHubCredentials());
+            if (r) {
+              setResetCreds(false);
+              toast("success", "Hub credentials replaced. Pair every terminal again.");
+              void st.reload();
+            }
+          }}
+        >
+          Use this only when the hub reports its credential is missing or does not match. Every paired terminal will
+          stop syncing until it is paired again; their unsynced sales stay safe on the terminal and upload after
+          re-pairing.
+        </Confirm>
       ) : null}
       {enable ? (
         <Confirm

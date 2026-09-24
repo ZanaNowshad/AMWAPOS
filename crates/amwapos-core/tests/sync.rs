@@ -274,3 +274,24 @@ fn version_mismatch_refuses_pairing() {
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::Conflict);
 }
+
+#[test]
+fn lost_hub_credential_is_reported_not_silently_replaced() {
+    let hub = env();
+    hub.core.sync_enable_hub(&hub.owner_token).unwrap();
+    let key_before = hub.core.hub_device_key("dev-1").unwrap();
+    assert_eq!(key_before, hub.core.hub_device_key("dev-1").unwrap());
+    let Env { dir, core, owner_id, .. } = hub;
+    drop(core);
+
+    // Same database, empty credential store (e.g. another Windows account).
+    let core = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap();
+    let err = core.hub_device_key("dev-1").unwrap_err();
+    assert_eq!(err.code, ErrorCode::Sync);
+    let token = core.login(&owner_id, OWNER_PIN).unwrap().token;
+    core.sync_reset_hub_credentials(&token).unwrap();
+    let key_after = core.hub_device_key("dev-1").unwrap();
+    assert_ne!(key_before, key_after);
+    let audit = count(&core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='sync.hub_credentials_reset'");
+    assert_eq!(audit, 1);
+}

@@ -10,7 +10,8 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use amwapos_core::service::{AppCore, MemorySecretStore};
+use amwapos_core::service::{AppCore, SecretStore};
+use amwapos_core::{AppError, AppResult};
 use amwapos_hub::Runtime;
 use axum::extract::State;
 use axum::http::{header, StatusCode, Uri};
@@ -19,6 +20,49 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+/// Development-only secret store: a plain JSON file next to the data directory,
+/// so hub/terminal credentials survive devserver restarts. The desktop app uses
+/// the Windows Credential Manager instead.
+struct DevFileSecretStore {
+    path: PathBuf,
+    lock: std::sync::Mutex<()>,
+}
+
+impl DevFileSecretStore {
+    fn load(&self) -> AppResult<std::collections::BTreeMap<String, String>> {
+        match std::fs::read(&self.path) {
+            Ok(b) => serde_json::from_slice(&b).map_err(|e| AppError::internal(format!("dev secrets unreadable: {e}"))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Default::default()),
+            Err(e) => Err(e.into()),
+        }
+    }
+    fn store(&self, m: &std::collections::BTreeMap<String, String>) -> AppResult<()> {
+        let tmp = self.path.with_extension("tmp");
+        std::fs::write(&tmp, serde_json::to_vec(m)?)?;
+        std::fs::rename(&tmp, &self.path)?;
+        Ok(())
+    }
+}
+
+impl SecretStore for DevFileSecretStore {
+    fn get(&self, key: &str) -> AppResult<Option<String>> {
+        let _g = self.lock.lock().map_err(|_| AppError::internal("poisoned"))?;
+        Ok(self.load()?.get(key).cloned())
+    }
+    fn set(&self, key: &str, value: &str) -> AppResult<()> {
+        let _g = self.lock.lock().map_err(|_| AppError::internal("poisoned"))?;
+        let mut m = self.load()?;
+        m.insert(key.into(), value.into());
+        self.store(&m)
+    }
+    fn delete(&self, key: &str) -> AppResult<()> {
+        let _g = self.lock.lock().map_err(|_| AppError::internal("poisoned"))?;
+        let mut m = self.load()?;
+        m.remove(key);
+        self.store(&m)
+    }
+}
 
 #[derive(Deserialize)]
 struct Rpc {
@@ -85,7 +129,9 @@ async fn main() {
     let data_dir = PathBuf::from(get("--data-dir").unwrap_or_else(|| ".amwapos-dev/data".into()));
     let port: u16 = get("--port").and_then(|p| p.parse().ok()).unwrap_or(8787);
     let static_dir = get("--static").map(PathBuf::from);
-    let (rt, startup_error) = match AppCore::open(&data_dir, Arc::new(MemorySecretStore::default())) {
+    let _ = std::fs::create_dir_all(&data_dir);
+    let secrets = DevFileSecretStore { path: data_dir.parent().unwrap_or(&data_dir).join("dev-secrets.json"), lock: Default::default() };
+    let (rt, startup_error) = match AppCore::open(&data_dir, Arc::new(secrets)) {
         Ok(core) => {
             let rt = Runtime::new(Arc::new(core));
             rt.ensure_services();
