@@ -102,6 +102,33 @@ Backends:
 - file
 - none
 
+## Receipts and Arabic
+
+Receipts are built only from committed records (sale lines snapshot the product name, and its
+Arabic name since schema 3). ASCII lines print in the printer's text mode. Any line with Arabic
+or other non-ASCII text is:
+
+1. ordered with the Unicode bidi algorithm (`unicode-bidi`);
+2. shaped with full OpenType Arabic shaping (`rustybuzz`), including joining forms and lam-alef;
+3. drawn with embedded, subset Noto Sans Arabic / Noto Sans (SIL OFL);
+4. sent as an ESC/POS `GS v 0` raster image at 12 dots per character column (576 dots on 80 mm).
+
+This works on any ESC/POS printer, with no Arabic code page needed (`crates/amwapos-core/src/raster.rs`).
+
+## UI language
+
+- **Keys:** English source strings are the translation keys: `t("Close shift")`,
+  `t("Shift {0}", n)`.
+- **Dictionary:** `src/i18n/ar.ts` holds the Arabic strings.
+- **Backend text:** error messages, report labels and diagnostics go through `tb()`. It tries an
+  exact match first, then patterns derived from the Rust `format!` strings. Values inside those
+  patterns are translated too, and English dates are localised.
+- **Codes:** status and type codes use `codeLabel()`.
+- **Direction:** Arabic sets `dir="rtl"` on the document. CSS uses logical properties.
+  Directional icons are mirrored. Money is wrapped in Unicode isolates so it keeps its
+  left-to-right order.
+- **Tests:** a unit test fails when any `t()` key or status label has no Arabic entry.
+
 ## Frontend
 
 The UI has two modes:

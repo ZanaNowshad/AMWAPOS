@@ -1,6 +1,7 @@
 # AMWAPOS
 
 Offline-first retail point of sale for Windows 10/11 (x64), built for Bahrain and GCC shops.
+English and Arabic (right-to-left) user interface; Arabic prints correctly on thermal receipts.
 Money is BHD in integer fils (3 decimals); VAT, discounts, refunds and cash are computed exactly
 on the backend. Every till keeps selling with no network; several tills can sync through one
 store hub on the local network.
@@ -17,6 +18,8 @@ store hub on the local network.
 | `src-tauri` | Desktop shell: one `rpc` IPC command, single instance, Windows Credential Manager secrets, JSON logs, NSIS installer. |
 | `src` | React UI: Cashier Mode (`screens/pos`) and Admin Mode (`screens/admin`). |
 | `e2e` | Playwright tests that drive the real UI against the real backend. |
+| `src/i18n` | UI language: `t()` / `tb()` and the Arabic dictionary (`ar.ts`). |
+| `scripts` | i18n maintenance: find untranslated strings (`i18n-rendered.mjs`, `i18n-leftovers.mjs`), extract backend messages (`rust-ui-strings.mjs`), merge translations (`i18n-add.mjs`). |
 | `docs` | Architecture, security, operations, release and completion status. |
 
 ## Develop
@@ -38,7 +41,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace                                   # unit + integration + sync + HTTP hub
 cargo test -p amwapos-core --release --test perf -- --ignored --nocapture   # 100k-product benchmark
 npm run typecheck && npm run lint && npm run format:check && npm test
-npx vite build && npx playwright test                    # end-to-end
+npx vite build && npx playwright test                    # end-to-end (English + Arabic)
+cargo run -p amwapos-core --example raster_preview -- out.pbm   # look at Arabic receipt rendering
 ```
 
 ## Build the Windows installer

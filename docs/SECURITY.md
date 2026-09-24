@@ -30,6 +30,21 @@
 - The dev bridge (`amwapos-devserver`) keeps secrets in a plain file. It binds to loopback only
   and is not shipped.
 
+## Residual risks (accepted, documented)
+
+These are known and deliberate. None of them is silently weakened by the code.
+
+| Risk | Why it remains | Mitigation |
+| --- | --- | --- |
+| HTTP headers are readable on the LAN: route, device id, timestamp, nonce, signature, protocol version | The channel encrypts bodies, not HTTP framing | No business data is in headers; the device id alone grants nothing (every request needs the device key) |
+| Message sizes and timing are visible | Encryption does not hide length or when a till syncs | Reveals activity level, not content |
+| `/health` and `/info` are public: product, version, business and hub name, hub instance id, outbox position | A till must find and identify a hub before pairing | No secrets; a till reads `/info` only when probing an address during setup; signed status comes from `/sync/status` |
+| UDP discovery broadcasts the hub name and address | Tills find the hub without typing an IP | Private-profile firewall rule; pairing still needs the code |
+| No forward secrecy for synced traffic | Traffic keys derive from each device key, which derives from the hub master secret | A recording is only readable with the hub's Windows credential; reset hub credentials after a suspected compromise (pairing exchanges use fresh SPAKE2 keys) |
+| Database and backups are not encrypted at rest | SQLite with no page encryption | BitLocker on tills and hub; encrypted drives or access-controlled shares for backups (below) |
+| Hub/till secrets are per Windows account | Windows Credential Manager | Run AMWAPOS under one Windows account per computer; a missing credential is reported, never silently replaced |
+| Protocol downgrade | — | Not possible: the hub answers only protocol 2 (426 otherwise) and tills refuse a hub that reports another protocol; there is no plaintext fallback |
+
 ## What BitLocker covers, and what a stolen database yields
 
 **Stolen database.** Someone who copies `amwapos.db`, or an unencrypted backup, can read

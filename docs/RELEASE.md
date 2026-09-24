@@ -13,6 +13,16 @@
 Unsigned installers trigger SmartScreen warnings. Do not roll them out to stores without an
 explicit decision.
 
+## Soak builds
+
+Every push to the working branch runs CI. The **Windows build + tests + installer** job uploads
+`amwapos-windows-unsigned`, which contains `AMWAPOS_<ver>_x64-setup.exe`, and prints its SHA-256
+in the "Installer hashes" step. The installer used for a soak is recorded in
+[STATUS.md](STATUS.md) with the run, the commit and the hash.
+
+A tag such as `v0.1.0-soak.1` runs the release workflow. The result is a **draft** release with
+the installer, SBOMs and `SHA256SUMS.txt`, unsigned unless the certificate secrets exist.
+
 ## Cross-compiling from Linux (verification only)
 
 ```sh
