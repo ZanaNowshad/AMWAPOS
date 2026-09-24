@@ -62,7 +62,7 @@ Evidence was re-run on 2026-09-24:
 | Refunds bounded by refundable qty, exact proration | Complete | Flow tests; E2E refund | — |
 | Inventory ledger, weighted-average cost, adjustments, stocktake | Complete | Back-office tests | — |
 | Suppliers, purchase orders, receiving | Complete | Back-office tests | — |
-| Customers, deliveries, delivery desk | Complete | Core tests. Desk: translated status actions, refresh and polling. | Customer notification is part of WhatsApp (Deferred) |
+| Customers, addresses, deliveries, delivery board (events, payment state) | Complete | Core tests; board with translated columns | — |
 | Reports (14) + CSV export (formula-injection safe) | Complete | Report tests; CSV escape round-trip test | — |
 | CSV product import | Complete | Preview/apply tests, duplicate isolation, scientific-notation guard, 100k import | — |
 | Backup / verified restore / safety backup | Complete | Round-trip and tamper tests; E2E backup | USB / network-share folder checked in the soak (OPERATIONS checklist) |
@@ -82,9 +82,13 @@ Evidence was re-run on 2026-09-24:
 | CI (lint, types, unit, E2E, Windows build + installer) | Complete | GitHub Actions green on this branch | — |
 | Release workflow (tag → draft release, SBOMs, SHA-256 sums, optional signing) | Partially complete | Workflow lint-clean; SBOM generation run locally | First tag run |
 | Code signing | Deferred | Unsigned is accepted for internal soak | Authenticode certificate |
-| Auto-update | Deferred | Updates page: install signed installers | Updater signing key and hosting |
-| WhatsApp notifications | Deferred | Admin page says Not enabled; no fake success path | Business account, key, owner, rollback |
-| Invoice scan (OCR) | Deferred | Admin page says Not enabled | Provider, key, owner, rollback |
-| AI assistant | Deferred | Admin page says Not enabled; no mutation path exists | API key, data-sharing decision, owner, rollback |
+| Auto-update (flag `updates`) | Partially complete | Ed25519-signed manifest, size + SHA-256 checks, re-verify before install, safety backup; refuses unsigned builds (`tests/updates.rs`) | Signing key (`AMWAPOS_UPDATE_PUBKEY`), hosting, install run on Windows |
+| WhatsApp (flag `whatsapp`) | Partially complete | Node sidecar on 127.0.0.1 with token + lock (`sidecar/test`), supervisor states (`tests/sidecar.rs`), outbox send-once/retry, inbox, templates EN/AR (`tests/automation.rs`) | Pairing with a real phone; Baileys link never exercised against WhatsApp servers |
+| Invoice scan + payment screenshot reviews (flags `ocr`, `payment_reviews`) | Partially complete | Bundled eng+ara models verified by SHA-256; real OCR in tests; parse/match/confirm → draft PO only, never stock (`tests/automation.rs`, `tests/sidecar.rs`) | Accuracy on real supplier invoices and BenefitPay screenshots |
+| AI assistant (flags `ai`, `ai_mutations`) | Partially complete | Read tools as the signed-in user; proposals → confirm → normal command → undo by compensating record; fake-provider loop test (`tests/ai.rs`) | API key and owner consent; never called against the real provider here |
 | Card terminal / BenefitPay integration | Deferred | Tenders recorded manually with a reference | Provider SDK, merchant account, owner, rollback |
+| Migration (CSV/XLSX/ZIP/folder) | Complete | Detect → map → preview (no writes) → apply through normal commands (`tests/migration.rs`) | — |
+| Customer credit (flag `customer_credit`) | Complete | Append-only ledger, limit + manager override, refunds, cash payments in drawer (`tests/credit.rs`) | — |
+| Windows Hello step-up (flag `windows_hello`) | Partially complete | Runtime gate + audit (`tests/step_up.rs`); WinRT call type-checked for Windows | Run on a Windows machine with Hello |
+| PDF receipts (flag `pdf_receipts`) | Complete | Raster PDF after commit; failure never affects the sale (`tests/automation.rs`) | — |
 | Database encryption at rest | Deferred (known limit 3) | BitLocker guidance and threat paragraph in SECURITY.md | Owner decision |
