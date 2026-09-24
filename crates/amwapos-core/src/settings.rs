@@ -109,6 +109,8 @@ pub struct ReceiptSettings {
     pub show_barcode: bool,
     pub paper_width_mm: i64,
     pub title: String,
+    /// "en" (English labels) or "bilingual" (English / Arabic labels).
+    pub language: String,
 }
 impl Default for ReceiptSettings {
     fn default() -> Self {
@@ -121,6 +123,7 @@ impl Default for ReceiptSettings {
             show_barcode: false,
             paper_width_mm: 80,
             title: "TAX INVOICE".into(),
+            language: "en".into(),
         }
     }
 }
@@ -269,6 +272,9 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             let r: ReceiptSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if r.paper_width_mm != 80 && r.paper_width_mm != 58 {
                 return Err(AppError::validation("Paper width must be 80 mm or 58 mm."));
+            }
+            if r.language != "en" && r.language != "bilingual" {
+                return Err(AppError::validation("Receipt language must be English or bilingual (English / Arabic)."));
             }
             serde_json::to_value(r)?
         }

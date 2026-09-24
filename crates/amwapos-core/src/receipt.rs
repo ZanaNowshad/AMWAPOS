@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::money::{format_decimal, format_qty};
+use crate::raster;
 use crate::sales::load_sale_detail;
 use crate::settings::{self, ReceiptSettings};
 use crate::time;
@@ -93,14 +94,36 @@ impl ReceiptDoc {
         out
     }
 
-    /// ESC/POS encoding. Non-ASCII characters are replaced (see module docs
-    /// in `printing` for the Arabic limitation).
+    /// ESC/POS encoding. ASCII lines use the printer's text mode; any line
+    /// with Arabic or other non-ASCII text is shaped and sent as a raster
+    /// image (`raster`), so it prints correctly on any ESC/POS printer.
     pub fn to_escpos(&self, cut: bool) -> Vec<u8> {
         let w = self.width_chars;
+        let px = w * raster::DOTS_PER_CHAR;
         let mut b: Vec<u8> = vec![0x1B, 0x40]; // ESC @ initialize
         b.extend_from_slice(&[0x1B, 0x74, 0x00]); // code page PC437
         for blk in &self.blocks {
             match blk {
+                Block::Text { text, align, bold, large } if raster::needs_raster(text) => {
+                    b.extend_from_slice(&[0x1B, 0x61, 0x00]);
+                    for line in raster::wrap(text, px, *bold, *large) {
+                        let place = match align {
+                            Align::Center => raster::Place::Center,
+                            Align::Right => raster::Place::Right,
+                            // "Left" means the start of the line: the right edge for Arabic.
+                            Align::Left if raster::is_rtl(&line) => raster::Place::Right,
+                            Align::Left => raster::Place::Left,
+                        };
+                        b.extend(raster::render(px, &[(&line, place)], *bold, *large).to_escpos());
+                    }
+                }
+                Block::Pair { left, right, bold, large } if raster::needs_raster(left) || raster::needs_raster(right) => {
+                    b.extend_from_slice(&[0x1B, 0x61, 0x00]);
+                    let (size, _) = raster::metrics(*large);
+                    let room = px as f32 - raster::measure(right, size, *bold) - raster::DOTS_PER_CHAR as f32;
+                    let left = raster::fit(left, room.max(0.0), *bold, *large);
+                    b.extend(raster::render(px, &[(&left, raster::Place::Left), (right, raster::Place::Right)], *bold, *large).to_escpos());
+                }
                 Block::Text { text, align, bold, large } => {
                     b.extend_from_slice(&[
                         0x1B,
@@ -207,6 +230,58 @@ fn pair_line(l: &str, r: &str, w: usize) -> String {
     format!("{left}{}{r}", " ".repeat(pad.max(1)))
 }
 
+/// Receipt labels: English, or English / Arabic when the receipt language is
+/// "bilingual". Arabic prints through the raster path.
+struct Labels {
+    bilingual: bool,
+}
+
+impl Labels {
+    fn new(cfg: &ReceiptSettings) -> Self {
+        Self { bilingual: cfg.language == "bilingual" }
+    }
+    fn t(&self, en: &str) -> String {
+        match (self.bilingual, arabic(en)) {
+            (true, Some(ar)) => format!("{en} / {ar}"),
+            _ => en.to_string(),
+        }
+    }
+}
+
+fn arabic(en: &str) -> Option<&'static str> {
+    Some(match en {
+        "TAX INVOICE" => "فاتورة ضريبية",
+        "Receipt" => "الإيصال",
+        "Cashier" => "الكاشير",
+        "Customer" => "العميل",
+        "Discount" => "خصم",
+        "Subtotal" => "المجموع",
+        "VAT" => "الضريبة",
+        "TOTAL" => "الإجمالي",
+        "Change" => "الباقي",
+        "Items" => "الأصناف",
+        "Cash" => "نقداً",
+        "Card" => "بطاقة",
+        "BenefitPay" => "بنفت",
+        "Bank Transfer" => "تحويل بنكي",
+        "REFUND / CREDIT NOTE" => "إشعار دائن",
+        "Refund" => "استرجاع",
+        "Original receipt" => "الإيصال الأصلي",
+        "Processed by" => "بواسطة",
+        "Approved by" => "موافقة",
+        "Reason" => "السبب",
+        "returned" => "مرتجع",
+        "VAT reversed" => "الضريبة المستردة",
+        "REFUND TOTAL" => "إجمالي الاسترجاع",
+        "Refunded to" => "أعيد إلى",
+        "Tel" => "هاتف",
+        "CR" => "س.ت",
+        "VAT No" => "الرقم الضريبي",
+        "was" => "كان",
+        _ => return None,
+    })
+}
+
 struct StoreInfo {
     name: String,
     branch: String,
@@ -241,6 +316,7 @@ fn local_time(ts: &str, tz: &str) -> String {
 }
 
 fn header(doc: &mut ReceiptDoc, info: &StoreInfo, cfg: &ReceiptSettings) {
+    let l = Labels::new(cfg);
     doc.center(info.name.clone(), true, true);
     if info.branch != info.name && !info.branch.is_empty() {
         doc.center(info.branch.clone(), false, false);
@@ -249,17 +325,17 @@ fn header(doc: &mut ReceiptDoc, info: &StoreInfo, cfg: &ReceiptSettings) {
         doc.center(a.clone(), false, false);
     }
     if let Some(p) = &info.phone {
-        doc.center(format!("Tel: {p}"), false, false);
+        doc.center(format!("{}: {p}", l.t("Tel")), false, false);
     }
     let mut ids = vec![];
     if cfg.show_cr_number {
         if let Some(cr) = &info.cr {
-            ids.push(format!("CR: {cr}"));
+            ids.push(format!("{}: {cr}", l.t("CR")));
         }
     }
     if cfg.show_vat_number {
         if let Some(v) = &info.vat {
-            ids.push(format!("VAT No: {v}"));
+            ids.push(format!("{}: {v}", l.t("VAT No")));
         }
     }
     if !ids.is_empty() {
@@ -278,30 +354,34 @@ pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> 
     let branch_id: String = c.query_row("SELECT branch_id FROM sales WHERE sale_id=?1", [sale_id], |r| r.get(0))?;
     let info = store_info(c, &branch_id)?;
     let m = |v: i64| format_decimal(v, info.digits);
+    let l = Labels::new(&cfg);
     let mut doc = ReceiptDoc::new(width_for(printer.paper_width_mm.min(cfg.paper_width_mm)));
     header(&mut doc, &info, &cfg);
     doc.rule();
-    doc.center(cfg.title.clone(), true, false);
+    doc.center(l.t(&cfg.title), true, false);
     if let Some(l) = copy_label {
         doc.center(format!("*** {l} ***"), true, false);
     }
-    doc.pair(format!("Receipt: {}", d.receipt_number), local_time(&d.completed_at, &info.tz));
+    doc.pair(format!("{}: {}", l.t("Receipt"), d.receipt_number), local_time(&d.completed_at, &info.tz));
     if cfg.show_cashier {
-        doc.pair(format!("Cashier: {}", d.cashier_name), d.device_name.clone().unwrap_or_default());
+        doc.pair(format!("{}: {}", l.t("Cashier"), d.cashier_name), d.device_name.clone().unwrap_or_default());
     }
     if let Some(cn) = &d.customer_name {
-        doc.left(format!("Customer: {cn}{}", d.customer_phone.as_ref().map(|p| format!(" ({p})")).unwrap_or_default()));
+        doc.left(format!("{}: {cn}{}", l.t("Customer"), d.customer_phone.as_ref().map(|p| format!(" ({p})")).unwrap_or_default()));
     }
     doc.rule();
     for it in &d.items {
         doc.left(it.name.clone());
+        if let Some(ar) = it.name_ar.as_ref().filter(|a| *a != &it.name) {
+            doc.left(ar.clone());
+        }
         let qty = format!("  {} x {}", format_qty(it.qty_milli), m(it.unit_price_minor));
         doc.pair(qty, m(it.gross_minor));
         if it.unit_price_minor != it.original_unit_price_minor {
-            doc.left(format!("  (was {})", m(it.original_unit_price_minor)));
+            doc.left(format!("  ({} {})", l.t("was"), m(it.original_unit_price_minor)));
         }
         if it.discount_minor > 0 {
-            doc.pair("  Discount", format!("-{}", m(it.discount_minor)));
+            doc.pair(format!("  {}", l.t("Discount")), format!("-{}", m(it.discount_minor)));
         }
         if cfg.show_barcode {
             if let Some(b) = &it.barcode {
@@ -310,9 +390,9 @@ pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> 
         }
     }
     doc.rule();
-    doc.pair("Subtotal", m(d.subtotal_minor));
+    doc.pair(l.t("Subtotal"), m(d.subtotal_minor));
     if d.discount_minor > 0 {
-        doc.pair("Discount", format!("-{}", m(d.discount_minor)));
+        doc.pair(l.t("Discount"), format!("-{}", m(d.discount_minor)));
     }
     // VAT summary by rate.
     let mut rates: std::collections::BTreeMap<(i64, bool), i64> = Default::default();
@@ -320,13 +400,17 @@ pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> 
         *rates.entry((it.tax_rate_bp, it.tax_inclusive)).or_insert(0) += it.tax_minor;
     }
     for ((rate, incl), tax) in &rates {
-        let label =
-            format!("VAT {}%{}", format_decimal(*rate, 2).trim_end_matches('0').trim_end_matches('.'), if *incl { " (incl.)" } else { "" });
+        let label = format!(
+            "{} {}%{}",
+            l.t("VAT"),
+            format_decimal(*rate, 2).trim_end_matches('0').trim_end_matches('.'),
+            if *incl { " (incl.)" } else { "" }
+        );
         doc.pair(label, m(*tax));
     }
-    doc.pair_b("TOTAL", format!("{} {}", info.currency, m(d.total_minor)), true);
+    doc.pair_b(l.t("TOTAL"), format!("{} {}", info.currency, m(d.total_minor)), true);
     for p in &d.payments {
-        let label = method_label(&p.method);
+        let label = l.t(&method_label(&p.method));
         doc.pair(
             match &p.reference {
                 Some(r) => format!("{label} ({r})"),
@@ -336,10 +420,10 @@ pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> 
         );
     }
     if d.change_minor > 0 {
-        doc.pair_b("Change", m(d.change_minor), false);
+        doc.pair_b(l.t("Change"), m(d.change_minor), false);
     }
     doc.rule();
-    doc.pair("Items", format_qty(d.items.iter().map(|i| i.qty_milli).sum()));
+    doc.pair(l.t("Items"), format_qty(d.items.iter().map(|i| i.qty_milli).sum()));
     for f in &cfg.footer_lines {
         doc.center(f.clone(), false, false);
     }
@@ -382,41 +466,46 @@ pub fn refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>)
         .ok_or_else(|| AppError::not_found("Refund"))?;
     let info = store_info(c, &branch)?;
     let m = |v: i64| format_decimal(v, info.digits);
+    let l = Labels::new(&cfg);
     let mut doc = ReceiptDoc::new(width_for(printer.paper_width_mm.min(cfg.paper_width_mm)));
     header(&mut doc, &info, &cfg);
     doc.rule();
-    doc.center("REFUND / CREDIT NOTE", true, false);
+    doc.center(l.t("REFUND / CREDIT NOTE"), true, false);
     if let Some(l) = copy_label {
         doc.center(format!("*** {l} ***"), true, false);
     }
-    doc.pair(format!("Refund: {rn}"), local_time(&at, &info.tz));
-    doc.left(format!("Original receipt: {orig}"));
-    doc.left(format!("Processed by: {user}"));
+    doc.pair(format!("{}: {rn}", l.t("Refund")), local_time(&at, &info.tz));
+    doc.left(format!("{}: {orig}", l.t("Original receipt")));
+    doc.left(format!("{}: {user}", l.t("Processed by")));
     if let Some(a) = approver {
-        doc.left(format!("Approved by: {a}"));
+        doc.left(format!("{}: {a}", l.t("Approved by")));
     }
-    doc.left(format!("Reason: {reason}"));
+    doc.left(format!("{}: {reason}", l.t("Reason")));
     doc.rule();
     let mut st = c.prepare(
-        "SELECT si.product_name_snapshot, ri.qty_milli, ri.amount_minor FROM refund_items ri
+        "SELECT si.product_name_snapshot, ri.qty_milli, ri.amount_minor, si.product_name_ar_snapshot FROM refund_items ri
          JOIN sale_items si ON si.sale_item_id=ri.original_sale_item_id WHERE ri.refund_id=?1 ORDER BY si.line_no",
     )?;
     let items = st
-        .query_map([refund_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))?
+        .query_map([refund_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, Option<String>>(3)?)))?
         .collect::<Result<Vec<_>, _>>()?;
-    for (name, q, amt) in items {
+    for (name, q, amt, name_ar) in items {
+        let ar = name_ar.filter(|a| a != &name);
         doc.left(name);
-        doc.pair(format!("  {} returned", format_qty(q)), format!("-{}", m(amt)));
+        if let Some(ar) = ar {
+            doc.left(ar);
+        }
+        doc.pair(format!("  {} {}", format_qty(q), l.t("returned")), format!("-{}", m(amt)));
     }
     doc.rule();
-    doc.pair("VAT reversed", format!("-{}", m(tax)));
-    doc.pair_b("REFUND TOTAL", format!("{} {}", info.currency, m(total)), true);
+    doc.pair(l.t("VAT reversed"), format!("-{}", m(tax)));
+    doc.pair_b(l.t("REFUND TOTAL"), format!("{} {}", info.currency, m(total)), true);
     let mut st = c.prepare("SELECT method, amount_minor, reference FROM refund_tenders WHERE refund_id=?1")?;
     let tenders = st
         .query_map([refund_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, Option<String>>(2)?)))?
         .collect::<Result<Vec<_>, _>>()?;
     for (method, amt, _r) in tenders {
-        doc.pair(format!("Refunded to {}", method_label(&method)), m(amt));
+        doc.pair(format!("{} {}", l.t("Refunded to"), l.t(&method_label(&method))), m(amt));
     }
     doc.rule();
     for f in &cfg.footer_lines {

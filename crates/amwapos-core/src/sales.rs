@@ -95,6 +95,8 @@ pub struct SaleItemView {
     pub cost_minor: Option<i64>,
     pub refunded_qty_milli: i64,
     pub is_custom: bool,
+    /// Arabic product name at the time of sale (if the product had one).
+    pub name_ar: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -230,7 +232,8 @@ pub(crate) fn load_sale_detail(c: &Connection, sale_id: &str, show_cost: bool) -
         "SELECT i.sale_item_id, i.line_no, i.product_id, i.product_name_snapshot, i.sku_snapshot, i.barcode_snapshot, i.unit, i.qty_milli,
                 i.original_unit_price_minor, i.effective_unit_price_minor, i.gross_minor, i.discount_minor, i.tax_rate_bp, i.tax_inclusive,
                 i.tax_minor, i.line_total_minor, i.cost_snapshot_minor,
-                COALESCE((SELECT SUM(ri.qty_milli) FROM refund_items ri WHERE ri.original_sale_item_id=i.sale_item_id),0), i.is_custom
+                COALESCE((SELECT SUM(ri.qty_milli) FROM refund_items ri WHERE ri.original_sale_item_id=i.sale_item_id),0), i.is_custom,
+                i.product_name_ar_snapshot
          FROM sale_items i WHERE i.sale_id=?1 ORDER BY i.line_no",
     )?;
     d.items = st
@@ -255,6 +258,7 @@ pub(crate) fn load_sale_detail(c: &Connection, sale_id: &str, show_cost: bool) -
                 cost_minor: if show_cost { Some(r.get(16)?) } else { None },
                 refunded_qty_milli: r.get(17)?,
                 is_custom: r.get::<_, i64>(18)? == 1,
+                name_ar: r.get(19)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -418,8 +422,9 @@ impl AppCore {
                     "INSERT INTO sale_items(sale_item_id, sale_id, line_no, product_id, product_name_snapshot, sku_snapshot, barcode_snapshot,
                         category_id_snapshot, unit, qty_milli, original_unit_price_minor, effective_unit_price_minor, gross_minor, discount_minor,
                         tax_rule_id, tax_rate_bp, tax_inclusive, tax_minor, line_total_minor, cost_snapshot_minor, is_custom,
-                        price_override_by, discount_approved_by)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
+                        price_override_by, discount_approved_by, product_name_ar_snapshot)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,
+                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4))",
                     params![
                         item_id, sale_id, l.line_no, l.product_id, l.name, l.sku, l.barcode, l.category_id, l.unit, l.qty_milli,
                         l.catalog_unit_price_minor, l.unit_price_minor, p.gross_minor, p.discount_minor, l.tax_rule_id, l.tax_rate_bp,

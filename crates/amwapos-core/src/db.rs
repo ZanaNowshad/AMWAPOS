@@ -27,6 +27,7 @@ pub struct Migration {
 pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 1, name: "init", sql: include_str!("migrations/0001_init.sql") },
     Migration { version: 2, name: "sync", sql: include_str!("migrations/0002_sync.sql") },
+    Migration { version: 3, name: "receipt_arabic", sql: include_str!("migrations/0003_receipt_arabic.sql") },
 ];
 
 pub fn latest_schema_version() -> i64 {
@@ -54,7 +55,20 @@ pub struct MigrationReport {
     pub safety_backup: Option<String>,
 }
 
+/// SQL functions available on every connection.
+///
+/// `amw_now()` returns the application clock in the same format the Rust code
+/// writes timestamps with. Queries must compare stored timestamps against this,
+/// never SQLite's `'now'`: the two clocks can differ by milliseconds (they do on
+/// Windows), which made a price saved "now" look like a future price.
+fn register_functions(conn: &Connection) -> AppResult<()> {
+    use rusqlite::functions::FunctionFlags;
+    conn.create_scalar_function("amw_now", 0, FunctionFlags::SQLITE_UTF8, |_| Ok(crate::time::now_str()))?;
+    Ok(())
+}
+
 fn configure(conn: &Connection) -> AppResult<()> {
+    register_functions(conn)?;
     conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MS))?;
     conn.execute_batch(
         "PRAGMA foreign_keys = ON;
@@ -116,6 +130,7 @@ impl Db {
 
     fn new_reader(&self) -> AppResult<Connection> {
         let c = Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+        register_functions(&c)?;
         c.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MS))?;
         c.execute_batch("PRAGMA foreign_keys = ON; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -16000;")?;
         Ok(c)

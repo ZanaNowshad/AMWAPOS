@@ -10,8 +10,9 @@
 //! * `file`    — appends text renderings to a file (testing / virtual printer)
 //! * `none`    — printing disabled
 //!
-//! Known limitation: ESC/POS text uses code page 437; Arabic text is not yet
-//! rasterized and prints as '?'. Receipts are built from English snapshots.
+//! ASCII lines print in the printer's text mode (code page 437); lines with
+//! Arabic or other non-ASCII text are shaped and sent as raster images (see
+//! `raster`), so they print correctly on any ESC/POS printer.
 
 use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -112,6 +113,13 @@ pub fn render_job(c: &Connection, kind: &str, ref_id: &str, copy: Option<&str>) 
             d.blocks.push(receipt::Block::Text { text: time::now_str(), align: receipt::Align::Center, bold: false, large: false });
             d.blocks.push(receipt::Block::Rule);
             d.blocks.push(receipt::Block::Pair { left: "Printer".into(), right: "OK".into(), bold: false, large: false });
+            // Proves the Arabic raster path on this printer.
+            d.blocks.push(receipt::Block::Text {
+                text: "اختبار الطباعة العربية — Arabic OK".into(),
+                align: receipt::Align::Center,
+                bold: false,
+                large: false,
+            });
             Some(d)
         }
         _ => None,

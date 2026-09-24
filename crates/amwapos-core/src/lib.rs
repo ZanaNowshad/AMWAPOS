@@ -22,6 +22,7 @@ pub mod pos;
 pub mod pricing;
 pub mod printing;
 pub mod purchasing;
+pub mod raster;
 pub mod receipt;
 pub mod refunds;
 pub mod reports;

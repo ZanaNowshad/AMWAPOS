@@ -94,3 +94,93 @@ fn escpos_output_has_init_and_cut() {
     assert!(bytes.windows(2).any(|w| w == b"\x1dV"), "GS V cut");
     assert!(!doc.to_escpos(false).windows(2).any(|w| w == b"\x1dV"));
 }
+
+/// Split an ESC/POS stream into (text-mode bytes, raster images).
+fn split_escpos(bytes: &[u8]) -> (Vec<u8>, usize) {
+    let mut text = vec![];
+    let mut rasters = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(&[0x1D, 0x76, 0x30, 0x00]) {
+            let bx = bytes[i + 4] as usize | (bytes[i + 5] as usize) << 8;
+            let rows = bytes[i + 6] as usize | (bytes[i + 7] as usize) << 8;
+            i += 8 + bx * rows;
+            rasters += 1;
+        } else {
+            text.push(bytes[i]);
+            i += 1;
+        }
+    }
+    (text, rasters)
+}
+
+fn set_name_ar(e: &Env, product_id: &str, name_ar: &str) {
+    e.core.db.write(|tx| Ok(tx.execute("UPDATE products SET name_ar=?2 WHERE product_id=?1", [product_id, name_ar])?)).unwrap();
+}
+
+#[test]
+fn arabic_receipts_print_as_raster_never_as_question_marks() {
+    let e = env();
+    let t = &e.owner_token;
+    // Arabic store name, Arabic product name, Arabic footer, bilingual labels.
+    e.core.db.write(|tx| Ok(tx.execute("UPDATE business SET name='سوبرماركت النور'", [])?)).unwrap();
+    let pid = e.product("Almarai Fresh Milk 1L", "6281007031126", 850, 500, 10_000);
+    set_name_ar(&e, &pid, "حليب المراعي طازج");
+    e.product("لبن كامل الدسم", "6281007000009", 650, 300, 10_000);
+    e.core
+        .settings_save(
+            t,
+            "receipt",
+            json!({ "language": "bilingual", "footer_lines": ["شكراً لتسوقكم معنا"], "paper_width_mm": 80, "title": "TAX INVOICE" }),
+        )
+        .unwrap();
+    e.open_shift(t, 0);
+    e.core.pos_scan(t, "6281007031126", None).unwrap();
+    let cart = e.core.pos_scan(t, "6281007000009", None).unwrap().cart;
+    let total = cart.totals.total_minor;
+    let sale = e
+        .core
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
+        .unwrap();
+
+    let doc = e.core.db.read(|c| amwapos_core::receipt::sale_receipt(c, &sale.sale_id, None)).unwrap();
+    let text = doc.to_text();
+    assert!(text.contains("حليب المراعي طازج"), "Arabic name snapshot printed under the English name:\n{text}");
+    assert!(text.contains("TOTAL / الإجمالي"));
+    assert!(text.contains("TAX INVOICE / فاتورة ضريبية"));
+    assert!(text.contains("شكراً لتسوقكم معنا"));
+
+    let (text_mode, rasters) = split_escpos(&doc.to_escpos(true));
+    assert!(rasters >= 8, "every Arabic line is a raster image ({rasters})");
+    assert!(!text_mode.contains(&b'?'), "no substitution characters in text mode");
+    assert!(text_mode.windows(11).any(|w| w == b"  1 x 0.850"), "ASCII lines still use text mode");
+
+    // Snapshot: changing the catalogue later does not change the reprint.
+    set_name_ar(&e, &pid, "اسم جديد");
+    let doc = e.core.db.read(|c| amwapos_core::receipt::sale_receipt(c, &sale.sale_id, Some("COPY"))).unwrap();
+    assert!(doc.to_text().contains("حليب المراعي طازج"));
+    assert!(!doc.to_text().contains("اسم جديد"));
+}
+
+#[test]
+fn english_receipts_stay_in_fast_text_mode() {
+    let e = env();
+    let t = &e.owner_token;
+    e.product("Coca-Cola 330ml", "06291100001234", 250, 100, 10_000);
+    e.open_shift(t, 0);
+    let sale = sell(&e, "06291100001234");
+    let doc = e.core.db.read(|c| amwapos_core::receipt::sale_receipt(c, &sale.sale_id, None)).unwrap();
+    let (text_mode, rasters) = split_escpos(&doc.to_escpos(true));
+    assert_eq!(rasters, 0);
+    assert!(!text_mode.contains(&b'?'));
+    assert!(e.core.settings_save(t, "receipt", json!({ "language": "fr" })).is_err());
+}

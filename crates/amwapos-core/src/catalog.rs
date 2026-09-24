@@ -17,8 +17,8 @@ use crate::validate;
 /// Current retail price of `p.product_id` (effective-dated).
 pub const PRICE_SQL: &str = "(SELECT pp.amount_minor FROM product_prices pp
     WHERE pp.product_id = p.product_id AND pp.price_type = 'retail'
-      AND pp.effective_from <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
-      AND (pp.effective_to IS NULL OR pp.effective_to > strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      AND pp.effective_from <= amw_now()
+      AND (pp.effective_to IS NULL OR pp.effective_to > amw_now())
     ORDER BY pp.effective_from DESC LIMIT 1)";
 
 #[derive(Debug, Clone, Serialize)]
@@ -1411,4 +1411,15 @@ pub(crate) fn set_price(
         Some(&json!({ "price_minor": amount_minor, "effective_from": effective_from, "reason": reason })),
     )?;
     Ok(old)
+}
+
+#[cfg(test)]
+mod clock_tests {
+    #[test]
+    fn price_lookup_uses_the_application_clock() {
+        // Regression (Windows CI): SQLite's 'now' can lag the Rust clock that
+        // stamps effective_from, making a price saved "now" look future-dated.
+        assert!(!super::PRICE_SQL.contains("'now'"));
+        assert!(super::PRICE_SQL.contains("amw_now()"));
+    }
 }

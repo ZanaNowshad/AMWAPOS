@@ -1577,6 +1577,21 @@ type ReceiptCfg = {
   show_barcode: boolean;
   paper_width_mm: number;
   title: string;
+  language: "en" | "bilingual";
+};
+
+// Must match `arabic()` in crates/amwapos-core/src/receipt.rs.
+const RECEIPT_AR: Record<string, string> = {
+  "TAX INVOICE": "فاتورة ضريبية",
+  Receipt: "الإيصال",
+  Cashier: "الكاشير",
+  Subtotal: "المجموع",
+  VAT: "الضريبة",
+  TOTAL: "الإجمالي",
+  Cash: "نقداً",
+  Change: "الباقي",
+  CR: "س.ت",
+  "VAT No": "الرقم الضريبي",
 };
 
 function ReceiptSettings() {
@@ -1591,25 +1606,27 @@ function ReceiptSettings() {
     const c = (s: string) => " ".repeat(Math.max(0, Math.floor((w - s.length) / 2))) + s;
     const pair = (l: string, r: string) => l + " ".repeat(Math.max(1, w - l.length - r.length)) + r;
     const b = biz.data ?? {};
+    const t = (en: string) => (data.language === "bilingual" && RECEIPT_AR[en] ? `${en} / ${RECEIPT_AR[en]}` : en);
     const lines = [
       c(String(b.name ?? config?.business_name ?? "")),
-      ...(data.show_cr_number && b.cr_number ? [c(`CR: ${b.cr_number}`)] : []),
-      ...(data.show_vat_number && b.vat_number ? [c(`VAT No: ${b.vat_number}`)] : []),
+      ...(data.show_cr_number && b.cr_number ? [c(`${t("CR")}: ${b.cr_number}`)] : []),
+      ...(data.show_vat_number && b.vat_number ? [c(`${t("VAT No")}: ${b.vat_number}`)] : []),
       ...data.header_lines.map(c),
       "-".repeat(w),
-      c(data.title),
-      pair("Receipt: T01-0000123", "24 Sep 2026 19:42"),
-      ...(data.show_cashier ? [pair("Cashier: Sara", "Till 1")] : []),
+      c(t(data.title)),
+      pair(`${t("Receipt")}: T01-0000123`, "24 Sep 2026 19:42"),
+      ...(data.show_cashier ? [pair(`${t("Cashier")}: Sara`, "Till 1")] : []),
       "-".repeat(w),
       "Coca-Cola Original 330ml",
+      ...(data.language === "bilingual" ? ["كوكاكولا 330 مل"] : []),
       pair("  2 x 0.250", "0.500"),
       ...(data.show_barcode ? ["  6291100001234"] : []),
       "-".repeat(w),
-      pair("Subtotal", "0.500"),
-      pair("VAT 10% (incl.)", "0.045"),
-      pair("TOTAL", "BHD 0.500"),
-      pair("Cash", "1.000"),
-      pair("Change", "0.500"),
+      pair(t("Subtotal"), "0.500"),
+      pair(`${t("VAT")} 10% (incl.)`, "0.045"),
+      pair(t("TOTAL"), "BHD 0.500"),
+      pair(t("Cash"), "1.000"),
+      pair(t("Change"), "0.500"),
       "-".repeat(w),
       ...data.footer_lines.map(c),
     ];
@@ -1658,6 +1675,19 @@ function ReceiptSettings() {
           checked={data.show_barcode}
           onChange={(v) => setData({ ...data, show_barcode: v })}
         />
+        <Field
+          label="Receipt language"
+          hint="Arabic text (store name, product Arabic names, header and footer lines) always prints correctly."
+        >
+          <select
+            className="select"
+            value={data.language ?? "en"}
+            onChange={(e) => setData({ ...data, language: e.target.value as ReceiptCfg["language"] })}
+          >
+            <option value="en">English labels</option>
+            <option value="bilingual">English / Arabic labels</option>
+          </select>
+        </Field>
         <Field label="Paper width">
           <select
             className="select"
@@ -1771,8 +1801,8 @@ function PrinterSettings() {
       </div>
       {status ? <Banner tone={status.tone}>{status.text}</Banner> : null}
       <Banner tone="info">
-        Arabic text is not yet rasterized for thermal printers; receipts print product names from the English name
-        field.
+        Arabic text prints as a high-resolution image line, so it works on any ESC/POS printer. The test page includes
+        an Arabic line — check it prints joined and right-to-left.
       </Banner>
       <div className="row">
         <Button
