@@ -798,6 +798,7 @@ export const AR: Record<string, string> = {
   "Import completed": "اكتمل الاستيراد",
   "Import data": "استيراد البيانات",
   "Import products": "استيراد المنتجات",
+  "Import senders as customers": "استيراد المرسلين كعملاء",
   "Import your existing catalogue or create your first product.": "استورد الكتالوج الحالي أو أنشئ منتجك الأول.",
   "In Stock": "متوفر",
   "In stock": "متوفر",
@@ -2294,6 +2295,7 @@ export const AR: Record<string, string> = {
   "{0} contains invalid characters.": "يحتوي {0} على أحرف غير صالحة.",
   "{0} counted product(s) will be adjusted to their counted quantities.":
     "سيُعدَّل {0} منتج(ات) معدودة إلى كمياتها المعدودة.",
+  "{0} customers created, {1} linked": "تم إنشاء {0} عملاء، وربط {1}",
   "{0} d ago": "قبل {0} يوم",
   "{0} does not track stock.": "{0} لا يتتبّع المخزون.",
   "{0} gross profit.": "إجمالي ربح {0}.",
@@ -2343,6 +2345,7 @@ export const AR: Record<string, string> = {
   "{0} selected": "{0} محدد",
   "{0} selling product(s) are at or below their reorder point (e.g. {1}).":
     "{0} منتج(ات) مباعة عند حدّ إعادة الطلب أو دونه (مثل {1}).",
+  "{0} senders are not customers yet.": "{0} من المرسلين ليسوا عملاء بعد.",
   "{0} shift(s) closed with a cash variance today": "{0} وردية أُغلقت اليوم بفرق نقدي",
   "{0} still has an open shift on this terminal. They (or a manager) must close it first.":
     "لدى {0} وردية مفتوحة على نقطة البيع هذه. يجب أن يغلقها (أو المدير) أولاً.",

@@ -342,6 +342,8 @@ export const api = {
     media: (seq: number) => call<T.FileBlob>("whatsapp.media", { seq }),
     markRead: (chat: string) => call<number>("whatsapp.mark_read", { chat }),
     summary: () => call<{ unread: number; queued: number; failed: number }>("whatsapp.summary"),
+    importContacts: (chats?: string[]) =>
+      call<{ created: number; linked: number; skipped: number }>("whatsapp.import_contacts", { chats }),
   },
   payreviews: {
     list: (status?: string) => call<T.PaymentReview[]>("payreviews.list", { status }),

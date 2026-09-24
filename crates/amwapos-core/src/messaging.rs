@@ -661,6 +661,62 @@ impl AppCore {
         self.db.write(|tx| Ok(tx.execute("UPDATE wa_inbox SET read_at=?2 WHERE chat=?1 AND read_at IS NULL", params![chat, now])? as i64))
     }
 
+    /// Contact import: create customers for WhatsApp senders that are not yet
+    /// customers (name from the WhatsApp profile, phone from the chat), and
+    /// link their messages. `chats` limits the import to chosen conversations.
+    pub fn wa_import_contacts(&self, token: &str, chats: Option<Vec<String>>) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("whatsapp.manage")?;
+        s.require("customers.manage")?;
+        self.require_feature("whatsapp")?;
+        let candidates: Vec<(String, String, Option<String>)> = self.db.read(|c| {
+            let mut st = c.prepare(
+                "SELECT chat, MAX(phone), MAX(push_name) FROM wa_inbox WHERE customer_id IS NULL AND phone IS NOT NULL GROUP BY chat ORDER BY MAX(seq) DESC LIMIT 500",
+            )?;
+            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })?;
+        let (mut created, mut linked, mut skipped) = (0, 0, 0);
+        for (chat, phone, name) in candidates {
+            if let Some(only) = &chats {
+                if !only.contains(&chat) {
+                    continue;
+                }
+            }
+            let existing = self.db.read(|c| find_customer_by_phone(c, &phone))?;
+            let cid = match existing {
+                Some((id, _)) => {
+                    linked += 1;
+                    id
+                }
+                None => {
+                    let name = name
+                        .clone()
+                        .map(|n| n.trim().chars().take(100).collect::<String>())
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or_else(|| phone.clone());
+                    let input: crate::customers::CustomerInput =
+                        serde_json::from_value(json!({ "name": name, "phone": phone, "whatsapp": phone }))
+                            .map_err(|e| AppError::internal(e.to_string()))?;
+                    match self.customer_save(token, None, input) {
+                        Ok(c) => {
+                            created += 1;
+                            c.customer_id
+                        }
+                        Err(_) => {
+                            skipped += 1;
+                            continue;
+                        }
+                    }
+                }
+            };
+            self.db.write(|tx| {
+                Ok(tx.execute("UPDATE wa_inbox SET customer_id=?2 WHERE chat=?1 AND customer_id IS NULL", params![chat, cid])?)
+            })?;
+        }
+        Ok(json!({ "created": created, "linked": linked, "skipped": skipped }))
+    }
+
     /// Runtime: read marks not yet sent to the phone.
     pub fn wa_unsynced_reads(&self) -> AppResult<Vec<(i64, String, String)>> {
         let wa: WhatsAppSettings = self.db.read(|c| settings::get(c, settings::KEY_WHATSAPP))?;

@@ -284,45 +284,69 @@ function WaConversations() {
     const id = window.setInterval(() => void reload(), 8000);
     return () => window.clearInterval(id);
   }, [reload]);
+  const toast = useToast();
+  const { has } = useSession();
+  const act = useAction();
   if (error) return <Banner tone="danger">{error}</Banner>;
+  const unknown = (data ?? []).filter((c) => !c.customer_id && c.phone).length;
   return (
-    <div className="grid-2" style={{ gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }}>
-      <div className="card" style={{ maxHeight: 640, overflow: "auto" }}>
-        {!data ? (
-          <Skeleton />
-        ) : data.length === 0 ? (
-          <div className="empty">{t("No messages received yet.")}</div>
+    <div className="col gap-16">
+      {unknown > 0 && has("customers.manage") ? (
+        <div className="row">
+          <span className="small grow">{t("{0} senders are not customers yet.", unknown)}</span>
+          <Button
+            loading={act.busy}
+            onClick={async () => {
+              const r = await act.run(() => api.whatsapp.importContacts());
+              if (r) {
+                toast("success", t("{0} customers created, {1} linked", r.created, r.linked));
+                void reload();
+              }
+            }}
+          >
+            {t("Import senders as customers")}
+          </Button>
+        </div>
+      ) : null}
+      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      <div className="grid-2" style={{ gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }}>
+        <div className="card" style={{ maxHeight: 640, overflow: "auto" }}>
+          {!data ? (
+            <Skeleton />
+          ) : data.length === 0 ? (
+            <div className="empty">{t("No messages received yet.")}</div>
+          ) : (
+            data.map((c) => (
+              <button
+                key={c.chat}
+                className={`list-row ${chat?.chat === c.chat ? "active" : ""}`}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "start",
+                  padding: 12,
+                  borderBottom: "1px solid var(--border)",
+                }}
+                onClick={() => setChat(c)}
+              >
+                <div className="row">
+                  <strong className="grow">{c.name ?? c.phone ?? c.chat}</strong>
+                  {c.unread > 0 ? <Chip tone="brand">{c.unread}</Chip> : null}
+                </div>
+                <div className="tiny" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {c.last_text}
+                </div>
+                <div className="tiny">{relative(c.last_at)}</div>
+              </button>
+            ))
+          )}
+        </div>
+        {chat ? (
+          <WaThreadView key={chat.chat} chat={chat} onRead={() => void reload()} />
         ) : (
-          data.map((c) => (
-            <button
-              key={c.chat}
-              className={`list-row ${chat?.chat === c.chat ? "active" : ""}`}
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "start",
-                padding: 12,
-                borderBottom: "1px solid var(--border)",
-              }}
-              onClick={() => setChat(c)}
-            >
-              <div className="row">
-                <strong className="grow">{c.name ?? c.phone ?? c.chat}</strong>
-                {c.unread > 0 ? <Chip tone="brand">{c.unread}</Chip> : null}
-              </div>
-              <div className="tiny" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {c.last_text}
-              </div>
-              <div className="tiny">{relative(c.last_at)}</div>
-            </button>
-          ))
+          <div className="empty">{t("Choose a conversation.")}</div>
         )}
       </div>
-      {chat ? (
-        <WaThreadView key={chat.chat} chat={chat} onRead={() => void reload()} />
-      ) : (
-        <div className="empty">{t("Choose a conversation.")}</div>
-      )}
     </div>
   );
 }

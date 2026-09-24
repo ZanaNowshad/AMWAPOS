@@ -117,6 +117,14 @@ fn payment_screenshot_review_flow() {
         json!({ "id": id, "chat": "97333334444@s.whatsapp.net", "ts": 1_790_000_000, "type": "image", "caption": "paid",
                 "media": { "path": img.to_string_lossy(), "mime": "image/png", "sha256": "abc123" } })
     };
+    // An unknown sender becomes a customer on contact import (once).
+    e.core
+        .wa_ingest(&[json!({ "id": "T1", "chat": "97339998888@s.whatsapp.net", "ts": 1_790_000_000, "type": "text", "text": "hi", "push_name": "Maryam" })])
+        .unwrap();
+    let r = e.core.wa_import_contacts(t, None).unwrap();
+    assert_eq!(r["created"], 1);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM customers WHERE name='Maryam' AND phone='+97339998888'"), 1);
+    assert_eq!(e.core.wa_import_contacts(t, None).unwrap()["created"], 0);
     let imgs = e.core.wa_ingest(&[msg("M1"), msg("M1")]).unwrap();
     assert_eq!(imgs.len(), 1, "same WhatsApp message is stored once");
     let ids = e.core.pr_from_inbox(&imgs).unwrap();
