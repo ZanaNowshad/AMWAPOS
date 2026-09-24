@@ -1042,3 +1042,27 @@ export interface AiConversation {
   messages: { role: "user" | "assistant"; text: string; tools: string[]; at: string; stop_reason: string | null }[];
   proposals: AiProposal[];
 }
+
+export interface MigrationTable {
+  source: string;
+  headers: string[];
+  rows: string[][];
+  numeric_columns: string[];
+  entity: "products" | "customers" | "suppliers" | "stock" | "unknown";
+  mapping: Record<string, string>;
+}
+
+export interface UpdateManifest {
+  version: string;
+  notes: string;
+  published_at: string;
+  installer: { url: string; sha256: string; size: number; file_name: string };
+}
+
+export interface UpdateStatus {
+  current_version: string;
+  signing_key_built_in: boolean;
+  available: UpdateManifest | null;
+  downloaded: UpdateManifest | null;
+  can_install: boolean;
+}

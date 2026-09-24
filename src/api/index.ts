@@ -354,6 +354,25 @@ export const api = {
       call<T.InvoiceScanDetail>("invoicescan.confirm", { scan_id, supplier_id }),
     reject: (scan_id: string, reason: string) => call<T.InvoiceScan>("invoicescan.reject", { scan_id, reason }),
   },
+  updates: {
+    status: () => call<T.UpdateStatus>("updates.status"),
+    check: () => call<{ newer: boolean; manifest: T.UpdateManifest; status: T.UpdateStatus }>("updates.check"),
+    download: () => call<T.UpdateStatus>("updates.download"),
+    install: () => call<{ started: boolean; version: string }>("updates.install"),
+  },
+  migration: {
+    read: (files: { name: string; data: string }[]) =>
+      call<{ tables: T.MigrationTable[]; ignored: string[]; fields: Record<string, { key: string; label: string }[]> }>(
+        "migration.read",
+        {
+          files,
+        },
+      ),
+    preview: (a: { table: T.MigrationTable; update_existing: boolean; skip_errors: boolean }) =>
+      call<{ entity: string; preview: Record<string, unknown> }>("migration.preview", a),
+    apply: (a: { table: T.MigrationTable; update_existing: boolean; skip_errors: boolean; operation_id: string }) =>
+      call<{ entity: string; result: Record<string, unknown> }>("migration.apply", a),
+  },
   ai: {
     status: () => call<T.AiStatus>("ai.status"),
     configure: (settings: T.AiSettings, api_key?: string | null) =>

@@ -59,8 +59,11 @@ export const AR: Record<string, string> = {
   "AMWAPOS Setup": "إعداد AMWAPOS",
   "AMWAPOS Terminal": "نقطة بيع AMWAPOS",
   "AMWAPOS could not start": "تعذّر تشغيل AMWAPOS",
+  "AMWAPOS is up to date": "AMWAPOS محدّث",
   "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.":
     "ينفّذ AMWAPOS هذا عبر الأمر العادي وبصلاحياتك. يمكن التراجع عنه لاحقاً بسجل تصحيحي، ولا يُحذف شيء.",
+  "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.":
+    "يتحقق AMWAPOS من برنامج التثبيت مجدداً، ويأخذ نسخة احتياطية آمنة، ثم يُغلق ويشغّل برنامج التثبيت. أنهِ المبيعات المفتوحة أولاً. تُحفظ بيانات العمل.",
   "AMWAPOS will stop sending and receiving WhatsApp messages until a phone is linked again. Message history stays in AMWAPOS.":
     "سيتوقف AMWAPOS عن إرسال واستقبال رسائل واتساب حتى يُربط هاتف من جديد. يبقى سجل الرسائل في AMWAPOS.",
   "AMWAPOS · Deliveries": "AMWAPOS · التوصيل",
@@ -142,6 +145,8 @@ export const AR: Record<string, string> = {
   "An owner has not agreed to send store data to the provider.": "لم يوافق المالك على إرسال بيانات المتجر إلى المزوّد.",
   "An owner must agree to send store data to the AI provider in Settings → AI before the assistant can be used.":
     "يجب أن يوافق المالك على إرسال بيانات المتجر إلى مزوّد الذكاء الاصطناعي من الإعدادات ← المساعد الذكي قبل استخدام المساعد.",
+  "An update is used only if its signature matches the key built into AMWAPOS and the downloaded installer matches the signed checksum. Anything else is refused and deleted.":
+    "لا يُستخدم التحديث إلا إذا طابق توقيعه المفتاح المضمّن في AMWAPOS وطابق برنامج التثبيت المُنزّل المجموع الاختباري الموقّع. يُرفض أي شيء آخر ويُحذف.",
   Analytics: "التحليلات",
   Answering: "يستجيب",
   "Any stock": "أي مخزون",
@@ -149,6 +154,7 @@ export const AR: Record<string, string> = {
   "Appearance saved": "تم حفظ المظهر",
   "Append-only records cannot be deleted.": "لا يمكن حذف السجلات غير القابلة للتعديل.",
   Application: "التطبيق",
+  Applied: "تم التطبيق",
   "Applies to {0}. Discounts above {1} need manager approval.":
     "يُطبّق على {0}. الخصومات التي تتجاوز {1} تحتاج موافقة المدير.",
   Apply: "تطبيق",
@@ -156,6 +162,7 @@ export const AR: Record<string, string> = {
   "Apply Import": "تطبيق الاستيراد",
   "Apply discounts within the cashier limit": "منح خصومات ضمن حد الكاشير",
   "Apply price changes": "تطبيق تغييرات الأسعار",
+  "Apply {0}": "تطبيق {0}",
   "Approval cancelled": "أُلغيت الموافقة",
   "Approval code / last 4 digits / transfer ref": "رمز الموافقة / آخر 4 أرقام / مرجع التحويل",
   Approve: "موافقة",
@@ -225,6 +232,7 @@ export const AR: Record<string, string> = {
   Back: "رجوع",
   "Back to counting": "العودة إلى الجرد",
   "Back to sale": "العودة إلى البيع",
+  "Back up and install": "نسخ احتياطي ثم تثبيت",
   "Backing up…": "جارٍ النسخ الاحتياطي…",
   Backup: "النسخ الاحتياطي",
   "Backup Now": "نسخ احتياطي الآن",
@@ -269,7 +277,10 @@ export const AR: Record<string, string> = {
   "Branch code": "رمز الفرع",
   "Branch code must be 1–8 letters or digits.": "يجب أن يتكوّن رمز الفرع من 1 إلى 8 أحرف أو أرقام.",
   "Branch name": "اسم الفرع",
+  "Bring products, customers, suppliers and opening stock from another system. Nothing changes until you apply a table.":
+    "انقل المنتجات والعملاء والموردين والمخزون الافتتاحي من نظام آخر. لا يتغير شيء حتى تطبّق جدولاً.",
   "Browser development bridge": "جسر تطوير المتصفح",
+  "Built in": "مضمّن",
   "Bulk price change": "تغيير الأسعار بالجملة",
   "Bulk price changes. Every change is previewed first and recorded in price history.":
     "تغيير الأسعار بالجملة. تُعرض كل التغييرات للمعاينة أولاً وتُسجّل في سجل الأسعار.",
@@ -355,6 +366,8 @@ export const AR: Record<string, string> = {
   "Changes that could not be applied": "تغييرات تعذّر تطبيقها",
   "Changing a role signs out its users so the new permissions apply immediately.":
     "تغيير الدور يسجّل خروج مستخدميه حتى تُطبّق الصلاحيات الجديدة فوراً.",
+  "Check for updates": "التحقق من التحديثات",
+  "Check once a day": "التحقق مرة يومياً",
   "Check the BenefitPay or bank statement before confirming. The screenshot alone does not prove the money arrived.":
     "تحقق من كشف BenefitPay أو البنك قبل التأكيد. لقطة الشاشة وحدها لا تثبت وصول المال.",
   "Check the spelling or scan the barcode.": "تحقق من الإملاء أو امسح الباركود.",
@@ -372,6 +385,7 @@ export const AR: Record<string, string> = {
   "Choose a Windows printer in Printer Settings.": "اختر طابعة Windows من إعدادات الطابعة.",
   "Choose a conversation.": "اختر محادثة.",
   "Choose a different category to move products into.": "اختر فئة مختلفة لنقل المنتجات إليها.",
+  "Choose a folder": "اختر مجلداً",
   "Choose an active supplier.": "اختر مورّداً نشطاً.",
   "Choose an active tax rule.": "اختر قاعدة ضريبية نشطة.",
   "Choose an image file (PNG, JPG, WEBP, BMP or TIFF). For a PDF invoice, save a page as an image first.":
@@ -379,8 +393,10 @@ export const AR: Record<string, string> = {
   "Choose an image file.": "اختر ملف صورة.",
   "Choose category…": "اختر فئة…",
   "Choose file": "اختر ملفاً",
+  "Choose files (CSV, Excel, ZIP)": "اختر ملفات (CSV أو Excel أو ZIP)",
   "Choose product": "اختر منتجاً",
   "Choose supplier…": "اختر مورّداً…",
+  "Choose what this table contains to map its columns.": "اختر محتوى هذا الجدول لربط أعمدته.",
   "Choose…": "اختر…",
   Chosen: "مختار",
   "Clear search": "مسح البحث",
@@ -428,6 +444,7 @@ export const AR: Record<string, string> = {
   Contact: "جهة الاتصال",
   "Contact name": "اسم جهة الاتصال",
   "Contact person": "مسؤول الاتصال",
+  Contains: "يحتوي",
   Continue: "متابعة",
   "Continue with current prices": "المتابعة بالأسعار الحالية",
   Conversations: "المحادثات",
@@ -467,6 +484,7 @@ export const AR: Record<string, string> = {
   "Create rule": "إنشاء قاعدة",
   "Create the business on this computer.": "إنشاء النشاط التجاري على هذا الجهاز.",
   "Create verified backups automatically.": "إنشاء نسخ احتياطية مُتحقَّق منها تلقائياً.",
+  "Create {0}": "إنشاء {0}",
   "Create, count and finalize stocktakes": "إنشاء الجرد وعدّه واعتماده",
   Created: "تاريخ الإنشاء",
   "Created {0} · failed PIN attempts {1}": "أُنشئ {0} · محاولات رمز سري فاشلة {1}",
@@ -571,6 +589,8 @@ export const AR: Record<string, string> = {
     "لا تُحدّث أثناء وجود عملية بيع جارية. حدّث الخادم وجميع نقاط البيع إلى الإصدار نفسه.",
   Document: "المستند",
   Done: "تم",
+  "Download {0}": "تنزيل {0}",
+  "Downloaded and verified": "تم التنزيل والتحقق",
   Draft: "مسودة",
   "Draft order created": "تم إنشاء مسودة الأمر",
   "Draft purchase order": "مسودة أمر شراء",
@@ -629,8 +649,11 @@ export const AR: Record<string, string> = {
   "Enter your PIN to unlock": "أدخل رمزك السري لفتح القفل",
   Entity: "الكيان",
   Error: "خطأ",
+  "Errors {0}": "أخطاء {0}",
   Event: "الحدث",
   Events: "الأحداث",
+  "Every cell is read as text, so barcodes keep their leading zeros. Import suppliers and products before opening stock.":
+    "تُقرأ كل خلية كنص، فتحتفظ الباركودات بأصفارها البادئة. استورد الموردين والمنتجات قبل المخزون الافتتاحي.",
   "Every refund with its reason, operator and approver.": "كل عملية استرجاع مع سببها ومنفّذها ومعتمِدها.",
   "Every sale, product and setting recorded after this backup was made will be replaced. A safety backup of the current data is taken automatically first.":
     "سيتم استبدال كل عملية بيع ومنتج وإعداد سُجّلت بعد إنشاء هذه النسخة الاحتياطية. تُؤخذ نسخة احتياطية أمان للبيانات الحالية تلقائياً أولاً.",
@@ -676,6 +699,7 @@ export const AR: Record<string, string> = {
   "Finish, hold or cancel the sale in progress before closing the shift.":
     "أنهِ البيع الجاري أو علّقه أو ألغِه قبل إغلاق الوردية.",
   "First Seen": "أول ظهور",
+  "Fix or skip the rows with errors before applying.": "أصلح الصفوف التي بها أخطاء أو تخطها قبل التطبيق.",
   "Fixed change": "باقٍ ثابت",
   Float: "الرصيد الافتتاحي",
   Folder: "المجلد",
@@ -742,6 +766,7 @@ export const AR: Record<string, string> = {
   "Idle lock must be between 0 and 240 minutes.": "يجب أن تكون مدة القفل عند الخمول بين 0 و240 دقيقة.",
   "Ignore an identical barcode scanned again within this many milliseconds (0 = off).":
     "تجاهل الباركود المطابق إذا مُسح مجدداً خلال هذا العدد من الملّي ثانية (0 = إيقاف).",
+  "Ignored (not a table): {0}": "تم تجاهله (ليس جدولاً): {0}",
   "Image not available.": "الصورة غير متاحة.",
   Impact: "الأثر",
   Import: "استيراد",
@@ -764,6 +789,8 @@ export const AR: Record<string, string> = {
   "Incorrect PINs before an account is locked.": "عدد الرموز السرية الخاطئة قبل قفل الحساب.",
   "Increase {0}": "زيادة {0}",
   Inspect: "فحص",
+  "Install {0}": "تثبيت {0}",
+  "Installing updates is supported on Windows only.": "تثبيت التحديثات مدعوم على ويندوز فقط.",
   Integrity: "السلامة",
   "Integrity check failed: {0}": "فشل فحص السلامة: {0}",
   "Integrity check reported problems": "أفاد فحص السلامة بوجود مشكلات",
@@ -907,6 +934,7 @@ export const AR: Record<string, string> = {
   Message: "رسالة",
   "Message queued": "الرسالة في قائمة الانتظار",
   Method: "الطريقة",
+  Migration: "الترحيل",
   "Migration {0} has changed since it was applied. Startup stopped to protect data.":
     "تغيّر الترحيل {0} منذ تطبيقه. أُوقف التشغيل لحماية البيانات.",
   "Minimum PIN length.": "أدنى طول للرمز السري.",
@@ -1045,6 +1073,7 @@ export const AR: Record<string, string> = {
   "No suppliers yet": "لا يوجد مورّدون بعد",
   "No unknown barcodes. Every scanned barcode was recognised.":
     "لا توجد باركودات مجهولة. تم التعرّف على كل باركود ممسوح.",
+  "No update address is set. Enter it in Settings → Updates.": "لم يُحدد عنوان التحديث. أدخله في صفحة التحديثات.",
   "None (top level)": "لا شيء (مستوى أعلى)",
   "None.": "لا شيء.",
   Normal: "عادي",
@@ -1060,7 +1089,9 @@ export const AR: Record<string, string> = {
     "لا توجد مساحة كافية للاستعادة بأمان: المطلوب {0} ميغابايت.",
   "Not enough stock recorded for: {0}. A manager can approve selling anyway.":
     "المخزون المسجّل غير كافٍ لـ: {0}. يمكن للمدير الموافقة على البيع رغم ذلك.",
+  "Not in this build": "غير موجود في هذا الإصدار",
   "Not printed": "لم يُطبع",
+  "Not recognised": "غير معروف",
   "Not set up": "غير مُعدّ",
   "Not tracked": "غير متتبَّع",
   "Not verified": "غير موثّق",
@@ -1316,6 +1347,7 @@ export const AR: Record<string, string> = {
   "Quantity for {0}": "الكمية لـ {0}",
   "Quantity must be a whole number for this product.": "يجب أن تكون الكمية عدداً صحيحاً لهذا المنتج.",
   "Quantity must be greater than zero.": "يجب أن تكون الكمية أكبر من صفر.",
+  "Quantity on hand": "الكمية المتوفرة",
   "Quantity per scan": "الكمية لكل مسح",
   "Quantity — {0}": "الكمية — {0}",
   Question: "السؤال",
@@ -1495,6 +1527,7 @@ export const AR: Record<string, string> = {
   "Roles & Permissions": "الأدوار والصلاحيات",
   "Round up to": "التقريب إلى",
   Row: "الصف",
+  "Row {0}": "الصف {0}",
   "Row {0}: {1}": "الصف {0}: {1}",
   "Rows per page": "صفوف لكل صفحة",
   "Rows skipped": "صفوف تم تخطيها",
@@ -1521,6 +1554,8 @@ export const AR: Record<string, string> = {
   "Safe drop": "تحويل إلى الخزنة",
   "Safe drops": "تحويلات إلى الخزنة",
   Safety: "أمان",
+  "Safety backup taken. The installer is running; AMWAPOS will restart.":
+    "أُخذت نسخة احتياطية آمنة. برنامج التثبيت يعمل؛ سيُعاد تشغيل AMWAPOS.",
   Sale: "البيع",
   "Sale completed": "اكتمل البيع",
   "Sale completed — receipt could not be printed": "اكتمل البيع — تعذّرت طباعة الإيصال",
@@ -1539,6 +1574,7 @@ export const AR: Record<string, string> = {
   "Sales by hour — today": "المبيعات بالساعة — اليوم",
   "Same image as {0}": "نفس صورة {0}",
   "Same screenshot or bank reference seen before": "نفس لقطة الشاشة أو المرجع البنكي شوهد سابقاً",
+  "Sample rows": "صفوف نموذجية",
   Saturday: "السبت",
   Save: "حفظ",
   "Save & attach": "حفظ وربط",
@@ -1660,7 +1696,9 @@ export const AR: Record<string, string> = {
   "Signed in": "تم تسجيل الدخول",
   Since: "منذ",
   Size: "الحجم",
+  "Skip rows with errors": "تخطي الصفوف التي بها أخطاء",
   "Skip the {0} row(s) with errors": "تخطي {0} صف(وف) بها أخطاء",
+  "Skip {0}": "تخطي {0}",
   Skipped: "تم التخطي",
   "Snapshot {0}: {1}": "اللقطة {0}: {1}",
   "Sold below cost": "بيع بأقل من التكلفة",
@@ -1823,6 +1861,10 @@ export const AR: Record<string, string> = {
     "قاعدة البيانات مشغولة. لم تُسجَّل أي تغييرات؛ يرجى المحاولة مجدداً.",
   "The discount cannot exceed the sale amount.": "لا يمكن أن يتجاوز الخصم مبلغ البيع.",
   "The disk is full. No changes were recorded.": "القرص ممتلئ. لم تُسجَّل أي تغييرات.",
+  "The downloaded installer changed on disk and was deleted. Download it again.":
+    "تغيّر برنامج التثبيت المُنزّل على القرص وتم حذفه. نزّله مجدداً.",
+  "The downloaded installer does not match the signed checksum. It was deleted.":
+    "برنامج التثبيت المُنزّل لا يطابق المجموع الاختباري الموقّع. تم حذفه.",
   "The drawer does not have that much cash according to the records.":
     "وفق السجلات، لا يحتوي الدرج على هذا القدر من النقد.",
   "The end date is before the start date.": "تاريخ النهاية قبل تاريخ البداية.",
@@ -1888,6 +1930,8 @@ export const AR: Record<string, string> = {
   "The target category does not exist.": "الفئة الهدف غير موجودة.",
   "The terminal is locked. Enter your PIN to continue.": "نقطة البيع مقفلة. أدخل رمزك السري للمتابعة.",
   "The two PINs do not match.": "الرمزان السريان غير متطابقين.",
+  "The update manifest is not signed.": "بيان التحديث غير موقّع.",
+  "The update signature is not valid. The update was refused.": "توقيع التحديث غير صالح. رُفض التحديث.",
   "The {0} module is not enabled. An owner can turn it on in Settings → Features.":
     "الوحدة {0} غير مفعّلة. يمكن للمالك تفعيلها من الإعدادات ← الميزات.",
   "Theft / loss": "سرقة / فقد",
@@ -1904,6 +1948,8 @@ export const AR: Record<string, string> = {
   "This barcode is no longer open. Refresh the list.": "هذا الباركود لم يعد مفتوحاً. حدّث القائمة.",
   "This barcode was recorded for review by management. Search by name to sell the item now.":
     "سُجّل هذا الباركود لمراجعة الإدارة. ابحث بالاسم لبيع الصنف الآن.",
+  "This build has no update-signing key, so it never downloads or installs updates by itself. Install new versions with the AMWAPOS installer; your data is kept and a safety backup is taken before any database upgrade.":
+    "لا يحتوي هذا الإصدار على مفتاح توقيع التحديثات، لذلك لا يُنزّل أو يثبّت التحديثات بنفسه أبداً. ثبّت الإصدارات الجديدة ببرنامج تثبيت AMWAPOS؛ تُحفظ بياناتك وتؤخذ نسخة احتياطية آمنة قبل أي ترقية لقاعدة البيانات.",
   "This cash event is recorded against your shift and cannot be edited later.":
     "تُسجَّل حركة النقد هذه على ورديتك ولا يمكن تعديلها لاحقاً.",
   "This computer": "هذا الجهاز",
@@ -2048,8 +2094,12 @@ export const AR: Record<string, string> = {
   "Unsupported message type": "نوع رسالة غير مدعوم",
   Until: "حتى",
   "Up to 3 decimals ({0}).": "حتى 3 منازل عشرية ({0}).",
+  "Update address (latest.json)": "عنوان التحديث (latest.json)",
   "Update existing products with the same SKU": "تحديث المنتجات الموجودة بنفس رمز الصنف",
   "Update needed": "يلزم التحديث",
+  "Update records that already exist": "تحديث السجلات الموجودة",
+  "Update signing key": "مفتاح توقيع التحديثات",
+  "Update {0}": "تحديث {0}",
   Updated: "تم التحديث",
   Updates: "التحديثات",
   "Updates are installed from signed installers": "تُثبَّت التحديثات من مُثبّتات موقّعة",
@@ -2084,6 +2134,7 @@ export const AR: Record<string, string> = {
   "Valid (create)": "صالح (إنشاء)",
   "Valid (update)": "صالح (تحديث)",
   Validate: "تحقّق",
+  "Validate and preview": "تحقق ومعاينة",
   Validation: "التحقق",
   Value: "القيمة",
   "Value change": "تغير القيمة",
@@ -2101,6 +2152,7 @@ export const AR: Record<string, string> = {
   "Version mismatch: the hub uses schema {0}, this terminal uses {1}. Install the same AMWAPOS version on both.":
     "عدم تطابق الإصدار: يستخدم الخادم البنية {0}، ونقطة البيع هذه تستخدم {1}. ثبّت إصدار AMWAPOS نفسه على الاثنين.",
   "Version {0}": "الإصدار {0}",
+  "Version {0} is available": "الإصدار {0} متاح",
   "View attachment": "عرض المرفق",
   "View deliveries": "عرض التوصيلات",
   "View diagnostics": "عرض التشخيص",
@@ -2115,6 +2167,7 @@ export const AR: Record<string, string> = {
   "Waiting for your decision": "بانتظار قرارك",
   Wallet: "محفظة",
   Warning: "تحذير",
+  "Warnings {0}": "تحذيرات {0}",
   Wednesday: "الأربعاء",
   Weekday: "يوم الأسبوع",
   Welcome: "مرحباً",
@@ -2201,6 +2254,7 @@ export const AR: Record<string, string> = {
   "{0} gross profit.": "إجمالي ربح {0}.",
   "{0} h ago": "قبل {0} ساعة",
   "{0} has no selling price. Ask a manager to set one.": "{0} ليس له سعر بيع. اطلب من المدير تحديده.",
+  "{0} imported": "تم استيراد {0}",
   "{0} is archived and cannot be sold.": "{0} مؤرشف ولا يمكن بيعه.",
   "{0} is archived and cannot be sold. Ask a manager.": "{0} مؤرشف ولا يمكن بيعه. اطلب من المدير.",
   "{0} is not a valid identifier.": "{0} ليس معرّفاً صالحاً.",
@@ -2238,6 +2292,9 @@ export const AR: Record<string, string> = {
   "{0} requires a reference.": "{0} يتطلب مرجعاً.",
   "{0} row(s) have errors. Fix them or choose to skip rows with errors.":
     "{0} صف(وف) بها أخطاء. صحّحها أو اختر تخطي الصفوف التي بها أخطاء.",
+  "{0} rows": "{0} صفوف",
+  "{0} rows will be written through the normal commands and recorded in the audit trail. Rows with errors are skipped.":
+    "ستُكتب {0} صفوف عبر الأوامر العادية وتُسجّل في سجل التدقيق. تُتخطى الصفوف التي بها أخطاء.",
   "{0} selected": "{0} محدد",
   "{0} selling product(s) are at or below their reorder point (e.g. {1}).":
     "{0} منتج(ات) مباعة عند حدّ إعادة الطلب أو دونه (مثل {1}).",

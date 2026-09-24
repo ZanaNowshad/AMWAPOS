@@ -8,5 +8,6 @@ pub mod discovery;
 pub mod runtime;
 pub mod server;
 pub mod sidecar;
+pub mod updater;
 
 pub use runtime::Runtime;

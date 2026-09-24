@@ -12,6 +12,10 @@ jobs:
     runs-on: windows-2022
     env:
       HAS_SIGNING_CERT: ${{ secrets.WINDOWS_CERT_PFX != '' }}
+      HAS_UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY != '' }}
+      # Public half of the update-signing key, compiled into the app. Without it
+      # the app never checks for or installs updates.
+      AMWAPOS_UPDATE_PUBKEY: ${{ vars.AMWAPOS_UPDATE_PUBKEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,6 +66,16 @@ jobs:
           Copy-Item sbom-frontend.cdx.json out/
           # The devserver is a development tool and is not shipped.
           Get-ChildItem -Recurse -Filter "*.cdx.json" crates, src-tauri | Where-Object { $_.Directory.Name -ne "amwapos-devserver" } | ForEach-Object { Copy-Item $_.FullName ("out/sbom-" + $_.Directory.Name + ".cdx.json") }
+      - name: Signed update manifest (latest.json)
+        if: env.HAS_UPDATE_KEY == 'true'
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_BASE_URL: ${{ vars.UPDATE_BASE_URL }}
+        run: |
+          $exe = Get-ChildItem out/*.exe | Select-Object -First 1
+          $ver = "${{ github.ref_name }}".TrimStart("v")
+          node scripts/sign-update.mjs --installer $exe.FullName --version $ver --url "$env:UPDATE_BASE_URL/$($exe.Name)" | Set-Content out/latest.json
       - name: SHA-256 checksums
         shell: pwsh
         run: |

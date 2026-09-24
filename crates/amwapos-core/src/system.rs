@@ -120,6 +120,7 @@ impl AppCore {
                 settings::KEY_APPEARANCE => serde_json::to_value(settings::get::<settings::AppearanceSettings>(c, key)?)?,
                 settings::KEY_FEATURES => serde_json::to_value(settings::get::<settings::FeatureFlags>(c, key)?)?,
                 settings::KEY_WHATSAPP => serde_json::to_value(settings::get::<settings::WhatsAppSettings>(c, key)?)?,
+                settings::KEY_UPDATES => serde_json::to_value(settings::get::<settings::UpdateSettings>(c, key)?)?,
                 _ => Value::Null,
             };
             Ok(v)
@@ -141,6 +142,24 @@ impl AppCore {
             Ok(())
         })?;
         Ok(v)
+    }
+
+    /// Permission and module check for an update action; returns the feed settings.
+    pub fn updates_authorize(&self, token: &str, action: &str) -> AppResult<settings::UpdateSettings> {
+        let s = self.session(token)?;
+        s.require("settings.manage")?;
+        if action != "status" {
+            self.require_feature("updates")?;
+        }
+        if action == "install" {
+            s.require("backup.manage")?;
+            let actor = self.actor(&s, None);
+            self.db.write(|tx| {
+                audit::record(tx, &actor, "update.install_started", "system", None, None, None)?;
+                Ok(())
+            })?;
+        }
+        self.db.read(|c| settings::get(c, settings::KEY_UPDATES))
     }
 
     /// Public, non-sensitive settings the POS needs before full login.

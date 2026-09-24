@@ -29,6 +29,8 @@ pub struct Runtime {
     automation: Mutex<Option<JoinHandle<()>>>,
     /// WhatsApp/OCR sidecar supervisor.
     pub sidecar: Arc<Sidecar>,
+    /// Signed update checker/installer.
+    pub updater: Arc<crate::updater::Updater>,
     /// Reconnect a linked WhatsApp automatically (off after a manual disconnect).
     wa_autostart: Arc<std::sync::atomic::AtomicBool>,
     /// Override for the hub bind address (tests use 127.0.0.1 and port 0-style ports).
@@ -53,6 +55,7 @@ impl Runtime {
             maintenance: Mutex::new(None),
             automation: Mutex::new(None),
             sidecar: Sidecar::new(SidecarPaths::discover(None)),
+            updater: crate::updater::Updater::new(),
             wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: Ipv4Addr::UNSPECIFIED,
             sync_interval: Duration::from_secs(5),
@@ -67,6 +70,7 @@ impl Runtime {
             maintenance: Mutex::new(None),
             automation: Mutex::new(None),
             sidecar: Sidecar::new(SidecarPaths::discover(None)),
+            updater: crate::updater::Updater::new(),
             wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: ip,
             sync_interval,
@@ -140,9 +144,30 @@ impl Runtime {
         let mut g = self.maintenance.lock().unwrap();
         if g.as_ref().map(|h| h.is_finished()).unwrap_or(true) {
             let core = self.core.clone();
+            let updater = self.updater.clone();
             *g = Some(tokio::spawn(async move {
+                let mut minutes: u64 = 0;
                 loop {
                     tokio::time::sleep(Duration::from_secs(60)).await;
+                    minutes += 1;
+                    // Daily signed-update check when the owner turned it on.
+                    if minutes % 1440 == 5 {
+                        let c = core.clone();
+                        let st = tokio::task::spawn_blocking(move || {
+                            let on = c.features().map(|f| f.is_on("updates")).unwrap_or(false);
+                            let s: amwapos_core::settings::UpdateSettings =
+                                c.db.read(|x| amwapos_core::settings::get(x, amwapos_core::settings::KEY_UPDATES)).unwrap_or_default();
+                            (on && s.auto_check && !s.feed_url.is_empty()).then_some(s.feed_url)
+                        })
+                        .await
+                        .ok()
+                        .flatten();
+                        if let Some(url) = st {
+                            if let Err(e) = updater.check(&core, &url).await {
+                                tracing::info!(error = %e.message, "update check");
+                            }
+                        }
+                    }
                     let c = core.clone();
                     match tokio::task::spawn_blocking(move || c.backup_run_scheduled()).await {
                         Ok(Ok(Some(b))) => tracing::info!(path = %b.path, "automatic backup completed"),
@@ -211,6 +236,18 @@ impl Runtime {
                 Ok(
                     json!({ "addresses": discovery::local_addresses().into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port, "running": running }),
                 )
+            }
+            "updates.status" | "updates.check" | "updates.download" | "updates.install" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let action = cmd.split('.').nth(1).unwrap_or_default().to_string();
+                let (c, t2, a2) = (self.core.clone(), t.clone(), action.clone());
+                let st = blocking(move || c.updates_authorize(&t2, &a2)).await?;
+                match action.as_str() {
+                    "status" => Ok(self.updater.status(&self.core).await),
+                    "check" => self.updater.check(&self.core, &st.feed_url).await,
+                    "download" => self.updater.download(&self.core).await,
+                    _ => self.updater.install(&self.core, &t).await,
+                }
             }
             "ai.ask" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;

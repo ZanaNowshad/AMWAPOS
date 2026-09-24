@@ -27,7 +27,7 @@ import type {
 } from "../../api/types";
 import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../state/session";
-import { FEATURE_LABELS, useFeature } from "../../components/FeatureGate";
+import { FEATURE_LABELS, FeatureGate, useFeature } from "../../components/FeatureGate";
 import { AiSettingsSection } from "./ai";
 import { WaTemplates } from "./automation";
 import { useToast } from "../../components/toast";
@@ -2170,25 +2170,147 @@ function DiagnosticDetails({ details }: { details: unknown }) {
 
 export function UpdatesPage() {
   const { status } = useSession();
+  const toast = useToast();
+  const on = useFeature("updates");
+  const st = useLoad(() => api.updates.status(), []);
+  const cfg = useLoad(() => api.settings.get<{ feed_url: string; auto_check: boolean }>("updates"), []);
+  const act = useAction();
+  const [install, setInstall] = useState(false);
+  const u = st.data;
+  const available = u?.available ?? null;
+  const downloaded = u?.downloaded ?? null;
   return (
     <div>
       <PageHeader title={t("Updates")} />
-      <div className="card card-pad col gap-16">
-        <dl className="kv">
-          <dt>{t("Current version")}</dt>
-          <dd>{status.app_version}</dd>
-          <dt>{t("Database schema")}</dt>
-          <dd>{status.schema_version}</dd>
-        </dl>
-        <Banner tone="info" title={t("Updates are installed from signed installers")}>
-          {t(
-            "Automatic update checks require the publisher's update-signing key, which has not been configured for this build. Install new versions with the signed AMWAPOS installer; your data is kept, a safety backup is taken before any database upgrade, and unsigned updates are never installed.",
-          )}
-        </Banner>
+      <div className="col gap-16">
+        <div className="card card-pad col gap-16">
+          <dl className="kv">
+            <dt>{t("Current version")}</dt>
+            <dd>{status.app_version}</dd>
+            <dt>{t("Database schema")}</dt>
+            <dd>{status.schema_version}</dd>
+            <dt>{t("Update signing key")}</dt>
+            <dd>
+              {u?.signing_key_built_in ? (
+                <Chip tone="success">{t("Built in")}</Chip>
+              ) : (
+                <Chip tone="warning">{t("Not in this build")}</Chip>
+              )}
+            </dd>
+          </dl>
+          {u && !u.signing_key_built_in ? (
+            <Banner tone="info" title={t("Updates are installed from signed installers")}>
+              {t(
+                "This build has no update-signing key, so it never downloads or installs updates by itself. Install new versions with the AMWAPOS installer; your data is kept and a safety backup is taken before any database upgrade.",
+              )}
+            </Banner>
+          ) : null}
+        </div>
+        <FeatureGate feature="updates">
+          <div className="card card-pad col gap-16">
+            {cfg.data ? (
+              <div className="form-grid">
+                <TextInput
+                  label={t("Update address (latest.json)")}
+                  dir="ltr"
+                  value={cfg.data.feed_url}
+                  placeholder="https://…/latest.json"
+                  onChange={(e) => cfg.setData({ ...cfg.data!, feed_url: e.target.value })}
+                />
+                <Checkbox
+                  label={t("Check once a day")}
+                  checked={cfg.data.auto_check}
+                  onChange={(x) => cfg.setData({ ...cfg.data!, auto_check: x })}
+                />
+                <Button
+                  onClick={async () => {
+                    if (await act.run(() => api.settings.save("updates", cfg.data!)))
+                      toast("success", t("Settings saved"));
+                  }}
+                >
+                  {t("Save")}
+                </Button>
+              </div>
+            ) : (
+              <Skeleton />
+            )}
+            {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+            <div className="row">
+              <Button
+                icon={<RefreshCw size={16} />}
+                loading={act.busy}
+                disabled={!on}
+                onClick={async () => {
+                  const r = await act.run(() => api.updates.check());
+                  if (r) {
+                    toast(
+                      r.newer ? "success" : "info",
+                      r.newer ? t("Version {0} is available", r.manifest.version) : t("AMWAPOS is up to date"),
+                    );
+                    void st.reload();
+                  }
+                }}
+              >
+                {t("Check for updates")}
+              </Button>
+              {available && !downloaded ? (
+                <Button
+                  variant="primary"
+                  loading={act.busy}
+                  onClick={async () => {
+                    if (await act.run(() => api.updates.download())) {
+                      toast("success", t("Downloaded and verified"));
+                      void st.reload();
+                    }
+                  }}
+                >
+                  {t("Download {0}", available.version)}
+                </Button>
+              ) : null}
+              {downloaded ? (
+                <Button variant="primary" disabled={!u?.can_install} onClick={() => setInstall(true)}>
+                  {t("Install {0}", downloaded.version)}
+                </Button>
+              ) : null}
+            </div>
+            {available ? (
+              <div className="small">
+                <strong>{available.version}</strong>{" "}
+                {available.published_at ? `· ${available.published_at.slice(0, 10)}` : ""}
+                {available.notes ? <div style={{ whiteSpace: "pre-wrap" }}>{available.notes}</div> : null}
+              </div>
+            ) : null}
+            <div className="tiny">
+              {t(
+                "An update is used only if its signature matches the key built into AMWAPOS and the downloaded installer matches the signed checksum. Anything else is refused and deleted.",
+              )}
+            </div>
+          </div>
+        </FeatureGate>
         <div className="small muted">
           {t("Do not update while a sale is in progress. Update the hub and all terminals to the same version.")}
         </div>
       </div>
+      {install && downloaded ? (
+        <Confirm
+          title={t("Install {0}", downloaded.version)}
+          confirmLabel={t("Back up and install")}
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => setInstall(false)}
+          onConfirm={async () => {
+            const r = await act.run(() => api.updates.install());
+            if (r) {
+              setInstall(false);
+              toast("info", t("Safety backup taken. The installer is running; AMWAPOS will restart."));
+            }
+          }}
+        >
+          {t(
+            "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.",
+          )}
+        </Confirm>
+      ) : null}
     </div>
   );
 }

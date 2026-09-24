@@ -277,6 +277,10 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "ai.proposal_confirm" => out(core.ai_proposal_confirm(tk()?, &req::<String>(&args, "proposal_id")?)),
         "ai.proposal_reject" => out(core.ai_proposal_reject(tk()?, &req::<String>(&args, "proposal_id")?)),
         "ai.proposal_undo" => out(core.ai_proposal_undo(tk()?, &req::<String>(&args, "proposal_id")?)),
+        // migration from another system
+        "migration.read" => out(core.migration_read(tk()?, req(&args, "files")?)),
+        "migration.preview" => out(core.migration_preview(tk()?, all(&args)?)),
+        "migration.apply" => out(core.migration_apply(tk()?, all(&args)?)),
         // receipts as PDF
         "receipts.pdf" => out(core.receipt_pdf(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "ref_id")?)),
         // WhatsApp (link state and sending are handled by the runtime + sidecar)

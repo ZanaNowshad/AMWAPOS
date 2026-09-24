@@ -12,6 +12,7 @@ import {
   Cloud,
   Database,
   FileInput,
+  FolderInput,
   FileScan,
   FileText,
   Gauge,
@@ -67,6 +68,7 @@ import {
 } from "./system";
 import { WhatsAppPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
 import { AiAssistantPage } from "./ai";
+import { MigrationPage } from "./migration";
 import { t } from "../../i18n";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { BackupAlert } from "../../components/BackupAlert";
@@ -204,6 +206,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       },
       { path: "sync", label: t("Sync / Hub"), icon: Cloud, perm: ["sync.manage", "devices.manage"], element: SyncPage },
       { path: "import", label: t("Import"), icon: FileInput, perm: "import.run", element: ImportPage },
+      { path: "migration", label: t("Migration"), icon: FolderInput, perm: "import.run", element: MigrationPage },
       { path: "backups", label: t("Backups"), icon: HardDriveDownload, perm: "backup.manage", element: BackupsPage },
       { path: "audit", label: t("Audit"), icon: Activity, perm: "audit.view", element: AuditPage },
       { path: "settings", label: t("Settings"), icon: Settings, perm: "settings.manage", element: SettingsPage },

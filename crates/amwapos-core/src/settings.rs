@@ -300,6 +300,17 @@ impl Default for WhatsAppSettings {
     }
 }
 
+/// Where to look for signed updates. The verifying key is built into the app.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// URL of the signed update manifest (latest.json). Empty = not configured.
+    pub feed_url: String,
+    /// Check once a day while the app runs.
+    pub auto_check: bool,
+}
+
+pub const KEY_UPDATES: &str = "updates";
 pub const KEY_FEATURES: &str = "features";
 pub const KEY_WHATSAPP: &str = "whatsapp";
 pub const KEY_POS: &str = "pos";
@@ -374,6 +385,14 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
         }
         KEY_SHIFT => roundtrip::<ShiftSettings>(value)?,
         KEY_FEATURES => roundtrip::<FeatureFlags>(value)?,
+        KEY_UPDATES => {
+            let u: UpdateSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            let f = u.feed_url.trim();
+            if !(f.is_empty() || f.starts_with("https://") || f.starts_with("http://127.0.0.1") || f.starts_with("http://localhost")) {
+                return Err(AppError::validation("The update address must use https://."));
+            }
+            serde_json::to_value(UpdateSettings { feed_url: f.to_string(), auto_check: u.auto_check })?
+        }
         KEY_WHATSAPP => {
             let w: WhatsAppSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if !["en", "ar"].contains(&w.default_lang.as_str()) {

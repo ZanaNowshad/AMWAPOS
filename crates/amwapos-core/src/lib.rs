@@ -19,6 +19,7 @@ pub mod ids;
 pub mod importer;
 pub mod inventory;
 pub mod messaging;
+pub mod migration;
 pub mod money;
 pub mod ocrflow;
 pub mod pdf;
