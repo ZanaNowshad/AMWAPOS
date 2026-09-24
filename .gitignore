@@ -16,3 +16,4 @@ coverage/
 /.amwapos-dev/
 /.amwapos-e2e/
 *.tsbuildinfo
+*.cdx.json
