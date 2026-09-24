@@ -1,0 +1,16 @@
+/target
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+/src-tauri/gen/
+/src-tauri/target/
+/test-results/
+/playwright-report/
+coverage/
+*.log
+.DS_Store
+/.amwapos-dev/
