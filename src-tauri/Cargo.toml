@@ -1,0 +1,34 @@
+[package]
+name = "amwapos"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "AMWAPOS desktop application (Windows)"
+default-run = "amwapos"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+amwapos-core = { path = "../crates/amwapos-core" }
+amwapos-hub = { path = "../crates/amwapos-hub" }
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender = "0.2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

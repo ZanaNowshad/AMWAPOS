@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/amwapos-core", "crates/amwapos-hub", "crates/amwapos-devserver"]
+members = ["crates/amwapos-core", "crates/amwapos-hub", "crates/amwapos-devserver", "src-tauri"]
 
 [workspace.package]
 version = "0.1.0"
