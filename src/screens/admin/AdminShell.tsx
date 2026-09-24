@@ -68,6 +68,7 @@ import {
 import { WhatsAppPage, AiAssistantPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
 import { t } from "../../i18n";
 import { LanguageToggle } from "../../components/LanguageToggle";
+import { BackupAlert } from "../../components/BackupAlert";
 
 interface NavItem {
   path: string;
@@ -338,6 +339,7 @@ function Shell() {
           ) : null}
         </header>
         <main className="content" id="admin-content">
+          <BackupAlert />
           <Routes>
             {NAV.flatMap((g) => g.items).map((i) => (
               <Route key={i.path} path={`/admin/${i.path}`} element={allowed(i.perm) ? <i.element /> : <Denied />} />

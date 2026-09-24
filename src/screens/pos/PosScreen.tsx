@@ -48,6 +48,7 @@ import {
 import { RefundFlow } from "./RefundFlow";
 import { ShiftClose } from "./ShiftScreens";
 import { getLang, switchLang, t } from "../../i18n";
+import { BackupPill } from "../../components/BackupAlert";
 
 type ModalState =
   | { kind: "none" }
@@ -458,6 +459,7 @@ export function PosScreen({
           <Printer size={13} />{" "}
           {config?.printer_configured ? (printFailed ? t("Print failed") : t("Printer")) : t("No printer")}
         </span>
+        <BackupPill />
         <div className="hitem">{t("Shift {0}", shift.shift_number)}</div>
         <div className="hitem">
           <UserRound size={15} /> {session?.display_name}

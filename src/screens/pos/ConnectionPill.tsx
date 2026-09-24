@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, getToken } from "../../api";
-import { t } from "../../i18n";
+import { t, tb } from "../../i18n";
 
 /** Compact local/sync status. Informational only — checkout never depends on it. */
 export function ConnectionPill() {
@@ -32,19 +32,30 @@ export function ConnectionPill() {
   if (mode === "terminal") {
     const pending = Number(st?.pending ?? 0);
     const err = st?.last_error as string | null;
+    const kind = st?.last_error_kind as string | null;
     const blocked = st?.blocked_reason as string | null;
     const cls = blocked || err ? "err" : pending > 0 ? "warn" : "ok";
+    // A version mismatch (the hub answered 426 / another sync protocol) needs an
+    // update, not a network fix, so it is never shown as "disconnected".
     const text = blocked
       ? t("Sync paused")
       : err
-        ? t("Hub disconnected")
+        ? kind === "version_mismatch"
+          ? t("Update needed")
+          : kind === "unreachable"
+            ? t("Hub unreachable")
+            : kind === "auth"
+              ? t("Pair again")
+              : t("Sync error")
         : pending > 0
-          ? `${pending} pending`
+          ? t("{0} pending", pending)
           : t("Synced");
     return (
       <span
         className={`status-pill ${cls}`}
-        title={blocked ?? err ?? t("Local checkout is always available. Changes sync automatically.")}
+        title={tb(blocked ?? err) || t("Local checkout is always available. Changes sync automatically.")}
+        data-testid="sync-pill"
+        data-kind={kind ?? undefined}
       >
         <span className="dot" aria-hidden /> {text}
       </span>

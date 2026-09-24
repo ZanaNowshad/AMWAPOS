@@ -204,3 +204,51 @@ async fn wrong_codes_burn_the_pairing_code() {
     let devices: i64 = h.core.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM devices", [], |r| r.get(0))?)).unwrap();
     assert_eq!(devices, 1, "no terminal was registered");
 }
+
+/// A hub on another version answers 426; the till must report "version
+/// mismatch", not a generic offline state. A dead address reports "unreachable".
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn version_mismatch_is_reported_distinctly_from_offline() {
+    let h = hub().await;
+    let code = call(&h.rt, "sync.pairing_code", Some(&h.token), json!({})).await["code"].as_str().unwrap().to_string();
+    let dir = tempfile::tempdir().unwrap();
+    let core = Arc::new(AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap());
+    let term = Runtime::with_bind(core.clone(), Ipv4Addr::LOCALHOST, Duration::from_millis(200));
+    let url = format!("127.0.0.1:{}", h.port);
+    call(&term, "sync.join", None, json!({ "hub_url": url, "code": code, "device_name": "Till 2", "device_code": "T02" })).await;
+    let tt = call(&term, "auth.login", None, json!({ "user_id": h.owner, "pin": "4826" })).await["token"].as_str().unwrap().to_string();
+
+    // A "newer" hub that refuses this till's protocol with 426.
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+    let fake = listener.local_addr().unwrap().port();
+    let app = axum::Router::new().fallback(|| async {
+        let body = json!({ "code": "conflict", "message": "This hub requires AMWAPOS sync protocol 3 (encrypted). Install the same AMWAPOS version on the hub and this terminal." });
+        (axum::http::StatusCode::UPGRADE_REQUIRED, axum::Json(body))
+    });
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let point = |port: u16| {
+        core.db
+            .write(|tx| {
+                let mut s: Value = amwapos_core::settings::get_raw(tx, amwapos_core::sync::KEY_SYNC)?.unwrap();
+                s["hub_url"] = json!(format!("http://127.0.0.1:{port}"));
+                amwapos_core::settings::put(tx, amwapos_core::sync::KEY_SYNC, &s, None)
+            })
+            .unwrap()
+    };
+    point(fake);
+    let err = term.dispatch("sync.run_now", Some(tt.clone()), json!({})).await.unwrap_err();
+    assert!(err.message.contains("protocol 3"), "{}", err.message);
+    let st = call(&term, "sync.status", Some(&tt), json!({})).await;
+    assert_eq!(st["last_error_kind"], "version_mismatch", "{st}");
+
+    point(free_port());
+    term.dispatch("sync.run_now", Some(tt.clone()), json!({})).await.unwrap_err();
+    let st = call(&term, "sync.status", Some(&tt), json!({})).await;
+    assert_eq!(st["last_error_kind"], "unreachable", "{st}");
+
+    // Back on the real hub: the error clears.
+    point(h.port);
+    call(&term, "sync.run_now", Some(&tt), json!({})).await;
+    let st = call(&term, "sync.status", Some(&tt), json!({})).await;
+    assert!(st["last_error_kind"].is_null(), "{st}");
+}

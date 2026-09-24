@@ -321,7 +321,7 @@ export function MovementsPage() {
           {
             key: "s",
             label: t("Source"),
-            render: (r) => <span className="mono">{r.source_ref ?? r.source_type}</span>,
+            render: (r) => <span className="mono">{r.source_ref ?? codeLabel(r.source_type)}</span>,
           },
           { key: "r", label: t("Reason"), render: (r) => r.reason ?? "—" },
           { key: "u", label: t("User"), render: (r) => r.user_name ?? "—" },

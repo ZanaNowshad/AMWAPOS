@@ -59,7 +59,7 @@ fn unreachable(base: &str, e: reqwest::Error) -> AppError {
         format!("The hub at {base} is not reachable ({e}). Local selling continues; changes will sync when the hub is back."),
     );
     err.retryable = true;
-    err
+    err.with_details(serde_json::json!({ "kind": "unreachable" }))
 }
 
 pub async fn hub_info(base: &str) -> AppResult<HubInfo> {
@@ -70,21 +70,35 @@ pub async fn hub_info(base: &str) -> AppResult<HubInfo> {
     Ok(info)
 }
 
+fn version_mismatch(e: AppError) -> AppError {
+    e.with_details(serde_json::json!({ "kind": "version_mismatch" }))
+}
+
 fn check_protocol(info: &HubInfo) -> AppResult<()> {
     if info.protocol != PROTOCOL_VERSION {
-        return Err(AppError::new(
+        return Err(version_mismatch(AppError::new(
             ErrorCode::Sync,
             format!(
                 "The hub runs AMWAPOS {} (sync protocol {}); this terminal needs protocol {PROTOCOL_VERSION}. Install the same AMWAPOS version on both.",
                 info.app_version, info.protocol
             ),
-        ));
+        )));
     }
     Ok(())
 }
 
 fn error_from(status: reqwest::StatusCode, bytes: &[u8]) -> AppError {
-    if status == reqwest::StatusCode::UPGRADE_REQUIRED || !bytes.is_empty() {
+    // 426: the hub refused this till's sync protocol (different AMWAPOS versions).
+    if status == reqwest::StatusCode::UPGRADE_REQUIRED {
+        let e = serde_json::from_slice::<AppError>(bytes).unwrap_or_else(|_| {
+            AppError::new(
+                ErrorCode::Sync,
+                "The hub requires a different AMWAPOS version. Install the same version on the hub and this till.",
+            )
+        });
+        return version_mismatch(e);
+    }
+    if !bytes.is_empty() {
         if let Ok(e) = serde_json::from_slice::<AppError>(bytes) {
             return e;
         }
@@ -244,7 +258,7 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
         let info = client.info().await?;
         check_protocol(&info)?;
         if info.schema_version != amwapos_core::db::latest_schema_version() {
-            return Err(AppError::new(
+            return Err(version_mismatch(AppError::new(
                 ErrorCode::Sync,
                 format!(
                     "Version mismatch: hub runs AMWAPOS {} (schema {}), this terminal runs {} (schema {}). Update both to the same version.",
@@ -253,7 +267,7 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
                     amwapos_core::audit::APP_VERSION,
                     amwapos_core::db::latest_schema_version()
                 ),
-            ));
+            )));
         }
         let mut report = CycleReport::default();
         loop {
@@ -298,8 +312,8 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
     .await;
     if let Err(e) = &result {
         let c2 = core.clone();
-        let msg = e.message.clone();
-        let _ = blocking(move || c2.terminal_note_result(Some(msg), None)).await;
+        let e2 = e.clone();
+        let _ = blocking(move || c2.terminal_note_result(Some(&e2), None)).await;
     }
     result
 }

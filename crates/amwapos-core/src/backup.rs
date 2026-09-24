@@ -510,21 +510,40 @@ impl AppCore {
                 settings::get(c, settings::KEY_BACKUP)?,
             ))
         })?;
-        let stale = match &last_ok {
-            Some(t) => time::parse(t).map(|t| time::now() - t > chrono::Duration::hours(cfg.interval_hours * 2)).unwrap_or(true),
-            None => true,
+        let age_hours = last_ok.as_deref().and_then(|t| time::parse(t).ok()).map(|t| (time::now() - t).num_hours());
+        // Overdue = no success for twice the interval (the operational rule in OPERATIONS.md).
+        let overdue = age_hours.map(|h| h > cfg.interval_hours * 2).unwrap_or(true);
+        let failed_since = match (&last_fail, &last_ok) {
+            (Some((f, _)), Some(ok)) => f > ok,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        let tz = self.db.read(|c| self.store_timezone(c)).unwrap_or_else(|_| "Asia/Bahrain".into());
+        let summary = match (&last_ok, failed_since) {
+            (_, true) => format!("Last backup attempt failed: {}", last_fail.as_ref().map(|f| f.1.as_str()).unwrap_or("")),
+            (Some(t), false) => format!("Last successful backup {}", time::display(t, &tz)),
+            (None, false) => "No successful backup yet".into(),
         };
         Ok(DiagnosticItem {
             component: "Backup".into(),
-            state: if last_ok.is_none() || stale { "warning".into() } else { "ok".into() },
-            summary: match &last_ok {
-                Some(t) => format!(
-                    "Last successful backup {}",
-                    time::display(t, &self.db.read(|c| self.store_timezone(c)).unwrap_or_else(|_| "Asia/Bahrain".into()))
-                ),
-                None => "No successful backup yet".into(),
+            state: if failed_since {
+                "error".into()
+            } else if overdue {
+                "warning".into()
+            } else {
+                "ok".into()
             },
-            details: json!({ "last_success_at": last_ok, "last_failure": last_fail, "automatic": cfg.automatic, "interval_hours": cfg.interval_hours, "directory": cfg.directory }),
+            summary,
+            details: json!({
+                "last_success_at": last_ok, "last_failure": last_fail, "automatic": cfg.automatic,
+                "interval_hours": cfg.interval_hours, "directory": cfg.directory, "age_hours": age_hours, "overdue": overdue
+            }),
         })
+    }
+
+    /// Backup state for the always-visible warning (any signed-in user).
+    pub fn backup_health(&self, token: &str) -> AppResult<DiagnosticItem> {
+        self.session(token)?;
+        self.backup_diagnostic()
     }
 }

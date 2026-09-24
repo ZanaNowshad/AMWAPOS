@@ -263,6 +263,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "diagnostics.get" => out(core.diagnostics(tk()?, opt(&args, "full")?.unwrap_or(false))),
         "diagnostics.export" => out(core.diagnostics_export(tk()?)),
         "backup.list" => out(core.backups_list(tk()?)),
+        "backup.health" => out(core.backup_health(tk()?)),
         "backup.create" => out(core.backup_create(tk()?, opt(&args, "directory")?)),
         "backup.inspect" => out(core.backup_inspect(tk()?, &req::<String>(&args, "path")?)),
         "backup.restore" => {

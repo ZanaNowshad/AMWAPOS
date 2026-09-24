@@ -126,6 +126,26 @@ pub struct SyncSettings {
     /// Terminal: set when the hub identity no longer matches (rebuilt hub).
     pub blocked_reason: Option<String>,
     pub hub_version: Option<String>,
+    /// Class of `last_error`: version_mismatch | unreachable | auth | other.
+    pub last_error_kind: Option<String>,
+}
+
+/// Classify a sync failure so the UI can say "update needed" rather than a
+/// generic "offline" when the hub and this till run different versions.
+pub fn sync_error_kind(e: &AppError) -> &'static str {
+    if let Some(k) = e.details.as_ref().and_then(|d| d.get("kind")).and_then(|k| k.as_str()) {
+        return match k {
+            "version_mismatch" => "version_mismatch",
+            "unreachable" => "unreachable",
+            "auth" => "auth",
+            _ => "other",
+        };
+    }
+    match e.code {
+        ErrorCode::Unauthenticated | ErrorCode::Forbidden | ErrorCode::InvalidCredentials => "auth",
+        _ if e.retryable => "unreachable",
+        _ => "other",
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1162,17 +1182,19 @@ impl AppCore {
         Ok(())
     }
 
-    pub fn terminal_note_result(&self, error: Option<String>, hub_version: Option<String>) -> AppResult<()> {
+    pub fn terminal_note_result(&self, error: Option<&AppError>, hub_version: Option<String>) -> AppResult<()> {
         self.db.write(|tx| {
             let mut ss = sync_settings(tx)?;
             let now = time::now_str();
             match error {
                 Some(e) => {
-                    ss.last_error = Some(e);
+                    ss.last_error = Some(e.message.clone());
+                    ss.last_error_kind = Some(sync_error_kind(e).into());
                     ss.last_error_at = Some(now);
                 }
                 None => {
                     ss.last_error = None;
+                    ss.last_error_kind = None;
                     ss.last_success_at = Some(now);
                 }
             }
@@ -1281,7 +1303,7 @@ impl AppCore {
         Ok(json!({
             "mode": mode, "device": d, "hub_url": ss.hub_url, "port": if ss.port == 0 { DEFAULT_PORT } else { ss.port },
             "pending": pending, "dead_letters": dead, "last_push_at": ss.last_push_at, "last_pull_at": ss.last_pull_at,
-            "last_success_at": ss.last_success_at, "last_error": ss.last_error, "last_error_at": ss.last_error_at,
+            "last_success_at": ss.last_success_at, "last_error": ss.last_error, "last_error_kind": ss.last_error_kind, "last_error_at": ss.last_error_at,
             "blocked_reason": ss.blocked_reason, "hub_version": ss.hub_version, "app_version": audit::APP_VERSION,
             "schema_version": crate::db::latest_schema_version(),
             "devices": if mode == "hub" { devices } else { vec![] },

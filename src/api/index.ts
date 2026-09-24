@@ -273,6 +273,7 @@ export const api = {
   },
   backup: {
     list: () => call<Record<string, unknown> & { backups: T.BackupRow[] }>("backup.list"),
+    health: () => call<T.DiagnosticItem>("backup.health"),
     create: (directory?: string | null) => call<T.BackupRow>("backup.create", { directory }),
     inspect: (path: string) => call<T.BackupInspection>("backup.inspect", { path }),
     restore: (path: string, acknowledge_different_business = false) =>

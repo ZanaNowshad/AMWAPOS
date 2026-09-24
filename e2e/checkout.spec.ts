@@ -158,6 +158,14 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("button", { name: "Admin" }).click();
   await expect(page.getByTestId("admin")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  // No backup yet on a new store: an unmissable banner with one-click Backup Now.
+  const alert = page.getByTestId("backup-alert");
+  await expect(alert).toContainText("Backup overdue");
+  await expect(alert).toContainText("No successful backup yet");
+  await shot(page, "11a-backup-alert");
+  await alert.getByRole("button", { name: "Backup Now" }).click();
+  await expect(page.getByText("Backup created and verified")).toBeVisible();
+  await expect(alert).toBeHidden();
   await shot(page, "11-dashboard");
   // net sales 1.650 + 0.850 − 0.250 = 2.250
   await expect(page.getByText("BHD 2.250").first()).toBeVisible();
@@ -174,7 +182,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await expect(page.getByText("Audit chain verified")).toBeVisible();
   await page.getByRole("link", { name: "Backups" }).click();
   await page.getByRole("button", { name: "Backup Now" }).click();
-  await expect(page.getByText("Backup created and verified")).toBeVisible();
+  await expect(page.getByText("Backup created and verified").first()).toBeVisible();
   await shot(page, "14-backups");
   await page.getByRole("link", { name: "Diagnostics" }).click();
   await expect(page.getByText("SQLite integrity: OK")).toBeVisible();

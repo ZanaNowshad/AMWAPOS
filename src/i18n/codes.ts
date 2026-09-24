@@ -54,6 +54,12 @@ export const CODE_LABELS: Record<string, string> = {
   import: "Import",
   purchase_order: "Purchase order",
   direct: "Direct",
+  healthy: "Healthy",
+  behind: "Behind",
+  offline: "Offline",
+  never_seen: "Never seen",
+  version_mismatch: "Version mismatch",
+  revoked: "Revoked",
 };
 
 /** "partially_received" → "Partly received" (translated). Unknown codes are shown as-is. */

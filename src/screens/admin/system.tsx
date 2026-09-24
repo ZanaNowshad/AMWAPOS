@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -70,7 +70,7 @@ export function DevicesPage() {
           { key: "id", label: t("Device ID"), render: (r) => <span className="mono">{r.device_id.slice(-8)}</span> },
           { key: "m", label: t("Mode"), render: (r) => r.mode },
           { key: "b", label: t("Branch"), render: (r) => r.branch_name ?? "—" },
-          { key: "l", label: t("Last Seen"), render: (r) => (r.is_this_device ? "now" : relative(r.last_seen_at)) },
+          { key: "l", label: t("Last Seen"), render: (r) => (r.is_this_device ? t("now") : relative(r.last_seen_at)) },
           { key: "v", label: t("Version"), render: (r) => r.app_version ?? "—" },
           {
             key: "a",
@@ -275,9 +275,15 @@ export function SyncPage() {
         </div>
       </div>
       {mode === "terminal" && s.last_error ? (
-        <Banner tone="warning" title={t("Last sync attempt failed")}>
-          {String(s.last_error)} ({relative(s.last_error_at as string)})
-        </Banner>
+        s.last_error_kind === "version_mismatch" ? (
+          <Banner tone="danger" title={t("This till and the hub run different AMWAPOS versions")}>
+            {tb(String(s.last_error))} ({relative(s.last_error_at as string)})
+          </Banner>
+        ) : (
+          <Banner tone="warning" title={t("Last sync attempt failed")}>
+            {tb(String(s.last_error))} ({relative(s.last_error_at as string)})
+          </Banner>
+        )
       ) : null}
       {mode === "standalone" && has("sync.manage") ? (
         <div className="card card-pad col gap-16">
@@ -319,7 +325,7 @@ export function SyncPage() {
                       {String(d.name)} <span className="tiny mono">{String(d.code)}</span>
                     </td>
                     <td>
-                      <Chip tone={tone[String(d.status)] ?? "default"}>{String(d.status).replace("_", " ")}</Chip>
+                      <Chip tone={tone[String(d.status)] ?? "default"}>{codeLabel(String(d.status))}</Chip>
                     </td>
                     <td>{relative(d.last_seen_at as string | null)}</td>
                     <td className="num">{d.pending === null ? "—" : String(d.pending)}</td>
@@ -2032,14 +2038,39 @@ export function DiagnosticsPage() {
                 <span className="grow">{tb(d.summary)}</span>
                 <span className="tiny">{codeLabel(d.state)}</span>
               </summary>
-              <pre className="mono small" style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
-                {JSON.stringify(d.details, null, 2)}
-              </pre>
+              <DiagnosticDetails details={d.details} />
             </details>
           );
         })}
       </div>
     </div>
+  );
+}
+
+const ISO_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/** Diagnostic details as readable rows; timestamps in local time ("24 Sep 2026, 19:42 · 3 h ago"). */
+function DiagnosticDetails({ details }: { details: unknown }) {
+  if (!details || typeof details !== "object" || Array.isArray(details)) {
+    return <pre className="mono small">{JSON.stringify(details, null, 2)}</pre>;
+  }
+  const show = (v: unknown): string => {
+    if (v === null || v === undefined || v === "") return "—";
+    if (typeof v === "string" && ISO_TS.test(v)) return `${formatDateTime(v)} · ${relative(v)}`;
+    if (typeof v === "boolean") return v ? t("Yes") : t("No");
+    if (Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && ISO_TS.test(v[0]))
+      return `${formatDateTime(v[0])} · ${tb(String(v[1]))}`;
+    return typeof v === "object" ? JSON.stringify(v) : String(v);
+  };
+  return (
+    <dl className="kv small" style={{ marginTop: 10 }}>
+      {Object.entries(details as Record<string, unknown>).map(([k, v]) => (
+        <Fragment key={k}>
+          <dt className="mono">{k}</dt>
+          <dd>{show(v)}</dd>
+        </Fragment>
+      ))}
+    </dl>
   );
 }
 
