@@ -170,7 +170,8 @@ test("first run → products → offline checkout → refund → shift close", a
   // net sales 1.650 + 0.850 − 0.250 = 2.250
   await expect(page.getByText("BHD 2.250").first()).toBeVisible();
   await page.getByRole("link", { name: "Products" }).click();
-  await expect(page.getByText("Almarai Fresh Milk 1L")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Products", level: 1 })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Almarai Fresh Milk 1L" })).toHaveCount(1);
   await shot(page, "12-products");
   await page.getByRole("link", { name: "Unknown Barcodes" }).click();
   await expect(page.getByText("9999999999999")).toBeVisible();
@@ -303,7 +304,8 @@ test("Arabic RTL: cashier sale and admin are usable right-to-left", async ({ pag
   await expect(page.getByRole("heading", { name: "لوحة المعلومات" })).toBeVisible();
   await shot(page, "24-ar-dashboard");
   await page.getByRole("link", { name: "المنتجات" }).click();
-  await expect(page.getByText("Almarai Fresh Milk 1L")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "المنتجات", level: 1 })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Almarai Fresh Milk 1L" })).toHaveCount(1);
   await shot(page, "25-ar-products");
   await page.getByRole("link", { name: "الإعدادات" }).click();
   await shot(page, "26-ar-settings");
