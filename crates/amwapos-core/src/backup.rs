@@ -209,8 +209,11 @@ impl AppCore {
                 let mut dst = Connection::open(&tmp)?;
                 self.db.read(|src| {
                     let b = rusqlite::backup::Backup::new(src, &mut dst)?;
-                    b.run_to_completion(-1, std::time::Duration::from_millis(0), None)?;
-                    Ok(())
+                    // One step copies every page from a single consistent read snapshot.
+                    match b.step(-1)? {
+                        rusqlite::backup::StepResult::Done => Ok(()),
+                        other => Err(AppError::new(ErrorCode::DatabaseBusy, format!("Backup did not complete ({other:?}). Try again."))),
+                    }
                 })?;
                 dst.execute_batch("PRAGMA journal_mode=DELETE;")?;
             }
@@ -392,7 +395,10 @@ impl AppCore {
             let src = Connection::open_with_flags(&src_path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
             {
                 let b = rusqlite::backup::Backup::new(&src, w)?;
-                b.run_to_completion(-1, std::time::Duration::from_millis(0), None)?;
+                match b.step(-1)? {
+                    rusqlite::backup::StepResult::Done => {}
+                    other => return Err(AppError::new(ErrorCode::DatabaseBusy, format!("Restore did not complete ({other:?}). No changes were made."))),
+                }
             }
             w.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
             let rep = crate::db::migrate(w, self.db.path())?;
