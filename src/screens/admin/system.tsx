@@ -20,10 +20,14 @@ import type {
   BackupRow,
   DeviceRow,
   DiagnosticItem,
+  FeatureFlags,
+  FeatureName,
   ImportPreview,
   TaxRuleRow,
 } from "../../api/types";
+import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../state/session";
+import { FEATURE_LABELS, useFeature } from "../../components/FeatureGate";
 import { useToast } from "../../components/toast";
 import { isDesktop } from "../../api/transport";
 import { newOperationId } from "../../lib/ids";
@@ -173,6 +177,7 @@ export function DevicesPage() {
 // ---------------- Sync / Hub ----------------
 
 export function SyncPage() {
+  const hubFeature = useFeature("hub");
   const toast = useToast();
   const { has } = useSession();
   const st = useLoad(() => api.sync.status(), []);
@@ -484,6 +489,11 @@ export function SyncPage() {
             "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows AMWAPOS on private networks.",
             String(s.port),
           )}
+          {!hubFeature ? (
+            <Banner tone="warning" title={t("The Hub module is switched off")}>
+              {t("Turn on Hub (multi-terminal) in Settings → Features first.")}
+            </Banner>
+          ) : null}
         </Confirm>
       ) : null}
     </div>
@@ -1198,10 +1208,12 @@ type Section =
   | "security"
   | "backup"
   | "appearance"
+  | "features"
   | "about";
 
 export function SettingsPage() {
-  const [section, setSection] = useState<Section>("business");
+  const [params] = useSearchParams();
+  const [section, setSection] = useState<Section>((params.get("section") as Section | null) ?? "business");
   const sections: [Section, string][] = [
     ["business", t("Business")],
     ["tax", t("Tax")],
@@ -1214,6 +1226,7 @@ export function SettingsPage() {
     ["security", t("Security")],
     ["backup", t("Backups")],
     ["appearance", t("Appearance")],
+    ["features", t("Features")],
     ["about", t("About")],
   ];
   return (
@@ -1239,6 +1252,7 @@ export function SettingsPage() {
           {section === "security" ? <JsonSettings k="security" /> : null}
           {section === "backup" ? <JsonSettings k="local.backup" /> : null}
           {section === "appearance" ? <AppearanceSettings /> : null}
+          {section === "features" ? <FeaturesSettings /> : null}
           {section === "about" ? <AboutSettings /> : null}
         </div>
       </div>
@@ -1958,6 +1972,76 @@ function AppearanceSettings() {
           const r = await act.run(() => api.settings.save("local.appearance", data));
           if (r) {
             toast("success", t("Appearance saved"));
+            await reloadConfig();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
+  hub: () =>
+    t(
+      "Lets this computer serve other tills on the store network. A terminal-mode install needs this on before it can become a hub.",
+    ),
+  whatsapp: () => t("Runs the local WhatsApp sidecar on this computer (127.0.0.1 only). Linking is done by QR code."),
+  ocr: () =>
+    t(
+      "Reads supplier invoices and payment screenshots with the bundled offline OCR models. Stock is never posted from OCR without a person confirming.",
+    ),
+  payment_reviews: () =>
+    t(
+      "Matches payment screenshots received on WhatsApp against expected amounts. A screenshot is never treated as bank settlement.",
+    ),
+  ai: () => t("Lets managers ask questions about sales, stock and margins. The assistant can only read data."),
+  ai_mutations: () =>
+    t(
+      "Lets the assistant propose changes. Every change is previewed, risk-rated and confirmed by a person, then run by a normal audited command.",
+    ),
+  customer_credit: () => t("Allows selected customers to buy on account up to a credit limit."),
+  windows_hello: () => t("Adds a Windows Hello check after the PIN for manager approvals. The PIN is still required."),
+  pdf_receipts: () =>
+    t("Saves a PDF copy of every receipt after the sale is committed. A PDF failure never cancels a sale."),
+  updates: () => t("Checks for new versions. Only updates signed with the publisher key are installed."),
+};
+
+function FeaturesSettings() {
+  const toast = useToast();
+  const { reloadConfig } = useSession();
+  const { data, setData, error } = useLoad(() => api.settings.get<FeatureFlags>("features"), []);
+  const act = useAction();
+  if (error) return <Banner tone="danger">{error}</Banner>;
+  if (!data) return <Skeleton />;
+  const names = Object.keys(FEATURE_LABELS) as FeatureName[];
+  return (
+    <div className="card card-pad col gap-16">
+      <Banner tone="info" title={t("Optional modules are off until you switch them on")}>
+        {t(
+          "Checkout, cash, refunds, stock and reports never depend on these modules. Turning one off hides it again; its data is kept.",
+        )}
+      </Banner>
+      {names.map((n) => (
+        <div key={n}>
+          <Checkbox
+            label={FEATURE_LABELS[n]()}
+            checked={!!data[n]}
+            disabled={n === "ai_mutations" && !data.ai}
+            onChange={(x) => setData({ ...data, [n]: x })}
+          />
+          <div className="tiny" style={{ marginInlineStart: 24 }}>
+            {FEATURE_HELP[n]?.()}
+          </div>
+        </div>
+      ))}
+      <SaveBar
+        busy={act.busy}
+        error={act.error}
+        onSave={async () => {
+          const r = await act.run(() => api.settings.save("features", data));
+          if (r) {
+            toast("success", t("Settings saved"));
+            setData(r);
             await reloadConfig();
           }
         }}

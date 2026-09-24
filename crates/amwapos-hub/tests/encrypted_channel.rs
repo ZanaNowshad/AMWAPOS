@@ -51,6 +51,7 @@ async fn hub() -> Hub {
     let token = call(&rt, "auth.login", None, json!({ "user_id": owner, "pin": "4826" })).await["token"].as_str().unwrap().to_string();
     let port = free_port();
     core.db.write(|tx| amwapos_core::settings::put(tx, amwapos_core::sync::KEY_SYNC, &json!({ "port": port }), None)).unwrap();
+    call(&rt, "settings.save", Some(&token), json!({ "key": "features", "value": { "hub": true } })).await;
     call(&rt, "sync.enable_hub", Some(&token), json!({})).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     let tax = call(&rt, "tax.list", Some(&token), json!({})).await[0]["tax_rule_id"].as_str().unwrap().to_string();

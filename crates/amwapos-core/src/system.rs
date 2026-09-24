@@ -118,6 +118,7 @@ impl AppCore {
                 settings::KEY_PRINTER => serde_json::to_value(settings::get::<settings::PrinterSettings>(c, key)?)?,
                 settings::KEY_BACKUP => serde_json::to_value(settings::get::<settings::BackupSettings>(c, key)?)?,
                 settings::KEY_APPEARANCE => serde_json::to_value(settings::get::<settings::AppearanceSettings>(c, key)?)?,
+                settings::KEY_FEATURES => serde_json::to_value(settings::get::<settings::FeatureFlags>(c, key)?)?,
                 _ => Value::Null,
             };
             Ok(v)
@@ -150,6 +151,7 @@ impl AppCore {
             let shift: settings::ShiftSettings = settings::get(c, settings::KEY_SHIFT)?;
             let appearance: settings::AppearanceSettings = settings::get(c, settings::KEY_APPEARANCE)?;
             let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
+            let features: settings::FeatureFlags = settings::get(c, settings::KEY_FEATURES)?;
             let (currency, digits) = self.currency(c)?;
             let (name, tz): (String, String) =
                 c.query_row("SELECT name, timezone FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -158,7 +160,7 @@ impl AppCore {
                 "shift": { "blind_close": shift.blind_close }, "appearance": appearance,
                 "printer_configured": printer.mode != "none",
                 "currency": currency, "currency_digits": digits, "business_name": name, "timezone": tz,
-                "device": self.device(),
+                "device": self.device(), "features": features,
             }))
         })
     }

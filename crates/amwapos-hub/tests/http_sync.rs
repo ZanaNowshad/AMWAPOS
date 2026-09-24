@@ -42,6 +42,7 @@ async fn terminal_pairs_and_syncs_over_http() {
     // Use a free port for the hub API.
     let port = free_port();
     hub_core.db.write(|tx| amwapos_core::settings::put(tx, amwapos_core::sync::KEY_SYNC, &json!({ "port": port }), None)).unwrap();
+    call(&hub, "settings.save", Some(&ht), json!({ "key": "features", "value": { "hub": true } })).await;
     call(&hub, "sync.enable_hub", Some(&ht), json!({})).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     let tax = call(&hub, "tax.list", Some(&ht), json!({})).await[0]["tax_rule_id"].as_str().unwrap().to_string();

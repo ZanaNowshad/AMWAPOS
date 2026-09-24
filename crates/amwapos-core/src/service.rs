@@ -145,6 +145,24 @@ impl AppCore {
         Actor { user_id: Some(s.user_id.clone()), device_id: Some(s.device_id.clone()), branch_id: Some(s.branch_id.clone()), approved_by }
     }
 
+    /// Refuse a command of an optional module whose feature flag is off.
+    pub fn require_feature(&self, name: &str) -> AppResult<()> {
+        let f: crate::settings::FeatureFlags = self.db.read(|c| crate::settings::get(c, crate::settings::KEY_FEATURES))?;
+        if f.is_on(name) {
+            Ok(())
+        } else {
+            Err(AppError::new(
+                ErrorCode::Conflict,
+                format!("The {name} module is not enabled. An owner can turn it on in Settings → Features."),
+            )
+            .with_details(serde_json::json!({ "kind": "feature_disabled", "feature": name })))
+        }
+    }
+
+    pub fn features(&self) -> AppResult<crate::settings::FeatureFlags> {
+        self.db.read(|c| crate::settings::get(c, crate::settings::KEY_FEATURES))
+    }
+
     pub fn store_timezone(&self, c: &Connection) -> AppResult<String> {
         Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0)).optional()?.unwrap_or_else(|| "Asia/Bahrain".to_string()))
     }

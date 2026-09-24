@@ -722,6 +722,9 @@ impl AppCore {
         if d.mode == "terminal" {
             return Err(AppError::conflict("A terminal cannot become a hub."));
         }
+        if d.mode != "hub" {
+            self.require_feature("hub")?;
+        }
         let actor = self.actor(&s, None);
         if d.mode != "hub" {
             d.mode = "hub".into();

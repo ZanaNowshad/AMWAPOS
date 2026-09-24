@@ -1,0 +1,52 @@
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import type { FeatureName } from "../api/types";
+import { useSession } from "../state/session";
+import { Banner } from "./ui";
+import { t } from "../i18n";
+
+/** True when the owner has switched the module on in Settings → Features. */
+export function useFeature(name: FeatureName): boolean {
+  const { config } = useSession();
+  const f = config?.features;
+  if (!f) return false;
+  if (name === "ai_mutations") return f.ai && f.ai_mutations;
+  return !!f[name];
+}
+
+export const FEATURE_LABELS: Record<FeatureName, () => string> = {
+  hub: () => t("Hub (multi-terminal)"),
+  whatsapp: () => t("WhatsApp"),
+  ocr: () => t("Local OCR (invoice scan)"),
+  payment_reviews: () => t("Payment screenshot reviews"),
+  ai: () => t("AI assistant (read-only questions)"),
+  ai_mutations: () => t("AI proposed changes (preview and confirm)"),
+  customer_credit: () => t("Customer credit accounts"),
+  windows_hello: () => t("Windows Hello step-up"),
+  pdf_receipts: () => t("PDF receipts"),
+  updates: () => t("Automatic update checks"),
+};
+
+/** Shows `children` only when the feature is on; otherwise a "not enabled" notice. */
+export function FeatureGate({ feature, children }: { feature: FeatureName; children: ReactNode }) {
+  const on = useFeature(feature);
+  const { has } = useSession();
+  if (on) return <>{children}</>;
+  return (
+    <Banner tone="info" title={t("Not enabled on this installation")}>
+      <div className="col" style={{ gap: 8 }}>
+        <div>
+          {t("This module is switched off")}: {FEATURE_LABELS[feature]()}.{" "}
+          {t("Selling, cash, refunds and reports work fully without it.")}
+        </div>
+        {has("settings.manage") ? (
+          <div>
+            <Link to="/admin/settings?section=features">{t("Open Settings → Features")}</Link>
+          </div>
+        ) : (
+          <div className="small muted">{t("Ask the owner to enable it in Settings → Features.")}</div>
+        )}
+      </div>
+    </Banner>
+  );
+}

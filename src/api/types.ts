@@ -91,8 +91,24 @@ export interface PosSettings {
   duplicate_scan_window_ms: number;
 }
 
+export interface FeatureFlags {
+  hub: boolean;
+  whatsapp: boolean;
+  ocr: boolean;
+  payment_reviews: boolean;
+  ai: boolean;
+  ai_mutations: boolean;
+  customer_credit: boolean;
+  windows_hello: boolean;
+  pdf_receipts: boolean;
+  updates: boolean;
+}
+
+export type FeatureName = keyof FeatureFlags;
+
 export interface PosConfig {
   pos: PosSettings;
+  features: FeatureFlags;
   payments: TenderConfig[];
   shift: { blind_close: boolean };
   appearance: { theme: string; density: string; cashier_font: string };

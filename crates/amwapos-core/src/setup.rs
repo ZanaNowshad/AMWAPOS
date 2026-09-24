@@ -278,6 +278,14 @@ impl AppCore {
             settings::put(tx, settings::KEY_POS, &settings::PosSettings::default(), Some(&owner_id))?;
             settings::put(tx, settings::KEY_PAYMENTS, &settings::PaymentSettings::default(), Some(&owner_id))?;
             settings::put(tx, settings::KEY_DEVICE, &identity, Some(&owner_id))?;
+            // Choosing "new store as hub" in the wizard turns the hub module on; all
+            // other optional modules start off.
+            settings::put(
+                tx,
+                settings::KEY_FEATURES,
+                &settings::FeatureFlags { hub: req.mode == "hub", ..Default::default() },
+                Some(&owner_id),
+            )?;
             let actor = Actor {
                 user_id: Some(owner_id.clone()),
                 device_id: Some(device_id.clone()),

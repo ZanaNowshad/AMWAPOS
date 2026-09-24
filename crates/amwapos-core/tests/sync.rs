@@ -15,6 +15,12 @@ struct Term {
     token: String,
 }
 
+/// Owner turns the hub module on (Settings → Features), then enables hub mode.
+fn enable_hub(core: &AppCore, token: &str) {
+    core.settings_save(token, "features", serde_json::json!({ "hub": true })).unwrap();
+    core.sync_enable_hub(token).unwrap();
+}
+
 fn count(core: &AppCore, sql: &str) -> i64 {
     core.db.read(|c| Ok(c.query_row(sql, [], |r| r.get(0))?)).unwrap()
 }
@@ -91,7 +97,7 @@ fn stock(core: &AppCore, barcode: &str) -> i64 {
 fn hub_and_terminals_converge_without_duplicates() {
     let hub = env();
     let ht = hub.owner_token.clone();
-    hub.core.sync_enable_hub(&ht).unwrap();
+    enable_hub(&hub.core, &ht);
     let pid = hub.product("Laban 200ml", "4001", 150, 90, 100_000);
     let t1 = pair(&hub, "Till 2", "T02");
     let t2 = pair(&hub, "Till 3", "T03");
@@ -165,7 +171,7 @@ fn hub_and_terminals_converge_without_duplicates() {
 #[test]
 fn forged_and_invalid_pushes_are_rejected() {
     let hub = env();
-    hub.core.sync_enable_hub(&hub.owner_token).unwrap();
+    enable_hub(&hub.core, &hub.owner_token);
     hub.product("Tissue", "4101", 500, 200, 10_000);
     let t1 = pair(&hub, "Till 2", "T02");
     let t2 = pair(&hub, "Till 3", "T03");
@@ -194,7 +200,7 @@ fn forged_and_invalid_pushes_are_rejected() {
 fn signatures_revocation_and_pairing_codes() {
     let hub = env();
     let ht = hub.owner_token.clone();
-    hub.core.sync_enable_hub(&ht).unwrap();
+    enable_hub(&hub.core, &ht);
     let t1 = pair(&hub, "Till 2", "T02");
     let dev = t1.core.device().unwrap().device_id;
     let key = t1.core.terminal_device_key().unwrap();
@@ -237,7 +243,7 @@ fn signatures_revocation_and_pairing_codes() {
 #[test]
 fn rebuilt_hub_does_not_become_authority() {
     let hub = env();
-    hub.core.sync_enable_hub(&hub.owner_token).unwrap();
+    enable_hub(&hub.core, &hub.owner_token);
     hub.product("Salt", "4201", 200, 100, 10_000);
     let t1 = pair(&hub, "Till 2", "T02");
     t1.core.shift_open(&t1.token, 0, &op()).unwrap();
@@ -245,7 +251,7 @@ fn rebuilt_hub_does_not_become_authority() {
     sync_once(&hub.core, &t1.core, false);
     // A brand-new empty hub appears at the same address.
     let hub2 = env();
-    hub2.core.sync_enable_hub(&hub2.owner_token).unwrap();
+    enable_hub(&hub2.core, &hub2.owner_token);
     let dev = t1.core.device().unwrap().device_id;
     let resp = hub2.core.hub_pull(&dev, PullRequest { device_id: dev.clone(), since_seq: 0, limit: None }).unwrap();
     let err = t1.core.terminal_apply_pull(&resp).unwrap_err();
@@ -259,7 +265,7 @@ fn rebuilt_hub_does_not_become_authority() {
 #[test]
 fn version_mismatch_refuses_pairing() {
     let hub = env();
-    hub.core.sync_enable_hub(&hub.owner_token).unwrap();
+    enable_hub(&hub.core, &hub.owner_token);
     let pc = hub.core.sync_issue_pairing_code(&hub.owner_token, None).unwrap();
     let err = hub
         .core
@@ -278,7 +284,7 @@ fn version_mismatch_refuses_pairing() {
 #[test]
 fn lost_hub_credential_is_reported_not_silently_replaced() {
     let hub = env();
-    hub.core.sync_enable_hub(&hub.owner_token).unwrap();
+    enable_hub(&hub.core, &hub.owner_token);
     let key_before = hub.core.hub_device_key("dev-1").unwrap();
     assert_eq!(key_before, hub.core.hub_device_key("dev-1").unwrap());
     let Env { dir, core, owner_id, .. } = hub;

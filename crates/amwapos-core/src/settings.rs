@@ -210,6 +210,52 @@ pub struct AppearanceSettings {
     pub cashier_font: String,
 }
 
+/// Optional modules. Every flag defaults to off; a module whose flag is off
+/// refuses its commands in the backend (not only in the UI).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct FeatureFlags {
+    /// Multi-terminal: this computer may become a hub.
+    pub hub: bool,
+    /// WhatsApp sidecar (pairing, messages, receipts, delivery updates).
+    pub whatsapp: bool,
+    /// Local OCR (invoice scan, payment screenshots).
+    pub ocr: bool,
+    /// Payment-screenshot review pipeline (needs OCR for extraction).
+    pub payment_reviews: bool,
+    /// AI assistant (read-only tools).
+    pub ai: bool,
+    /// AI may propose changes (always preview + confirm + deterministic execution).
+    pub ai_mutations: bool,
+    /// Customer accounts: sell on account, take account payments, balances.
+    pub customer_credit: bool,
+    /// Optional Windows Hello step-up for sensitive actions (the PIN is still required).
+    pub windows_hello: bool,
+    /// Save a PDF copy of every receipt after the sale commits.
+    pub pdf_receipts: bool,
+    /// Check for signed updates.
+    pub updates: bool,
+}
+
+impl FeatureFlags {
+    pub fn is_on(&self, name: &str) -> bool {
+        match name {
+            "hub" => self.hub,
+            "whatsapp" => self.whatsapp,
+            "ocr" => self.ocr,
+            "payment_reviews" => self.payment_reviews,
+            "ai" => self.ai,
+            "ai_mutations" => self.ai && self.ai_mutations,
+            "customer_credit" => self.customer_credit,
+            "windows_hello" => self.windows_hello,
+            "pdf_receipts" => self.pdf_receipts,
+            "updates" => self.updates,
+            _ => false,
+        }
+    }
+}
+
+pub const KEY_FEATURES: &str = "features";
 pub const KEY_POS: &str = "pos";
 pub const KEY_SHIFT: &str = "shift";
 pub const KEY_PAYMENTS: &str = "payments";
@@ -223,7 +269,7 @@ pub const KEY_DEVICE: &str = "local.device";
 pub const KEY_SETUP_COMPLETE: &str = "local.setup_complete";
 
 pub const EDITABLE_KEYS: &[&str] =
-    &[KEY_POS, KEY_SHIFT, KEY_PAYMENTS, KEY_RECEIPT, KEY_SECURITY, KEY_INVENTORY, KEY_PRINTER, KEY_BACKUP, KEY_APPEARANCE];
+    &[KEY_POS, KEY_SHIFT, KEY_PAYMENTS, KEY_RECEIPT, KEY_SECURITY, KEY_INVENTORY, KEY_PRINTER, KEY_BACKUP, KEY_APPEARANCE, KEY_FEATURES];
 
 pub fn get<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> AppResult<T> {
     let v: Option<String> = conn.query_row("SELECT value_json FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?;
@@ -270,6 +316,7 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             serde_json::to_value(p)?
         }
         KEY_SHIFT => roundtrip::<ShiftSettings>(value)?,
+        KEY_FEATURES => roundtrip::<FeatureFlags>(value)?,
         KEY_PAYMENTS => {
             let p: PaymentSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if !p.tenders.iter().any(|t| t.enabled) {
