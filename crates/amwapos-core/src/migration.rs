@@ -200,7 +200,7 @@ fn read_csv(source: &str, bytes: &[u8]) -> AppResult<Option<Table>> {
     let text = String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)).to_string();
     let delim = {
         let first = text.lines().next().unwrap_or("");
-        [b',', b';', b'\t'].into_iter().max_by_key(|d| first.matches(*d as char).count()).unwrap_or(b',')
+        b",;\t".iter().copied().max_by_key(|d| first.matches(*d as char).count()).unwrap_or(b',')
     };
     let mut r = csv::ReaderBuilder::new().has_headers(false).flexible(true).delimiter(delim).from_reader(text.as_bytes());
     let mut grid = vec![];

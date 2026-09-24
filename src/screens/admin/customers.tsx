@@ -418,8 +418,7 @@ export function DeliveriesPage() {
           {(["pending", "preparing", "dispatched"] as const).map((st) => (
             <div key={st} className="kanban-col">
               <h3 style={{ margin: "4px 4px 10px" }}>
-                {codeLabel(st)}{" "}
-                <span className="tiny">({data.filter((d) => d.status === st).length})</span>
+                {codeLabel(st)} <span className="tiny">({data.filter((d) => d.status === st).length})</span>
               </h3>
               {data
                 .filter((d) => d.status === st)
