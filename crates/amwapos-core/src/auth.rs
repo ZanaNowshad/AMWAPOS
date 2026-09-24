@@ -92,24 +92,43 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
     let manager: Vec<&str> = all
         .iter()
         .copied()
-        .filter(|p| {
-            !matches!(
-                *p,
-                "roles.manage" | "backup.restore" | "sync.manage" | "ai.mutate" | "devices.manage"
-            )
-        })
+        .filter(|p| !matches!(*p, "roles.manage" | "backup.restore" | "sync.manage" | "ai.mutate" | "devices.manage"))
         .collect();
     let cashier = vec![
-        "pos.sell", "pos.discount", "pos.cancel_sale", "pos.remove_line", "pos.hold", "pos.reprint",
-        "shift.open", "shift.close", "customers.view", "customers.manage", "deliveries.view",
+        "pos.sell",
+        "pos.discount",
+        "pos.cancel_sale",
+        "pos.remove_line",
+        "pos.hold",
+        "pos.reprint",
+        "shift.open",
+        "shift.close",
+        "customers.view",
+        "customers.manage",
+        "deliveries.view",
     ];
     let accountant = vec![
-        "admin.access", "sales.view", "reports.sales", "reports.financial", "reports.tax", "audit.view",
-        "products.view", "products.view_cost", "inventory.view", "customers.view",
+        "admin.access",
+        "sales.view",
+        "reports.sales",
+        "reports.financial",
+        "reports.tax",
+        "audit.view",
+        "products.view",
+        "products.view_cost",
+        "inventory.view",
+        "customers.view",
     ];
     let inventory = vec![
-        "admin.access", "products.view", "inventory.view", "inventory.adjust", "inventory.receive",
-        "stocktake.manage", "suppliers.manage", "purchasing.manage", "barcodes.resolve",
+        "admin.access",
+        "products.view",
+        "inventory.view",
+        "inventory.adjust",
+        "inventory.receive",
+        "stocktake.manage",
+        "suppliers.manage",
+        "purchasing.manage",
+        "barcodes.resolve",
     ];
     let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view"];
     vec![
@@ -134,28 +153,19 @@ pub fn seed_roles(conn: &Connection) -> AppResult<()> {
         )?;
     }
     for (id, name, desc, perms) in default_roles() {
-        let existed: bool = conn
-            .query_row("SELECT 1 FROM roles WHERE role_id=?1", [id], |_| Ok(true))
-            .optional()?
-            .unwrap_or(false);
+        let existed: bool = conn.query_row("SELECT 1 FROM roles WHERE role_id=?1", [id], |_| Ok(true)).optional()?.unwrap_or(false);
         if !existed {
             conn.execute(
                 "INSERT INTO roles(role_id,name,description,is_system,created_at,updated_at) VALUES (?1,?2,?3,1,?4,?4)",
                 params![id, name, desc, now],
             )?;
             for p in perms {
-                conn.execute(
-                    "INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)",
-                    params![id, p],
-                )?;
+                conn.execute("INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)", params![id, p])?;
             }
         } else if id == ROLE_OWNER {
             // Owner always holds every permission, including ones added by upgrades.
             for p in perms {
-                conn.execute(
-                    "INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)",
-                    params![id, p],
-                )?;
+                conn.execute("INSERT OR IGNORE INTO role_permissions(role_id, permission_code) VALUES (?1,?2)", params![id, p])?;
             }
         }
     }
@@ -164,18 +174,12 @@ pub fn seed_roles(conn: &Connection) -> AppResult<()> {
 
 fn argon() -> Argon2<'static> {
     // OWASP-recommended Argon2id parameters (19 MiB, 2 iterations, 1 lane).
-    Argon2::new(
-        Algorithm::Argon2id,
-        Version::V0x13,
-        Params::new(19 * 1024, 2, 1, None).expect("valid argon2 params"),
-    )
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, Params::new(19 * 1024, 2, 1, None).expect("valid argon2 params"))
 }
 
 pub fn validate_pin(pin: &str, min_len: usize, max_len: usize) -> AppResult<()> {
     if pin.len() < min_len || pin.len() > max_len || !pin.chars().all(|c| c.is_ascii_digit()) {
-        return Err(AppError::validation(format!(
-            "The PIN must be {min_len}–{max_len} digits."
-        )));
+        return Err(AppError::validation(format!("The PIN must be {min_len}–{max_len} digits.")));
     }
     if pin.chars().all(|c| c == pin.chars().next().unwrap()) {
         return Err(AppError::validation("The PIN cannot be a single repeated digit."));
@@ -189,10 +193,7 @@ pub fn validate_pin(pin: &str, min_len: usize, max_len: usize) -> AppResult<()> 
 
 pub fn hash_pin(pin: &str) -> AppResult<String> {
     let salt = SaltString::generate(&mut OsRng);
-    argon()
-        .hash_password(pin.as_bytes(), &salt)
-        .map(|h| h.to_string())
-        .map_err(|e| AppError::internal(format!("PIN hashing failed: {e}")))
+    argon().hash_password(pin.as_bytes(), &salt).map(|h| h.to_string()).map_err(|e| AppError::internal(format!("PIN hashing failed: {e}")))
 }
 
 pub fn verify_pin(pin: &str, hash: &str) -> bool {
@@ -271,9 +272,8 @@ impl SessionStore {
     pub fn get_active(&self, token: &str, idle_lock_minutes: i64) -> AppResult<Session> {
         let mut m = self.sessions.lock().map_err(|_| AppError::internal("session store poisoned"))?;
         let now = time::now();
-        let s = m.get_mut(token).ok_or_else(|| {
-            AppError::new(ErrorCode::Unauthenticated, "Your session has ended. Please log in again.")
-        })?;
+        let s =
+            m.get_mut(token).ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Your session has ended. Please log in again."))?;
         if now - s.created_at > Duration::hours(SESSION_MAX_HOURS) {
             m.remove(token);
             return Err(AppError::new(ErrorCode::Unauthenticated, "Your session expired. Please log in again."));
@@ -296,9 +296,7 @@ impl SessionStore {
 
     pub fn set_locked(&self, token: &str, locked: bool) -> AppResult<()> {
         let mut m = self.sessions.lock().map_err(|_| AppError::internal("session store poisoned"))?;
-        let s = m
-            .get_mut(token)
-            .ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found."))?;
+        let s = m.get_mut(token).ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found."))?;
         s.locked = locked;
         s.last_activity = time::now();
         Ok(())
@@ -318,10 +316,7 @@ impl SessionStore {
     }
 
     pub fn active_users(&self) -> Vec<(String, String)> {
-        self.sessions
-            .lock()
-            .map(|m| m.values().map(|s| (s.user_id.clone(), s.display_name.clone())).collect())
-            .unwrap_or_default()
+        self.sessions.lock().map(|m| m.values().map(|s| (s.user_id.clone(), s.display_name.clone())).collect()).unwrap_or_default()
     }
 
     pub fn issue_approval(&self, approver_id: &str, approver_name: &str, permission: &str) -> String {
@@ -403,9 +398,7 @@ pub fn load_user_auth(conn: &Connection, user_id: &str) -> AppResult<UserAuthRow
 
 pub fn role_permissions(conn: &Connection, role_id: &str) -> AppResult<HashSet<String>> {
     let mut stmt = conn.prepare_cached("SELECT permission_code FROM role_permissions WHERE role_id = ?1")?;
-    let rows = stmt
-        .query_map([role_id], |r| r.get::<_, String>(0))?
-        .collect::<Result<HashSet<_>, _>>()?;
+    let rows = stmt.query_map([role_id], |r| r.get::<_, String>(0))?.collect::<Result<HashSet<_>, _>>()?;
     Ok(rows)
 }
 

@@ -67,7 +67,15 @@ export function ApprovalProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function ApprovalDialog({ pending, onDone, onCancel }: { pending: Pending; onDone: (t: string) => void; onCancel: () => void }) {
+function ApprovalDialog({
+  pending,
+  onDone,
+  onCancel,
+}: {
+  pending: Pending;
+  onDone: (t: string) => void;
+  onCancel: () => void;
+}) {
   const [approvers, setApprovers] = useState<LoginUser[] | null>(null);
   const [who, setWho] = useState<string>("");
   const [pin, setPin] = useState("");

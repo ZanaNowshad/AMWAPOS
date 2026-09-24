@@ -116,7 +116,9 @@ fn range(c: &Connection, core: &AppCore, p: &ReportParams) -> AppResult<Range> {
     let from = p.from.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| today.clone());
     let to = p.to.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| today.clone());
     let (a, b) = time::local_date_range_utc(&from, &to, &tz)?;
-    let days = (chrono::NaiveDate::parse_from_str(&to, "%Y-%m-%d").unwrap() - chrono::NaiveDate::parse_from_str(&from, "%Y-%m-%d").unwrap()).num_days();
+    let days = (chrono::NaiveDate::parse_from_str(&to, "%Y-%m-%d").unwrap()
+        - chrono::NaiveDate::parse_from_str(&from, "%Y-%m-%d").unwrap())
+    .num_days();
     if days > 3660 {
         return Err(AppError::validation("Reports are limited to 10 years per run."));
     }
@@ -251,7 +253,9 @@ impl AppCore {
         let (key_sql, label, join) = match group.as_str() {
             "day" => ("s.business_date".to_string(), "Date", ""),
             "hour" => (format!("strftime('%H:00', {local})"), "Hour", ""),
-            "cashier" => ("COALESCE(u.display_name, s.cashier_user_id)".to_string(), "Cashier", "LEFT JOIN users u ON u.user_id=s.cashier_user_id"),
+            "cashier" => {
+                ("COALESCE(u.display_name, s.cashier_user_id)".to_string(), "Cashier", "LEFT JOIN users u ON u.user_id=s.cashier_user_id")
+            }
             "device" => ("COALESCE(d.name, s.device_id)".to_string(), "Terminal", "LEFT JOIN devices d ON d.device_id=s.device_id"),
             "weekday" => (format!("strftime('%w', {local})"), "Weekday", ""),
             _ => return Err(AppError::validation("Group by day, hour, weekday, cashier or device.")),
@@ -276,8 +280,15 @@ impl AppCore {
                     "average": if n > 0 { t / n } else { 0 }, "profit": if show_profit { Some(t - tax - cost) } else { None } }))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        let mut columns = vec![col("key", label, "text"), col("transactions", "Transactions", "int"), col("items", "Items", "qty"), col("discount", "Discounts", "money"),
-            col("tax", "VAT", "money"), col("total", "Sales", "money"), col("average", "Avg basket", "money")];
+        let mut columns = vec![
+            col("key", label, "text"),
+            col("transactions", "Transactions", "int"),
+            col("items", "Items", "qty"),
+            col("discount", "Discounts", "money"),
+            col("tax", "VAT", "money"),
+            col("total", "Sales", "money"),
+            col("average", "Avg basket", "money"),
+        ];
         if show_profit {
             columns.push(col("profit", "Gross profit", "money"));
         }
@@ -352,11 +363,24 @@ impl AppCore {
             ttax += row["total"].as_i64().unwrap_or(0) - row["net"].as_i64().unwrap_or(0);
             tc += row["cost"].as_i64().unwrap_or(0);
         }
-        let mut columns = vec![col("name", "Product", "text"), col("sku", "SKU", "text"), col("category", "Category", "text"), col("qty", "Qty sold", "qty"), col("discount", "Discounts", "money"), col("total", "Sales (incl. VAT)", "money")];
+        let mut columns = vec![
+            col("name", "Product", "text"),
+            col("sku", "SKU", "text"),
+            col("category", "Category", "text"),
+            col("qty", "Qty sold", "qty"),
+            col("discount", "Discounts", "money"),
+            col("total", "Sales (incl. VAT)", "money"),
+        ];
         if show_cost {
-            columns.extend([col("net", "Revenue (ex. VAT)", "money"), col("cost", "Cost", "money"), col("profit", "Gross profit", "money"), col("margin_bp", "Margin %", "percent_bp")]);
+            columns.extend([
+                col("net", "Revenue (ex. VAT)", "money"),
+                col("cost", "Cost", "money"),
+                col("profit", "Gross profit", "money"),
+                col("margin_bp", "Margin %", "percent_bp"),
+            ]);
         }
-        let mut kpis = vec![kpi("Products sold", rows.len() as i64, "int", None), kpi("Units", tq, "qty", None), kpi("Sales", tt, "money", None)];
+        let mut kpis =
+            vec![kpi("Products sold", rows.len() as i64, "int", None), kpi("Units", tq, "qty", None), kpi("Sales", tt, "money", None)];
         if show_cost {
             let net = tt - ttax;
             kpis.push(kpi("Revenue (ex. VAT)", net, "money", None));
@@ -372,8 +396,10 @@ impl AppCore {
             to: r.to,
             kpis,
             columns,
-            totals: Some(json!({ "name": "Total", "qty": tq, "total": tt, "net": tt - ttax, "cost": if show_cost { Some(tc) } else { None },
-                "profit": if show_cost { Some(tt - ttax - tc) } else { None } })),
+            totals: Some(
+                json!({ "name": "Total", "qty": tq, "total": tt, "net": tt - ttax, "cost": if show_cost { Some(tc) } else { None },
+                "profit": if show_cost { Some(tt - ttax - tc) } else { None } }),
+            ),
             series: Some(rows.iter().take(10).map(|r| json!({ "label": r["name"], "value": r["total"] })).collect()),
             rows,
             notes: if negative > 0 { vec![format!("{negative} product(s) sold below cost in this period.")] } else { vec![] },
@@ -406,7 +432,13 @@ impl AppCore {
                 r
             })
             .collect();
-        let mut columns = vec![col("category", "Category", "text"), col("qty", "Qty", "qty"), col("baskets", "Baskets", "int"), col("total", "Sales", "money"), col("share_bp", "Share %", "percent_bp")];
+        let mut columns = vec![
+            col("category", "Category", "text"),
+            col("qty", "Qty", "qty"),
+            col("baskets", "Baskets", "int"),
+            col("total", "Sales", "money"),
+            col("share_bp", "Share %", "percent_bp"),
+        ];
         if show_cost {
             columns.extend([col("profit", "Gross profit", "money"), col("margin_bp", "Margin %", "percent_bp")]);
         }
@@ -448,7 +480,13 @@ impl AppCore {
             from: r.from,
             to: r.to,
             kpis: vec![kpi("Net tenders", net, "money", None)],
-            columns: vec![col("method", "Method", "text"), col("count", "Payments", "int"), col("received", "Received", "money"), col("refunded", "Refunded", "money"), col("net", "Net", "money")],
+            columns: vec![
+                col("method", "Method", "text"),
+                col("count", "Payments", "int"),
+                col("received", "Received", "money"),
+                col("refunded", "Refunded", "money"),
+                col("net", "Net", "money"),
+            ],
             series: Some(rows.iter().map(|r| json!({ "label": r["method"], "value": r["net"] })).collect()),
             totals: Some(json!({ "method": "Total", "received": rows.iter().map(|r| r["received"].as_i64().unwrap_or(0)).sum::<i64>(),
                 "refunded": rows.iter().map(|r| r["refunded"].as_i64().unwrap_or(0)).sum::<i64>(), "net": net })),
@@ -524,8 +562,16 @@ impl AppCore {
             from: r.from,
             to: r.to,
             kpis: vec![kpi("Refunds", rows.len() as i64, "int", None), kpi("Refunded", total, "money", None)],
-            columns: vec![col("refund", "Refund", "text"), col("receipt", "Original receipt", "text"), col("at", "Time", "datetime"), col("user", "By", "text"),
-                col("approver", "Approved by", "text"), col("reason", "Reason", "text"), col("tax", "VAT", "money"), col("total", "Amount", "money")],
+            columns: vec![
+                col("refund", "Refund", "text"),
+                col("receipt", "Original receipt", "text"),
+                col("at", "Time", "datetime"),
+                col("user", "By", "text"),
+                col("approver", "Approved by", "text"),
+                col("reason", "Reason", "text"),
+                col("tax", "VAT", "money"),
+                col("total", "Amount", "money"),
+            ],
             totals: Some(json!({ "refund": "Total", "total": total })),
             series: Some(reasons.into_iter().map(|(k, v)| json!({ "label": k, "value": v })).collect()),
             rows,
@@ -553,11 +599,28 @@ impl AppCore {
             title: "Cash & shifts".into(),
             from: r.from,
             to: r.to,
-            kpis: vec![kpi("Shifts", rows.len() as i64, "int", None), kpi("Shifts with variance", discrepancies, "int", None), kpi("Net variance", tv, "money", None)],
-            columns: vec![col("shift", "Shift", "text"), col("cashier", "Cashier", "text"), col("terminal", "Terminal", "text"), col("opened", "Opened", "datetime"),
-                col("closed", "Closed", "datetime"), col("float", "Float", "money"), col("cash_sales", "Cash sales", "money"), col("cash_refunds", "Cash refunds", "money"),
-                col("paid_in", "Paid in", "money"), col("paid_out", "Paid out", "money"), col("safe_drops", "Safe drops", "money"), col("expected", "Expected", "money"),
-                col("counted", "Counted", "money"), col("variance", "Variance", "money"), col("no_sales", "No-sales", "int")],
+            kpis: vec![
+                kpi("Shifts", rows.len() as i64, "int", None),
+                kpi("Shifts with variance", discrepancies, "int", None),
+                kpi("Net variance", tv, "money", None),
+            ],
+            columns: vec![
+                col("shift", "Shift", "text"),
+                col("cashier", "Cashier", "text"),
+                col("terminal", "Terminal", "text"),
+                col("opened", "Opened", "datetime"),
+                col("closed", "Closed", "datetime"),
+                col("float", "Float", "money"),
+                col("cash_sales", "Cash sales", "money"),
+                col("cash_refunds", "Cash refunds", "money"),
+                col("paid_in", "Paid in", "money"),
+                col("paid_out", "Paid out", "money"),
+                col("safe_drops", "Safe drops", "money"),
+                col("expected", "Expected", "money"),
+                col("counted", "Counted", "money"),
+                col("variance", "Variance", "money"),
+                col("no_sales", "No-sales", "int"),
+            ],
             totals: Some(json!({ "shift": "Total", "variance": tv })),
             rows,
             series: None,
@@ -598,9 +661,21 @@ impl AppCore {
                 _ => {}
             }
         }
-        let mut kpis = vec![kpi("Tracked SKUs", rows.len() as i64, "int", None), kpi("Low stock", low, "int", None), kpi("Out of stock", out, "int", None), kpi("Negative", neg, "int", None)];
-        let mut columns = vec![col("name", "Product", "text"), col("sku", "SKU", "text"), col("category", "Category", "text"), col("qty", "On hand", "qty"),
-            col("reorder", "Reorder point", "qty"), col("status", "Status", "text"), col("last_movement", "Last movement", "datetime")];
+        let mut kpis = vec![
+            kpi("Tracked SKUs", rows.len() as i64, "int", None),
+            kpi("Low stock", low, "int", None),
+            kpi("Out of stock", out, "int", None),
+            kpi("Negative", neg, "int", None),
+        ];
+        let mut columns = vec![
+            col("name", "Product", "text"),
+            col("sku", "SKU", "text"),
+            col("category", "Category", "text"),
+            col("qty", "On hand", "qty"),
+            col("reorder", "Reorder point", "qty"),
+            col("status", "Status", "text"),
+            col("last_movement", "Last movement", "datetime"),
+        ];
         if show_cost {
             kpis.push(kpi("Stock value (avg cost)", value, "money", None));
             columns.extend([col("avg_cost", "Avg cost", "money"), col("value", "Value", "money")]);
@@ -643,7 +718,12 @@ impl AppCore {
             .collect::<Result<Vec<_>, _>>()?;
         let value: i64 = rows.iter().map(|r| r["value"].as_i64().unwrap_or(0)).sum();
         let today = time::business_date(time::now(), &self.store_timezone(c)?)?;
-        let mut columns = vec![col("name", "Product", "text"), col("sku", "SKU", "text"), col("qty", "On hand", "qty"), col("last_sold", "Last sold", "datetime")];
+        let mut columns = vec![
+            col("name", "Product", "text"),
+            col("sku", "SKU", "text"),
+            col("qty", "On hand", "qty"),
+            col("last_sold", "Last sold", "datetime"),
+        ];
         let mut kpis = vec![kpi("Dead-stock items", rows.len() as i64, "int", None)];
         if show_cost {
             columns.push(col("value", "Value", "money"));
@@ -659,7 +739,10 @@ impl AppCore {
             totals: None,
             rows,
             series: None,
-            notes: vec!["Evidence: on-hand stock with zero sales in the window. Suggested action: promote, return to supplier or stop reordering.".into()],
+            notes: vec![
+                "Evidence: on-hand stock with zero sales in the window. Suggested action: promote, return to supplier or stop reordering."
+                    .into(),
+            ],
         })
     }
 
@@ -681,7 +764,13 @@ impl AppCore {
             from: r.from,
             to: r.to,
             kpis: vec![kpi("Movements", rows.iter().map(|r| r["movements"].as_i64().unwrap_or(0)).sum(), "int", None)],
-            columns: vec![col("type", "Type", "text"), col("movements", "Movements", "int"), col("in", "Qty in", "qty"), col("out", "Qty out", "qty"), col("value", "Net value at cost", "money")],
+            columns: vec![
+                col("type", "Type", "text"),
+                col("movements", "Movements", "int"),
+                col("in", "Qty in", "qty"),
+                col("out", "Qty out", "qty"),
+                col("value", "Net value at cost", "money"),
+            ],
             totals: None,
             rows,
             series: None,
@@ -704,14 +793,30 @@ impl AppCore {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let total: i64 = rows.iter().map(|r| r["cost"].as_i64().unwrap_or(0)).sum();
-        let open: i64 = c.query_row("SELECT COUNT(*) FROM purchase_orders WHERE status IN ('ordered','partially_received')", [], |r| r.get(0))?;
-        let mut columns = vec![col("supplier", "Supplier", "text"), col("receipts", "Deliveries received", "int"), col("last", "Last received", "datetime")];
+        let open: i64 =
+            c.query_row("SELECT COUNT(*) FROM purchase_orders WHERE status IN ('ordered','partially_received')", [], |r| r.get(0))?;
+        let mut columns = vec![
+            col("supplier", "Supplier", "text"),
+            col("receipts", "Deliveries received", "int"),
+            col("last", "Last received", "datetime"),
+        ];
         let mut kpis = vec![kpi("Open purchase orders", open, "int", None)];
         if show_cost {
             columns.push(col("cost", "Cost received", "money"));
             kpis.push(kpi("Received at cost", total, "money", None));
         }
-        Ok(Report { key: "purchasing".into(), title: "Purchasing".into(), from: r.from, to: r.to, kpis, columns, totals: None, rows, series: None, notes: vec![] })
+        Ok(Report {
+            key: "purchasing".into(),
+            title: "Purchasing".into(),
+            from: r.from,
+            to: r.to,
+            kpis,
+            columns,
+            totals: None,
+            rows,
+            series: None,
+            notes: vec![],
+        })
     }
 
     fn rep_deliveries(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
@@ -732,7 +837,12 @@ impl AppCore {
             from: r.from,
             to: r.to,
             kpis: vec![kpi("Deliveries", rows.iter().map(|r| r["count"].as_i64().unwrap_or(0)).sum(), "int", None)],
-            columns: vec![col("status", "Status", "text"), col("count", "Deliveries", "int"), col("amount", "Amount", "money"), col("avg_minutes", "Avg minutes to deliver", "int")],
+            columns: vec![
+                col("status", "Status", "text"),
+                col("count", "Deliveries", "int"),
+                col("amount", "Amount", "money"),
+                col("avg_minutes", "Avg minutes to deliver", "int"),
+            ],
             totals: None,
             rows,
             series: None,
@@ -757,7 +867,12 @@ impl AppCore {
             from: r.from,
             to: r.to,
             kpis: vec![kpi("Events", rows.iter().map(|r| r["count"].as_i64().unwrap_or(0)).sum(), "int", None)],
-            columns: vec![col("event", "Event", "text"), col("user", "User", "text"), col("count", "Count", "int"), col("approved", "With approval", "int")],
+            columns: vec![
+                col("event", "Event", "text"),
+                col("user", "User", "text"),
+                col("count", "Count", "int"),
+                col("approved", "With approval", "int"),
+            ],
             totals: None,
             rows,
             series: None,

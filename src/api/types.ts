@@ -586,7 +586,13 @@ export interface PoDetail extends PoRow {
   tax_minor: number;
   version: number;
   lines: PoLine[];
-  receipts: { receipt_id: string; reference: string | null; total_cost_minor: number; created_at: string; user_name: string | null }[];
+  receipts: {
+    receipt_id: string;
+    reference: string | null;
+    total_cost_minor: number;
+    created_at: string;
+    user_name: string | null;
+  }[];
 }
 
 export interface CustomerInput {

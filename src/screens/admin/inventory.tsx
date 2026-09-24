@@ -8,10 +8,30 @@ import { useToast } from "../../components/toast";
 import { newOperationId } from "../../lib/ids";
 import { formatAmount, formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
 import { formatShort, todayLocal } from "../../lib/time";
-import { Banner, Button, Checkbox, Chip, Field, Modal, Money, PageHeader, Skeleton, StockStatus, TextInput } from "../../components/ui";
+import {
+  Banner,
+  Button,
+  Checkbox,
+  Chip,
+  Field,
+  Modal,
+  Money,
+  PageHeader,
+  Skeleton,
+  StockStatus,
+  TextInput,
+} from "../../components/ui";
 import { Confirm, DataTable, DateRange, Pager, useAction, useLoad } from "./common";
 
-export function AdjustDialog({ product, onClose, onDone }: { product: Pick<ProductRow, "product_id" | "name" | "stock_milli" | "allow_decimal_quantity" | "unit">; onClose: () => void; onDone: () => void }) {
+export function AdjustDialog({
+  product,
+  onClose,
+  onDone,
+}: {
+  product: Pick<ProductRow, "product_id" | "name" | "stock_milli" | "allow_decimal_quantity" | "unit">;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const toast = useToast();
   const [mode, setMode] = useState<"increase" | "decrease" | "set">("decrease");
   const [qty, setQty] = useState("");
@@ -19,8 +39,20 @@ export function AdjustDialog({ product, onClose, onDone }: { product: Pick<Produ
   const [opId] = useState(newOperationId);
   const act = useAction();
   const q = parseQty(qty);
-  const after = q === null ? null : mode === "increase" ? product.stock_milli + q : mode === "decrease" ? product.stock_milli - q : q;
-  const valid = q !== null && q >= 0 && (mode === "set" || q > 0) && reason.trim() && (product.allow_decimal_quantity || q % 1000 === 0);
+  const after =
+    q === null
+      ? null
+      : mode === "increase"
+        ? product.stock_milli + q
+        : mode === "decrease"
+          ? product.stock_milli - q
+          : q;
+  const valid =
+    q !== null &&
+    q >= 0 &&
+    (mode === "set" || q > 0) &&
+    reason.trim() &&
+    (product.allow_decimal_quantity || q % 1000 === 0);
   return (
     <Modal
       title={`Adjust stock — ${product.name}`}
@@ -35,7 +67,15 @@ export function AdjustDialog({ product, onClose, onDone }: { product: Pick<Produ
             disabled={!valid}
             loading={act.busy}
             onClick={async () => {
-              const r = await act.run(() => api.inventory.adjust({ product_id: product.product_id, mode, qty_milli: q!, reason, operation_id: opId }));
+              const r = await act.run(() =>
+                api.inventory.adjust({
+                  product_id: product.product_id,
+                  mode,
+                  qty_milli: q!,
+                  reason,
+                  operation_id: opId,
+                }),
+              );
               if (r) {
                 toast("success", `Stock adjusted to ${formatQty(r.after_milli)}`);
                 onDone();
@@ -55,17 +95,34 @@ export function AdjustDialog({ product, onClose, onDone }: { product: Pick<Produ
             </button>
           ))}
         </div>
-        <TextInput label={mode === "set" ? "Counted quantity" : "Quantity"} className="num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus />
+        <TextInput
+          label={mode === "set" ? "Counted quantity" : "Quantity"}
+          className="num"
+          inputMode="decimal"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          autoFocus
+        />
         <Field label="Reason" required>
           <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
             <option value="">Select reason…</option>
-            {["Damaged", "Expired", "Theft / loss", "Count correction", "Supplier return", "Internal use", "Found stock", "Other"].map((r) => (
+            {[
+              "Damaged",
+              "Expired",
+              "Theft / loss",
+              "Count correction",
+              "Supplier return",
+              "Internal use",
+              "Found stock",
+              "Other",
+            ].map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
         </Field>
         <div className="banner">
-          Before: <strong>{formatQty(product.stock_milli)}</strong> → After: <strong>{after === null ? "—" : formatQty(after)}</strong> {product.unit}
+          Before: <strong>{formatQty(product.stock_milli)}</strong> → After:{" "}
+          <strong>{after === null ? "—" : formatQty(after)}</strong> {product.unit}
         </div>
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       </div>
@@ -77,10 +134,15 @@ export function InventoryPage() {
   const { has } = useSession();
   const nav = useNavigate();
   const [q, setQ] = useState("");
-  const [stock, setStock] = useState(() => new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("stock") ?? "");
+  const [stock, setStock] = useState(
+    () => new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("stock") ?? "",
+  );
   const [offset, setOffset] = useState(0);
   const [adjust, setAdjust] = useState<ProductRow | null>(null);
-  const { data, loading, error, reload } = useLoad(() => api.products.search({ q: q || undefined, stock: stock || undefined, limit: 50, offset, sort: "name" }), [q, stock, offset]);
+  const { data, loading, error, reload } = useLoad(
+    () => api.products.search({ q: q || undefined, stock: stock || undefined, limit: 50, offset, sort: "name" }),
+    [q, stock, offset],
+  );
   const counts = useLoad(async () => {
     const [all, low, out, neg] = await Promise.all([
       api.products.search({ limit: 1 }),
@@ -112,14 +174,26 @@ export function InventoryPage() {
           ["Out of Stock", counts.data?.out, "out"],
           ["Negative Stock", counts.data?.neg, "negative"],
         ].map(([label, v, key]) => (
-          <button key={String(label)} className="card kpi" style={{ textAlign: "left", cursor: "pointer" }} onClick={() => (setStock(String(key)), setOffset(0))}>
+          <button
+            key={String(label)}
+            className="card kpi"
+            style={{ textAlign: "left", cursor: "pointer" }}
+            onClick={() => (setStock(String(key)), setOffset(0))}
+          >
             <div className="k-label">{label}</div>
             <div className={`k-value ${key === "negative" && Number(v) > 0 ? "neg-num" : ""}`}>{v ?? "…"}</div>
           </button>
         ))}
       </div>
       <div className="filters">
-        <input className="input" style={{ width: 280 }} placeholder="Search name, SKU or barcode…" value={q} onChange={(e) => (setQ(e.target.value), setOffset(0))} aria-label="Search" />
+        <input
+          className="input"
+          style={{ width: 280 }}
+          placeholder="Search name, SKU or barcode…"
+          value={q}
+          onChange={(e) => (setQ(e.target.value), setOffset(0))}
+          aria-label="Search"
+        />
         {[
           ["", "All"],
           ["attention", "Needs reorder"],
@@ -128,7 +202,11 @@ export function InventoryPage() {
           ["negative", "Negative"],
           ["in_stock", "In stock"],
         ].map(([k, l]) => (
-          <button key={k} className={`filter-chip ${stock === k ? "active" : ""}`} onClick={() => (setStock(k), setOffset(0))}>
+          <button
+            key={k}
+            className={`filter-chip ${stock === k ? "active" : ""}`}
+            onClick={() => (setStock(k), setOffset(0))}
+          >
             {l}
           </button>
         ))}
@@ -143,9 +221,22 @@ export function InventoryPage() {
           { key: "p", label: "Product", render: (r) => r.name, sort: (r) => r.name },
           { key: "s", label: "SKU", render: (r) => <span className="mono">{r.sku}</span> },
           { key: "b", label: "Barcode", render: (r) => <span className="mono">{r.primary_barcode ?? "—"}</span> },
-          { key: "q", label: "Stock", num: true, render: (r) => (r.track_inventory ? <span className={r.stock_milli < 0 ? "neg-num" : ""}>{formatQty(r.stock_milli)}</span> : "—"), sort: (r) => r.stock_milli },
+          {
+            key: "q",
+            label: "Stock",
+            num: true,
+            render: (r) =>
+              r.track_inventory ? (
+                <span className={r.stock_milli < 0 ? "neg-num" : ""}>{formatQty(r.stock_milli)}</span>
+              ) : (
+                "—"
+              ),
+            sort: (r) => r.stock_milli,
+          },
           { key: "r", label: "Reorder", num: true, render: (r) => formatQty(r.reorder_point_milli) },
-          ...(has("products.view_cost") ? [{ key: "c", label: "Avg Cost", num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} /> }] : []),
+          ...(has("products.view_cost")
+            ? [{ key: "c", label: "Avg Cost", num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} /> }]
+            : []),
           { key: "st", label: "Status", render: (r) => <StockStatus status={r.stock_status} /> },
           {
             key: "a",
@@ -161,7 +252,13 @@ export function InventoryPage() {
         ]}
       />
       {data ? <Pager total={data.total} limit={50} offset={offset} onChange={setOffset} /> : null}
-      {adjust ? <AdjustDialog product={adjust} onClose={() => setAdjust(null)} onDone={() => (setAdjust(null), void reload(), void counts.reload())} /> : null}
+      {adjust ? (
+        <AdjustDialog
+          product={adjust}
+          onClose={() => setAdjust(null)}
+          onDone={() => (setAdjust(null), void reload(), void counts.reload())}
+        />
+      ) : null}
     </div>
   );
 }
@@ -171,13 +268,25 @@ export function MovementsPage() {
   const [to, setTo] = useState(todayLocal());
   const [kind, setKind] = useState("");
   const [offset, setOffset] = useState(0);
-  const { data, loading, error } = useLoad(() => api.inventory.movements({ from, to, kind: kind || undefined, limit: 100, offset }), [from, to, kind, offset]);
+  const { data, loading, error } = useLoad(
+    () => api.inventory.movements({ from, to, kind: kind || undefined, limit: 100, offset }),
+    [from, to, kind, offset],
+  );
   return (
     <div>
-      <PageHeader title="Stock Movements" subtitle="The append-only ledger behind every stock level. Movements cannot be edited or deleted." />
+      <PageHeader
+        title="Stock Movements"
+        subtitle="The append-only ledger behind every stock level. Movements cannot be edited or deleted."
+      />
       <div className="filters">
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b), setOffset(0))} />
-        <select className="select" style={{ width: 160 }} value={kind} onChange={(e) => (setKind(e.target.value), setOffset(0))} aria-label="Movement type">
+        <select
+          className="select"
+          style={{ width: 160 }}
+          value={kind}
+          onChange={(e) => (setKind(e.target.value), setOffset(0))}
+          aria-label="Movement type"
+        >
           <option value="">All types</option>
           {["sale", "refund", "receive", "adjust", "stocktake", "opening"].map((k) => (
             <option key={k} value={k}>
@@ -195,7 +304,17 @@ export function MovementsPage() {
           { key: "t", label: "Time", render: (r) => formatShort(r.created_at) },
           { key: "p", label: "Product", render: (r) => r.product_name },
           { key: "k", label: "Type", render: (r) => <Chip>{r.kind}</Chip> },
-          { key: "q", label: "Qty Change", num: true, render: (r) => <span className={r.qty_delta_milli > 0 ? "pos-num" : "neg-num"}>{r.qty_delta_milli > 0 ? "+" : ""}{formatQty(r.qty_delta_milli)}</span> },
+          {
+            key: "q",
+            label: "Qty Change",
+            num: true,
+            render: (r) => (
+              <span className={r.qty_delta_milli > 0 ? "pos-num" : "neg-num"}>
+                {r.qty_delta_milli > 0 ? "+" : ""}
+                {formatQty(r.qty_delta_milli)}
+              </span>
+            ),
+          },
           { key: "b", label: "Balance", num: true, render: (r) => formatQty(r.balance_after_milli) },
           { key: "s", label: "Source", render: (r) => <span className="mono">{r.source_ref ?? r.source_type}</span> },
           { key: "r", label: "Reason", render: (r) => r.reason ?? "—" },
@@ -242,7 +361,21 @@ export function StocktakesPage() {
           {
             key: "st",
             label: "Status",
-            render: (r) => <Chip tone={r.status === "completed" ? "success" : r.status === "cancelled" ? "default" : r.status === "review" ? "warning" : "info"}>{r.status}</Chip>,
+            render: (r) => (
+              <Chip
+                tone={
+                  r.status === "completed"
+                    ? "success"
+                    : r.status === "cancelled"
+                      ? "default"
+                      : r.status === "review"
+                        ? "warning"
+                        : "info"
+                }
+              >
+                {r.status}
+              </Chip>
+            ),
           },
           { key: "e", label: "Products", num: true, render: (r) => r.line_count },
           { key: "cc", label: "Counted", num: true, render: (r) => r.counted_count },
@@ -262,7 +395,14 @@ export function StocktakesPage() {
                 className="right"
                 loading={act.busy}
                 onClick={async () => {
-                  const r = await act.run(() => api.stocktake.create({ name, scope_type: scope, category_id: scope === "category" ? cat : null, blind }));
+                  const r = await act.run(() =>
+                    api.stocktake.create({
+                      name,
+                      scope_type: scope,
+                      category_id: scope === "category" ? cat : null,
+                      blind,
+                    }),
+                  );
                   if (r) {
                     void reload();
                     nav(`/admin/stocktake/${r.stocktake_id}`);
@@ -292,8 +432,15 @@ export function StocktakesPage() {
                 ))}
               </select>
             ) : null}
-            <Checkbox label="Blind count (hide expected quantities while counting)" checked={blind} onChange={setBlind} />
-            <div className="tiny">Expected quantities are frozen now. Sales during counting are handled: each count is compared with the system quantity at the moment it is recorded.</div>
+            <Checkbox
+              label="Blind count (hide expected quantities while counting)"
+              checked={blind}
+              onChange={setBlind}
+            />
+            <div className="tiny">
+              Expected quantities are frozen now. Sales during counting are handled: each count is compared with the
+              system quantity at the moment it is recorded.
+            </div>
             {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
           </div>
         </Modal>
@@ -320,40 +467,86 @@ export function StocktakeDetailPage() {
   useEffect(() => scanRef.current?.focus(), [data?.status]);
   const lines = useMemo(() => {
     const l = data?.lines ?? [];
-    return l.filter((x) => (!onlyDiff || (x.variance_milli ?? 0) !== 0) && (!filter || x.name.toLowerCase().includes(filter.toLowerCase()) || x.sku.includes(filter) || (x.primary_barcode ?? "").includes(filter)));
+    return l.filter(
+      (x) =>
+        (!onlyDiff || (x.variance_milli ?? 0) !== 0) &&
+        (!filter ||
+          x.name.toLowerCase().includes(filter.toLowerCase()) ||
+          x.sku.includes(filter) ||
+          (x.primary_barcode ?? "").includes(filter)),
+    );
   }, [data, onlyDiff, filter]);
   if (error) return <Banner tone="danger">{error}</Banner>;
   if (!data) return <Skeleton rows={10} />;
   const record = async (productId: string | null, barcode: string | null, q: number, m: "add" | "set") => {
-    const line = await act.run(() => api.stocktake.count({ stocktake_id: data.stocktake_id, product_id: productId ?? undefined, barcode: barcode ?? undefined, qty_milli: q, mode: m }));
+    const line = await act.run(() =>
+      api.stocktake.count({
+        stocktake_id: data.stocktake_id,
+        product_id: productId ?? undefined,
+        barcode: barcode ?? undefined,
+        qty_milli: q,
+        mode: m,
+      }),
+    );
     if (line) {
       setLast(`${line.name}: counted ${formatQty(line.counted_qty_milli ?? 0)}`);
-      setData({ ...data, counted_count: data.counted_count + (data.lines.find((x) => x.product_id === line.product_id)?.counted_qty_milli === null ? 1 : 0), lines: data.lines.map((x) => (x.product_id === line.product_id ? line : x)) });
+      setData({
+        ...data,
+        counted_count:
+          data.counted_count +
+          (data.lines.find((x) => x.product_id === line.product_id)?.counted_qty_milli === null ? 1 : 0),
+        lines: data.lines.map((x) => (x.product_id === line.product_id ? line : x)),
+      });
     }
   };
   const counting = data.status === "counting";
   return (
     <div>
       <div className="page-header">
-        <Button variant="ghost" icon={<ArrowLeft size={18} />} aria-label="Back" onClick={() => nav("/admin/stocktake")} />
+        <Button
+          variant="ghost"
+          icon={<ArrowLeft size={18} />}
+          aria-label="Back"
+          onClick={() => nav("/admin/stocktake")}
+        />
         <div className="grow">
           <div className="tiny">Stocktake {data.stocktake_number}</div>
           <h1>{data.name}</h1>
         </div>
         <Chip tone={data.status === "completed" ? "success" : "info"}>{data.status}</Chip>
         {counting ? (
-          <Button onClick={async () => (await act.run(() => api.stocktake.setStatus(data.stocktake_id, "review")), void reload())}>Finish counting</Button>
+          <Button
+            onClick={async () => (
+              await act.run(() => api.stocktake.setStatus(data.stocktake_id, "review")),
+              void reload()
+            )}
+          >
+            Finish counting
+          </Button>
         ) : null}
         {data.status === "review" ? (
           <>
-            <Button onClick={async () => (await act.run(() => api.stocktake.setStatus(data.stocktake_id, "counting")), void reload())}>Back to counting</Button>
+            <Button
+              onClick={async () => (
+                await act.run(() => api.stocktake.setStatus(data.stocktake_id, "counting")),
+                void reload()
+              )}
+            >
+              Back to counting
+            </Button>
             <Button variant="primary" icon={<CheckCircle2 size={16} />} onClick={() => setFinalize(true)}>
               Finalize
             </Button>
           </>
         ) : null}
         {counting || data.status === "review" ? (
-          <Button variant="danger-outline" onClick={async () => (await act.run(() => api.stocktake.setStatus(data.stocktake_id, "cancelled")), void reload())}>
+          <Button
+            variant="danger-outline"
+            onClick={async () => (
+              await act.run(() => api.stocktake.setStatus(data.stocktake_id, "cancelled")),
+              void reload()
+            )}
+          >
             Cancel stocktake
           </Button>
         ) : null}
@@ -377,7 +570,9 @@ export function StocktakeDetailPage() {
             </div>
             <div className="card kpi">
               <div className="k-label">Net variance value</div>
-              <div className={`k-value ${(data.variance_value_minor ?? 0) < 0 ? "neg-num" : ""}`}>{formatMoney(data.variance_value_minor)}</div>
+              <div className={`k-value ${(data.variance_value_minor ?? 0) < 0 ? "neg-num" : ""}`}>
+                {formatMoney(data.variance_value_minor)}
+              </div>
             </div>
           </>
         ) : null}
@@ -402,17 +597,35 @@ export function StocktakeDetailPage() {
               aria-label="Scan to count"
             />
           </div>
-          <select className="select" style={{ width: 150 }} value={mode} onChange={(e) => setMode(e.target.value as "add" | "set")} aria-label="Count mode">
+          <select
+            className="select"
+            style={{ width: 150 }}
+            value={mode}
+            onChange={(e) => setMode(e.target.value as "add" | "set")}
+            aria-label="Count mode"
+          >
             <option value="add">Add to count</option>
             <option value="set">Set count</option>
           </select>
-          <input className="input num" style={{ width: 90 }} value={qty} onChange={(e) => setQty(e.target.value)} aria-label="Quantity per scan" />
+          <input
+            className="input num"
+            style={{ width: 90 }}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            aria-label="Quantity per scan"
+          />
         </div>
       ) : null}
       {last ? <Banner tone="success">{last}</Banner> : null}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="filters">
-        <input className="input" style={{ width: 260 }} placeholder="Filter products…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input
+          className="input"
+          style={{ width: 260 }}
+          placeholder="Filter products…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
         <Checkbox label="Only differences" checked={onlyDiff} onChange={setOnlyDiff} />
       </div>
       <DataTable
@@ -422,7 +635,13 @@ export function StocktakeDetailPage() {
         columns={[
           { key: "n", label: "Product", render: (r) => r.name, sort: (r) => r.name },
           { key: "b", label: "Barcode", render: (r) => <span className="mono">{r.primary_barcode ?? r.sku}</span> },
-          { key: "e", label: "Expected", num: true, render: (r) => (r.expected_qty_milli === null ? <span className="muted">hidden</span> : formatQty(r.expected_qty_milli)) },
+          {
+            key: "e",
+            label: "Expected",
+            num: true,
+            render: (r) =>
+              r.expected_qty_milli === null ? <span className="muted">hidden</span> : formatQty(r.expected_qty_milli),
+          },
           {
             key: "c",
             label: "Counted",
@@ -450,7 +669,15 @@ export function StocktakeDetailPage() {
             key: "v",
             label: "Variance",
             num: true,
-            render: (r) => (r.variance_milli === null ? "—" : <span className={r.variance_milli < 0 ? "neg-num" : r.variance_milli > 0 ? "pos-num" : ""}>{r.variance_milli > 0 ? "+" : ""}{formatQty(r.variance_milli)}</span>),
+            render: (r) =>
+              r.variance_milli === null ? (
+                "—"
+              ) : (
+                <span className={r.variance_milli < 0 ? "neg-num" : r.variance_milli > 0 ? "pos-num" : ""}>
+                  {r.variance_milli > 0 ? "+" : ""}
+                  {formatQty(r.variance_milli)}
+                </span>
+              ),
             sort: (r) => r.variance_milli ?? 0,
           },
           { key: "t", label: "Counted at", render: (r) => formatShort(r.counted_at) },
@@ -472,8 +699,9 @@ export function StocktakeDetailPage() {
             }
           }}
         >
-          {data.counted_count} counted product(s) will be adjusted to their counted quantities. {data.line_count - data.counted_count} uncounted product(s) will not change. This creates stock movements
-          and cannot be undone.
+          {data.counted_count} counted product(s) will be adjusted to their counted quantities.{" "}
+          {data.line_count - data.counted_count} uncounted product(s) will not change. This creates stock movements and
+          cannot be undone.
         </Confirm>
       ) : null}
     </div>
@@ -502,7 +730,14 @@ export function ReceivingPage() {
   const openPos = (pos.data ?? []).filter((p) => p.status === "ordered" || p.status === "partially_received");
   useEffect(() => {
     if (!scan.trim()) return setResults([]);
-    const t = setTimeout(() => api.pos.search(scan, { limit: 8 }).then(setResults).catch(() => {}), 150);
+    const t = setTimeout(
+      () =>
+        api.pos
+          .search(scan, { limit: 8 })
+          .then(setResults)
+          .catch(() => {}),
+      150,
+    );
     return () => clearTimeout(t);
   }, [scan]);
   const add = (p: PosSearchRow) => {
@@ -531,7 +766,11 @@ export function ReceivingPage() {
           <table className="table">
             <tbody>
               {openPos.map((p) => (
-                <tr key={p.po_id} className="clickable" onClick={() => nav(`/admin/purchase-orders/${p.po_id}?receive=1`)}>
+                <tr
+                  key={p.po_id}
+                  className="clickable"
+                  onClick={() => nav(`/admin/purchase-orders/${p.po_id}?receive=1`)}
+                >
                   <td className="mono">{p.po_number}</td>
                   <td>{p.supplier_name}</td>
                   <td>{p.expected_at ?? "—"}</td>
@@ -560,7 +799,11 @@ export function ReceivingPage() {
               ))}
             </select>
           </Field>
-          <TextInput label="Invoice / delivery reference" value={reference} onChange={(e) => setReference(e.target.value)} />
+          <TextInput
+            label="Invoice / delivery reference"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+          />
         </div>
         <div style={{ position: "relative" }}>
           <div className="scan-box">
@@ -607,14 +850,33 @@ export function ReceivingPage() {
                   <tr key={l.product.product_id}>
                     <td>{l.product.name}</td>
                     <td className="num">
-                      <input className="input num" style={{ width: 100 }} value={l.qty} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} aria-label="Quantity" />
+                      <input
+                        className="input num"
+                        style={{ width: 100 }}
+                        value={l.qty}
+                        onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))}
+                        aria-label="Quantity"
+                      />
                     </td>
                     <td className="num">
-                      <input className="input num" style={{ width: 110 }} value={l.cost} placeholder={formatAmount(0)} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))} aria-label="Unit cost" />
+                      <input
+                        className="input num"
+                        style={{ width: 110 }}
+                        value={l.cost}
+                        placeholder={formatAmount(0)}
+                        onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))}
+                        aria-label="Unit cost"
+                      />
                     </td>
                     <td className="num">{q !== null && c !== null ? formatMoney(Math.round((c * q) / 1000)) : "—"}</td>
                     <td className="num">
-                      <Button size="sm" variant="ghost" aria-label="Remove" icon={<Trash2 size={14} />} onClick={() => setLines(lines.filter((_, j) => j !== i))} />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label="Remove"
+                        icon={<Trash2 size={14} />}
+                        onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                      />
                     </td>
                   </tr>
                 );
@@ -642,7 +904,11 @@ export function ReceivingPage() {
                   supplier_id: supplier || null,
                   reference: reference || null,
                   operation_id: opId,
-                  lines: lines.map((l) => ({ product_id: l.product.product_id, qty_milli: parseQty(l.qty)!, unit_cost_minor: parseMoney(l.cost)! })),
+                  lines: lines.map((l) => ({
+                    product_id: l.product.product_id,
+                    qty_milli: parseQty(l.qty)!,
+                    unit_cost_minor: parseMoney(l.cost)!,
+                  })),
                 }),
               );
               if (r) {
@@ -660,4 +926,3 @@ export function ReceivingPage() {
     </div>
   );
 }
-

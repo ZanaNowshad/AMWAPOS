@@ -37,7 +37,9 @@ export function DeliveryDesk() {
       </header>
       <div className="content">
         {error ? <Banner tone="danger">{error}</Banner> : null}
-        {rows.length === 0 ? <Empty title="No deliveries assigned">New deliveries appear here when a manager assigns them to you.</Empty> : null}
+        {rows.length === 0 ? (
+          <Empty title="No deliveries assigned">New deliveries appear here when a manager assigns them to you.</Empty>
+        ) : null}
         <div className="col">
           {rows.map((d) => (
             <div key={d.delivery_id} className="card card-pad row">
@@ -46,10 +48,17 @@ export function DeliveryDesk() {
                   {d.delivery_number} · {d.customer_name ?? "Customer"}
                 </div>
                 <div className="small muted">
-                  {[d.area, d.address].filter(Boolean).join(", ")} · {d.phone ?? "no phone"} · {formatShort(d.created_at)}
+                  {[d.area, d.address].filter(Boolean).join(", ")} · {d.phone ?? "no phone"} ·{" "}
+                  {formatShort(d.created_at)}
                 </div>
               </div>
-              <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>{d.payment_status === "cod" ? "Cash on delivery" : d.payment_status === "paid" ? "Paid" : "Payment pending"}</Chip>
+              <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>
+                {d.payment_status === "cod"
+                  ? "Cash on delivery"
+                  : d.payment_status === "paid"
+                    ? "Paid"
+                    : "Payment pending"}
+              </Chip>
               <span className="money">{formatMoney(d.amount_minor)}</span>
               <Chip tone="info">{d.status}</Chip>
               {next[d.status] ? (

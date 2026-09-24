@@ -75,17 +75,8 @@ pub type AppResult<T> = Result<T, AppError>;
 
 impl AppError {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        let retryable = matches!(
-            code,
-            ErrorCode::DatabaseBusy | ErrorCode::OperationInProgress | ErrorCode::Sync
-        );
-        Self {
-            code,
-            message: message.into(),
-            data_changed: false,
-            retryable,
-            details: None,
-        }
+        let retryable = matches!(code, ErrorCode::DatabaseBusy | ErrorCode::OperationInProgress | ErrorCode::Sync);
+        Self { code, message: message.into(), data_changed: false, retryable, details: None }
     }
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
         self.details = Some(details);
@@ -98,11 +89,8 @@ impl AppError {
         Self::new(ErrorCode::NotFound, format!("{} was not found.", what.into()))
     }
     pub fn forbidden(permission: &str) -> Self {
-        Self::new(
-            ErrorCode::Forbidden,
-            "You do not have permission to perform this action.",
-        )
-        .with_details(serde_json::json!({ "permission": permission }))
+        Self::new(ErrorCode::Forbidden, "You do not have permission to perform this action.")
+            .with_details(serde_json::json!({ "permission": permission }))
     }
     pub fn approval_required(permission: &str, summary: impl Into<String>) -> Self {
         Self::new(ErrorCode::ApprovalRequired, "Manager approval required.")
@@ -125,10 +113,7 @@ impl From<rusqlite::Error> for AppError {
         if let rusqlite::Error::SqliteFailure(f, ref msg) = e {
             match f.code {
                 C::DatabaseBusy | C::DatabaseLocked => {
-                    return AppError::new(
-                        ErrorCode::DatabaseBusy,
-                        "The database is busy. No changes were recorded; please try again.",
-                    )
+                    return AppError::new(ErrorCode::DatabaseBusy, "The database is busy. No changes were recorded; please try again.")
                 }
                 C::DatabaseCorrupt | C::NotADatabase => {
                     return AppError::new(
@@ -143,12 +128,7 @@ impl From<rusqlite::Error> for AppError {
                     }
                     return AppError::validation(format!("Data constraint violated ({m})."));
                 }
-                C::DiskFull => {
-                    return AppError::new(
-                        ErrorCode::InsufficientDisk,
-                        "The disk is full. No changes were recorded.",
-                    )
-                }
+                C::DiskFull => return AppError::new(ErrorCode::InsufficientDisk, "The disk is full. No changes were recorded."),
                 _ => {}
             }
         }

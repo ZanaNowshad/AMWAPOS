@@ -37,20 +37,29 @@ fn complete_sale_with_change_and_stock() {
     assert_eq!(cart.totals.tax_minor, 68 + 77);
     let sale = e
         .core
-        .pos_finalize(t, FinalizeRequest {
-            cart_id: cart.cart_id.clone().unwrap(),
-            operation_id: op(),
-            tenders: vec![cash(5000)],
-            approval_token: None,
-            expected_total_minor: Some(1600),
-        })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.clone().unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(5000)],
+                approval_token: None,
+                expected_total_minor: Some(1600),
+            },
+        )
         .unwrap();
     assert_eq!(sale.total_minor, 1600);
     assert_eq!(sale.change_minor, 3400);
     assert!(sale.receipt_number.starts_with("T01-"));
     assert_eq!(sale.print.as_ref().unwrap().status, "disabled");
     // Stock ledger
-    assert_eq!(count(&e, "SELECT qty_milli FROM stock_levels s JOIN product_barcodes b ON b.product_id=s.product_id WHERE b.barcode='06291100001234'"), 47_000);
+    assert_eq!(
+        count(
+            &e,
+            "SELECT qty_milli FROM stock_levels s JOIN product_barcodes b ON b.product_id=s.product_id WHERE b.barcode='06291100001234'"
+        ),
+        47_000
+    );
     assert_eq!(count(&e, "SELECT COUNT(*) FROM stock_movements WHERE type='sale'"), 2);
     // Cart is empty afterwards
     assert!(e.core.pos_get_cart(t).unwrap().lines.is_empty());
@@ -107,15 +116,51 @@ fn split_tender_and_validation() {
     e.open_shift(t, 0);
     let cart = e.core.pos_scan(t, "222", None).unwrap().cart;
     let cid = cart.cart_id.unwrap();
-    let over = e.core.pos_finalize(t, FinalizeRequest { cart_id: cid.clone(), operation_id: op(), tenders: vec![card(20_000)], approval_token: None, expected_total_minor: None });
+    let over = e.core.pos_finalize(
+        t,
+        FinalizeRequest {
+            cart_id: cid.clone(),
+            operation_id: op(),
+            tenders: vec![card(20_000)],
+            approval_token: None,
+            expected_total_minor: None,
+        },
+    );
     assert_eq!(over.unwrap_err().code, ErrorCode::Validation, "card cannot be over-tendered");
-    let short = e.core.pos_finalize(t, FinalizeRequest { cart_id: cid.clone(), operation_id: op(), tenders: vec![cash(10_000)], approval_token: None, expected_total_minor: None });
+    let short = e.core.pos_finalize(
+        t,
+        FinalizeRequest {
+            cart_id: cid.clone(),
+            operation_id: op(),
+            tenders: vec![cash(10_000)],
+            approval_token: None,
+            expected_total_minor: None,
+        },
+    );
     assert_eq!(short.unwrap_err().code, ErrorCode::Validation);
-    let stale = e.core.pos_finalize(t, FinalizeRequest { cart_id: cid.clone(), operation_id: op(), tenders: vec![cash(20_000)], approval_token: None, expected_total_minor: Some(1) });
+    let stale = e.core.pos_finalize(
+        t,
+        FinalizeRequest {
+            cart_id: cid.clone(),
+            operation_id: op(),
+            tenders: vec![cash(20_000)],
+            approval_token: None,
+            expected_total_minor: Some(1),
+        },
+    );
     assert_eq!(stale.unwrap_err().code, ErrorCode::Conflict);
     let s = e
         .core
-        .pos_finalize(t, FinalizeRequest { cart_id: cid, operation_id: op(), tenders: vec![cash(10_000), card(8_450)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cid,
+                operation_id: op(),
+                tenders: vec![cash(10_000), card(8_450)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     assert_eq!(s.change_minor, 0);
     assert_eq!(s.payments.len(), 2);
@@ -186,7 +231,13 @@ fn negative_stock_blocked_unless_approved() {
     e.open_shift(&ct, 0);
     e.core.pos_scan(&ct, "444", None).unwrap();
     let cart = e.core.pos_scan(&ct, "444", None).unwrap().cart;
-    let req = FinalizeRequest { cart_id: cart.cart_id.clone().unwrap(), operation_id: op(), tenders: vec![cash(2_400)], approval_token: None, expected_total_minor: None };
+    let req = FinalizeRequest {
+        cart_id: cart.cart_id.clone().unwrap(),
+        operation_id: op(),
+        tenders: vec![cash(2_400)],
+        approval_token: None,
+        expected_total_minor: None,
+    };
     let err = e.core.pos_finalize(&ct, req.clone()).unwrap_err();
     assert_eq!(err.code, ErrorCode::InsufficientStock);
     assert_eq!(count(&e, "SELECT COUNT(*) FROM sales"), 0);
@@ -231,7 +282,16 @@ fn refunds_are_bounded_exact_and_idempotent() {
     assert_eq!(cart.totals.total_minor, 2_900);
     let sale = e
         .core
-        .pos_finalize(t, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(3_000)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(3_000)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     let detail = e.core.sale_get(t, &sale.sale_id).unwrap();
     let item = detail.items[0].sale_item_id.clone();
@@ -271,7 +331,16 @@ fn cashier_refund_needs_manager() {
     let cart = e.core.pos_scan(&ct, "777", None).unwrap().cart;
     let sale = e
         .core
-        .pos_finalize(&ct, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(700)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            &ct,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(700)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     let d = e.core.refund_lookup(&ct, &sale.receipt_number).unwrap();
     let req = RefundRequest {
@@ -300,15 +369,39 @@ fn shift_reconciliation_and_cash_idempotency() {
     for _ in 0..3 {
         let cart = e.core.pos_scan(&ct, "888", None).unwrap().cart;
         e.core
-            .pos_finalize(&ct, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(5_000)], approval_token: None, expected_total_minor: None })
+            .pos_finalize(
+                &ct,
+                FinalizeRequest {
+                    cart_id: cart.cart_id.unwrap(),
+                    operation_id: op(),
+                    tenders: vec![cash(5_000)],
+                    approval_token: None,
+                    expected_total_minor: None,
+                },
+            )
             .unwrap();
     }
     let cart = e.core.pos_scan(&ct, "888", None).unwrap().cart;
     e.core
-        .pos_finalize(&ct, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![card(2_000)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            &ct,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![card(2_000)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     // Cashier lacks paid-out permission -> approval required.
-    let po = CashEventRequest { kind: "paid_out".into(), amount_minor: 1_500, reason: "Cleaning supplies".into(), operation_id: op(), approval_token: None };
+    let po = CashEventRequest {
+        kind: "paid_out".into(),
+        amount_minor: 1_500,
+        reason: "Cleaning supplies".into(),
+        operation_id: op(),
+        approval_token: None,
+    };
     assert_eq!(e.core.cash_event(&ct, po.clone()).unwrap_err().code, ErrorCode::ApprovalRequired);
     let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "cash.paid_out", "paid out").unwrap();
     let mut po_ok = po;
@@ -338,7 +431,16 @@ fn shift_reconciliation_and_cash_idempotency() {
     let cart = e.core.pos_scan(&ct, "888", None).unwrap().cart;
     let err = e
         .core
-        .pos_finalize(&ct, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(2_000)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            &ct,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(2_000)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::ShiftRequired);
 }
@@ -356,7 +458,16 @@ fn printer_failure_never_undoes_a_sale() {
     let cart = e.core.pos_scan(t, "999", None).unwrap().cart;
     let sale = e
         .core
-        .pos_finalize(t, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(300)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(300)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     let pr = sale.print.unwrap();
     assert_eq!(pr.status, "failed");
@@ -415,18 +526,39 @@ fn stocktake_counts_relative_to_count_time() {
     e.open_shift(t, 0);
     let st = e
         .core
-        .stocktake_create(t, serde_json::from_value(serde_json::json!({ "name": "Weekly", "scope_type": "products", "product_ids": [pid] })).unwrap())
+        .stocktake_create(
+            t,
+            serde_json::from_value(serde_json::json!({ "name": "Weekly", "scope_type": "products", "product_ids": [pid] })).unwrap(),
+        )
         .unwrap();
     // A sale before counting: system 9, physical 9 -> counted 8 means 1 missing.
     let cart = e.core.pos_scan(t, "131", None).unwrap().cart;
     e.core
-        .pos_finalize(t, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(900)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(900)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     e.core.stocktake_count(t, &st.header.stocktake_id, None, Some("131".into()), 8_000, "set").unwrap();
     // A sale after counting must not be double counted.
     let cart = e.core.pos_scan(t, "131", None).unwrap().cart;
     e.core
-        .pos_finalize(t, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![cash(900)], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(900)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     e.core.stocktake_set_status(t, &st.header.stocktake_id, "review").unwrap();
     let r = e.core.stocktake_finalize(t, &st.header.stocktake_id, &op()).unwrap();

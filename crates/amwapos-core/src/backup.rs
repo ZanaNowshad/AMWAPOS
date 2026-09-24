@@ -89,8 +89,20 @@ pub struct Inspection {
 }
 
 const COUNTED: &[&str] = &[
-    "products", "product_barcodes", "sales", "sale_items", "payments", "refunds", "stock_movements", "cash_events", "shifts", "customers",
-    "suppliers", "purchase_orders", "users", "audit_logs",
+    "products",
+    "product_barcodes",
+    "sales",
+    "sale_items",
+    "payments",
+    "refunds",
+    "stock_movements",
+    "cash_events",
+    "shifts",
+    "customers",
+    "suppliers",
+    "purchase_orders",
+    "users",
+    "audit_logs",
 ];
 
 fn record_counts(c: &Connection) -> AppResult<serde_json::Map<String, serde_json::Value>> {
@@ -117,15 +129,11 @@ pub fn inspect_file(path: &Path, current_business: Option<&str>) -> AppResult<In
     let mut problems = vec![];
     let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
         .map_err(|e| AppError::validation(format!("This file is not a readable AMWAPOS backup: {e}")))?;
-    let integrity: String = conn
-        .query_row("PRAGMA integrity_check", [], |r| r.get(0))
-        .unwrap_or_else(|e| format!("unreadable: {e}"));
+    let integrity: String = conn.query_row("PRAGMA integrity_check", [], |r| r.get(0)).unwrap_or_else(|e| format!("unreadable: {e}"));
     if integrity != "ok" {
         problems.push(format!("Integrity check failed: {integrity}"));
     }
-    let schema: i64 = conn
-        .query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))
-        .unwrap_or(0);
+    let schema: i64 = conn.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0)).unwrap_or(0);
     if schema == 0 {
         problems.push("This file does not contain an AMWAPOS database.".into());
     }
@@ -179,7 +187,8 @@ impl AppCore {
             Some(d) => d,
             None => self.db.read(|c| self.backup_dir(c))?,
         };
-        std::fs::create_dir_all(&dir).map_err(|e| AppError::new(ErrorCode::Io, format!("Cannot create backup folder {}: {e}", dir.display())))?;
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| AppError::new(ErrorCode::Io, format!("Cannot create backup folder {}: {e}", dir.display())))?;
         let db_size = std::fs::metadata(self.db.path()).map(|m| m.len()).unwrap_or(0)
             + std::fs::metadata(self.db.path().with_extension("db-wal")).map(|m| m.len()).unwrap_or(0);
         if let Some(free) = free_space(&dir) {
@@ -198,7 +207,8 @@ impl AppCore {
         }
         let (code, bname, bid) = self.db.read(|c| {
             let code: Option<String> = c.query_row("SELECT code FROM branches LIMIT 1", [], |r| r.get(0)).optional()?;
-            let b: Option<(String, String)> = c.query_row("SELECT name, business_id FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
+            let b: Option<(String, String)> =
+                c.query_row("SELECT name, business_id FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
             Ok((code, b.as_ref().map(|x| x.0.clone()), b.map(|x| x.1)))
         })?;
         let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
@@ -220,7 +230,10 @@ impl AppCore {
             std::fs::rename(&tmp, &file)?;
             let insp = inspect_file(&file, None)?;
             if !insp.ok {
-                return Err(AppError::new(ErrorCode::Database, format!("The new backup failed verification: {}", insp.problems.join("; "))));
+                return Err(AppError::new(
+                    ErrorCode::Database,
+                    format!("The new backup failed verification: {}", insp.problems.join("; ")),
+                ));
             }
             let m = BackupManifest {
                 format: "amwapos-sqlite-v1".into(),
@@ -285,7 +298,15 @@ impl AppCore {
         let row = self.backup_create_internal(dir, "manual", Some(&s.user_id))?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
-            audit::record(tx, &actor, "backup.created", "backup", row.backup_id.as_deref(), None, Some(&json!({ "path": row.path, "size_bytes": row.size_bytes })))?;
+            audit::record(
+                tx,
+                &actor,
+                "backup.created",
+                "backup",
+                row.backup_id.as_deref(),
+                None,
+                Some(&json!({ "path": row.path, "size_bytes": row.size_bytes })),
+            )?;
             Ok(())
         })?;
         Ok(row)
@@ -344,10 +365,7 @@ impl AppCore {
         }
         let last_ok = rows.iter().filter(|r| r.status == "completed" && r.kind != "external").map(|r| r.created_at.clone()).max();
         let next = if cfg.automatic {
-            last_ok
-                .as_ref()
-                .and_then(|l| time::parse(l).ok())
-                .map(|t| time::fmt(t + chrono::Duration::hours(cfg.interval_hours)))
+            last_ok.as_ref().and_then(|l| time::parse(l).ok()).map(|t| time::fmt(t + chrono::Duration::hours(cfg.interval_hours)))
         } else {
             None
         };
@@ -360,7 +378,8 @@ impl AppCore {
     pub fn backup_inspect(&self, token: &str, path: &str) -> AppResult<Inspection> {
         let s = self.session(token)?;
         s.require("backup.manage")?;
-        let bid: Option<String> = self.db.read(|c| Ok(c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get(0)).optional()?))?;
+        let bid: Option<String> =
+            self.db.read(|c| Ok(c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get(0)).optional()?))?;
         inspect_file(Path::new(path), bid.as_deref())
     }
 
@@ -370,11 +389,13 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("backup.restore")?;
         let started = Instant::now();
-        let bid: Option<String> = self.db.read(|c| Ok(c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get(0)).optional()?))?;
+        let bid: Option<String> =
+            self.db.read(|c| Ok(c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get(0)).optional()?))?;
         let src_path = PathBuf::from(path);
         let insp = inspect_file(&src_path, bid.as_deref())?;
         if !insp.ok || !insp.compatible {
-            return Err(AppError::validation(format!("This backup cannot be restored: {}", insp.problems.join("; "))).with_details(serde_json::to_value(&insp)?));
+            return Err(AppError::validation(format!("This backup cannot be restored: {}", insp.problems.join("; ")))
+                .with_details(serde_json::to_value(&insp)?));
         }
         if !insp.same_business && !acknowledge_different_business {
             return Err(AppError::conflict(format!(
@@ -385,7 +406,10 @@ impl AppCore {
         if let Some(free) = free_space(&self.data_dir) {
             let need = insp.size_bytes * 2 + 10 * 1024 * 1024;
             if free < need {
-                return Err(AppError::new(ErrorCode::InsufficientDisk, format!("Not enough free space to restore safely: {:.1} MB needed.", need as f64 / 1_048_576.0)));
+                return Err(AppError::new(
+                    ErrorCode::InsufficientDisk,
+                    format!("Not enough free space to restore safely: {:.1} MB needed.", need as f64 / 1_048_576.0),
+                ));
             }
         }
         let safety = self.backup_create_internal(Some(self.data_dir.join("backups").join("safety")), "safety", Some(&s.user_id))?;
@@ -397,7 +421,12 @@ impl AppCore {
                 let b = rusqlite::backup::Backup::new(&src, w)?;
                 match b.step(-1)? {
                     rusqlite::backup::StepResult::Done => {}
-                    other => return Err(AppError::new(ErrorCode::DatabaseBusy, format!("Restore did not complete ({other:?}). No changes were made."))),
+                    other => {
+                        return Err(AppError::new(
+                            ErrorCode::DatabaseBusy,
+                            format!("Restore did not complete ({other:?}). No changes were made."),
+                        ))
+                    }
                 }
             }
             w.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
@@ -474,8 +503,10 @@ impl AppCore {
         let (last_ok, last_fail, cfg): (Option<String>, Option<(String, String)>, BackupSettings) = self.db.read(|c| {
             Ok((
                 c.query_row("SELECT MAX(created_at) FROM backups WHERE status='completed' AND kind<>'safety'", [], |r| r.get(0))?,
-                c.query_row("SELECT created_at, error FROM backups WHERE status='failed' ORDER BY created_at DESC LIMIT 1", [], |r| Ok((r.get(0)?, r.get::<_, Option<String>>(1)?.unwrap_or_default())))
-                    .optional()?,
+                c.query_row("SELECT created_at, error FROM backups WHERE status='failed' ORDER BY created_at DESC LIMIT 1", [], |r| {
+                    Ok((r.get(0)?, r.get::<_, Option<String>>(1)?.unwrap_or_default()))
+                })
+                .optional()?,
                 settings::get(c, settings::KEY_BACKUP)?,
             ))
         })?;
@@ -487,7 +518,10 @@ impl AppCore {
             component: "Backup".into(),
             state: if last_ok.is_none() || stale { "warning".into() } else { "ok".into() },
             summary: match &last_ok {
-                Some(t) => format!("Last successful backup {}", time::display(t, &self.db.read(|c| self.store_timezone(c)).unwrap_or_else(|_| "Asia/Bahrain".into()))),
+                Some(t) => format!(
+                    "Last successful backup {}",
+                    time::display(t, &self.db.read(|c| self.store_timezone(c)).unwrap_or_else(|_| "Asia/Bahrain".into()))
+                ),
                 None => "No successful backup yet".into(),
             },
             details: json!({ "last_success_at": last_ok, "last_failure": last_fail, "automatic": cfg.automatic, "interval_hours": cfg.interval_hours, "directory": cfg.directory }),

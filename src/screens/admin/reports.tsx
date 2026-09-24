@@ -61,13 +61,24 @@ export function fmtCell(c: ReportColumn, v: unknown): string {
 }
 
 function fmtKpi(kind: string, v: number): string {
-  return kind === "money" ? formatMoney(v) : kind === "qty" ? formatQty(v) : kind === "percent_bp" ? formatPercent(v) : v.toLocaleString("en");
+  return kind === "money"
+    ? formatMoney(v)
+    : kind === "qty"
+      ? formatQty(v)
+      : kind === "percent_bp"
+        ? formatPercent(v)
+        : v.toLocaleString("en");
 }
 
 export function ReportViewer() {
   const { key } = useParams();
   const nav = useNavigate();
-  const [params, setParams] = useState<ReportParams>({ from: todayLocal(), to: todayLocal(), group_by: key === "sales" ? "hour" : undefined, days: 60 });
+  const [params, setParams] = useState<ReportParams>({
+    from: todayLocal(),
+    to: todayLocal(),
+    group_by: key === "sales" ? "hour" : undefined,
+    days: 60,
+  });
   const [report, setReport] = useState<Report | null>(null);
   const act = useAction();
   const run = async (p = params) => {
@@ -82,7 +93,12 @@ export function ReportViewer() {
   return (
     <div>
       <div className="page-header">
-        <Button variant="ghost" icon={<ArrowLeft size={18} />} aria-label="Back" onClick={() => nav("/admin/reports")} />
+        <Button
+          variant="ghost"
+          icon={<ArrowLeft size={18} />}
+          aria-label="Back"
+          onClick={() => nav("/admin/reports")}
+        />
         <div className="grow">
           <div className="tiny">Reports</div>
           <h1>{report?.title ?? "Report"}</h1>
@@ -102,9 +118,21 @@ export function ReportViewer() {
         </Button>
       </div>
       <div className="card card-pad filters" style={{ marginBottom: 16 }}>
-        {!noDates ? <DateRange from={params.from!} to={params.to!} onChange={(a, b) => setParams({ ...params, from: a, to: b })} /> : null}
+        {!noDates ? (
+          <DateRange
+            from={params.from!}
+            to={params.to!}
+            onChange={(a, b) => setParams({ ...params, from: a, to: b })}
+          />
+        ) : null}
         {key === "sales" ? (
-          <select className="select" style={{ width: 150 }} value={params.group_by} onChange={(e) => setParams({ ...params, group_by: e.target.value })} aria-label="Group by">
+          <select
+            className="select"
+            style={{ width: 150 }}
+            value={params.group_by}
+            onChange={(e) => setParams({ ...params, group_by: e.target.value })}
+            aria-label="Group by"
+          >
             <option value="hour">By hour</option>
             <option value="day">By day</option>
             <option value="weekday">By weekday</option>
@@ -115,7 +143,12 @@ export function ReportViewer() {
         {key === "dead_stock" ? (
           <label className="row small">
             No sales in the last
-            <input className="input num" style={{ width: 80 }} value={params.days ?? 60} onChange={(e) => setParams({ ...params, days: Number(e.target.value.replace(/\D/g, "")) || 60 })} />
+            <input
+              className="input num"
+              style={{ width: 80 }}
+              value={params.days ?? 60}
+              onChange={(e) => setParams({ ...params, days: Number(e.target.value.replace(/\D/g, "")) || 60 })}
+            />
             days
           </label>
         ) : null}
@@ -133,13 +166,18 @@ export function ReportViewer() {
               <div key={k.label} className="card kpi">
                 <div className="k-label">{k.label}</div>
                 <div className="k-value">{fmtKpi(k.kind, k.value)}</div>
-                {k.previous !== null ? <div className="k-delta muted">Previous period: {fmtKpi(k.kind, k.previous)}</div> : null}
+                {k.previous !== null ? (
+                  <div className="k-delta muted">Previous period: {fmtKpi(k.kind, k.previous)}</div>
+                ) : null}
               </div>
             ))}
           </div>
           {report.series && report.series.length > 1 ? (
             <div className="card card-pad">
-              <BarChart label={report.title} data={report.series.map((s) => ({ label: String(s.label), value: Number(s.value) }))} />
+              <BarChart
+                label={report.title}
+                data={report.series.map((s) => ({ label: String(s.label), value: Number(s.value) }))}
+              />
             </div>
           ) : null}
           {report.notes.map((n) => (
@@ -153,7 +191,10 @@ export function ReportViewer() {
                 <thead>
                   <tr>
                     {report.columns.map((c) => (
-                      <th key={c.key} className={c.kind !== "text" && c.kind !== "datetime" && c.kind !== "date" ? "num" : ""}>
+                      <th
+                        key={c.key}
+                        className={c.kind !== "text" && c.kind !== "datetime" && c.kind !== "date" ? "num" : ""}
+                      >
                         {c.label}
                       </th>
                     ))}
@@ -166,7 +207,10 @@ export function ReportViewer() {
                         const v = r[c.key];
                         const neg = (c.key === "profit" || c.key === "variance") && typeof v === "number" && v < 0;
                         return (
-                          <td key={c.key} className={`${c.kind !== "text" && c.kind !== "datetime" && c.kind !== "date" ? "num" : ""} ${neg ? "neg-num" : ""}`}>
+                          <td
+                            key={c.key}
+                            className={`${c.kind !== "text" && c.kind !== "datetime" && c.kind !== "date" ? "num" : ""} ${neg ? "neg-num" : ""}`}
+                          >
                             {fmtCell(c, v)}
                           </td>
                         );
@@ -232,7 +276,10 @@ export function AnalyticsPage() {
     if (negative.length) {
       out.push({
         title: "Sold below cost",
-        evidence: `${negative.length} product(s) had negative gross profit in the last 30 days (e.g. ${negative.slice(0, 3).map((r) => r.name).join(", ")}).`,
+        evidence: `${negative.length} product(s) had negative gross profit in the last 30 days (e.g. ${negative
+          .slice(0, 3)
+          .map((r) => r.name)
+          .join(", ")}).`,
         impact: `${formatMoney(negative.reduce((a, r) => a + Number(r.profit), 0))} gross profit.`,
         confidence: "Medium — depends on the accuracy of recorded costs.",
         action: "Review selling prices and recent supplier costs for these products.",
@@ -241,11 +288,16 @@ export function AnalyticsPage() {
     }
     // Stockout risk: low stock items that sold in the last 30 days.
     const soldIds = new Map(sales.rows.map((r) => [String(r.name), Number(r.qty)]));
-    const risk = inventory.rows.filter((r) => (r.status === "low_stock" || r.status === "out_of_stock") && (soldIds.get(String(r.name)) ?? 0) > 0);
+    const risk = inventory.rows.filter(
+      (r) => (r.status === "low_stock" || r.status === "out_of_stock") && (soldIds.get(String(r.name)) ?? 0) > 0,
+    );
     if (risk.length) {
       out.push({
         title: "Stockout risk",
-        evidence: `${risk.length} selling product(s) are at or below their reorder point (e.g. ${risk.slice(0, 3).map((r) => r.name).join(", ")}).`,
+        evidence: `${risk.length} selling product(s) are at or below their reorder point (e.g. ${risk
+          .slice(0, 3)
+          .map((r) => r.name)
+          .join(", ")}).`,
         impact: "Lost sales when shelves are empty.",
         confidence: "High — based on current stock and 30-day sales.",
         action: "Create purchase orders for these items.",
@@ -253,7 +305,8 @@ export function AnalyticsPage() {
       });
     }
     const byUser = new Map<string, number>();
-    for (const r of refunds.rows) byUser.set(String(r.user ?? "—"), (byUser.get(String(r.user ?? "—")) ?? 0) + Number(r.total));
+    for (const r of refunds.rows)
+      byUser.set(String(r.user ?? "—"), (byUser.get(String(r.user ?? "—")) ?? 0) + Number(r.total));
     const totalRef = Array.from(byUser.values()).reduce((a, b) => a + b, 0);
     for (const [u, v] of byUser) {
       if (totalRef > 0 && v * 100 >= totalRef * 60 && refunds.rows.length >= 5) {
@@ -271,7 +324,10 @@ export function AnalyticsPage() {
   }, []);
   return (
     <div>
-      <PageHeader title="Analytics" subtitle="Operational insights with the evidence behind them. Computed locally from your records." />
+      <PageHeader
+        title="Analytics"
+        subtitle="Operational insights with the evidence behind them. Computed locally from your records."
+      />
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {!data ? <Skeleton /> : null}
       {data && data.length === 0 ? <div className="empty">No issues detected in the last 30 days.</div> : null}

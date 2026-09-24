@@ -9,7 +9,12 @@ import { digits, formatAmount, formatMoney, formatQty, parseMoney } from "../../
 import { Banner, Button, Modal } from "../../components/ui";
 import { methodLabel } from "./labels";
 
-const icons: Record<string, typeof Banknote> = { cash: Banknote, card: CreditCard, benefitpay: Smartphone, bank_transfer: Landmark };
+const icons: Record<string, typeof Banknote> = {
+  cash: Banknote,
+  card: CreditCard,
+  benefitpay: Smartphone,
+  bank_transfer: Landmark,
+};
 
 interface Row {
   method: string;
@@ -35,7 +40,9 @@ export function PaymentModal({
   const approve = useApproval();
   const due = cart.totals.total_minor;
   const [split, setSplit] = useState(false);
-  const [method, setMethod] = useState(tenders.some((t) => t.method === initialMethod) ? initialMethod : tenders[0]?.method ?? "cash");
+  const [method, setMethod] = useState(
+    tenders.some((t) => t.method === initialMethod) ? initialMethod : (tenders[0]?.method ?? "cash"),
+  );
   const [amount, setAmount] = useState(initialMethod === "cash" ? "" : formatAmount(due));
   const [reference, setReference] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -69,12 +76,19 @@ export function PaymentModal({
   }, [split, rows, amount, method, reference, due]);
 
   const paid = (tenderList ?? []).reduce((a, t) => a + t.amount_minor, 0);
-  const nonCash = (tenderList ?? []).filter((t) => !cfg(t.method)?.allows_change).reduce((a, t) => a + t.amount_minor, 0);
+  const nonCash = (tenderList ?? [])
+    .filter((t) => !cfg(t.method)?.allows_change)
+    .reduce((a, t) => a + t.amount_minor, 0);
   const cashIn = paid - nonCash;
   const remaining = due - paid;
   const change = paid > due ? paid - due : 0;
   const validation = useMemo(() => {
-    if (!tenderList) return split ? "Enter an amount for each payment." : method === "cash" ? "Enter the cash received or press Exact." : "Enter the amount.";
+    if (!tenderList)
+      return split
+        ? "Enter an amount for each payment."
+        : method === "cash"
+          ? "Enter the cash received or press Exact."
+          : "Enter the amount.";
     if (nonCash > due) return "Card and other non-cash payments cannot exceed the amount due.";
     if (remaining > 0) return `Remaining ${formatMoney(remaining)}.`;
     if (change > cashIn) return "Change can only be given from cash.";
@@ -91,7 +105,13 @@ export function PaymentModal({
     setError(null);
     try {
       const sale = await approve((tok) =>
-        api.pos.finalize({ cart_id: cart.cart_id!, operation_id: opId, tenders: tenderList, expected_total_minor: due, approval_token: tok }),
+        api.pos.finalize({
+          cart_id: cart.cart_id!,
+          operation_id: opId,
+          tenders: tenderList,
+          expected_total_minor: due,
+          approval_token: tok,
+        }),
       );
       onPaid(sale);
     } catch (e) {
@@ -115,7 +135,8 @@ export function PaymentModal({
   const pickMethod = (m: string) => {
     if (m === "split") {
       setSplit(true);
-      if (rows.length === 0) setRows([{ method: tenders[0]?.method ?? "cash", amount: formatAmount(due), reference: "" }]);
+      if (rows.length === 0)
+        setRows([{ method: tenders[0]?.method ?? "cash", amount: formatAmount(due), reference: "" }]);
       return;
     }
     setSplit(false);
@@ -139,13 +160,23 @@ export function PaymentModal({
           <span className="small muted grow" style={{ textAlign: "right" }}>
             {validation ?? (change > 0 ? `Change ${formatMoney(change)}` : "Ready")}
           </span>
-          <Button variant="primary" size="lg" onClick={complete} disabled={!!validation} loading={busy} data-testid="complete-sale">
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={complete}
+            disabled={!!validation}
+            loading={busy}
+            data-testid="complete-sale"
+          >
             Complete Sale <span className="kbd">Enter</span>
           </Button>
         </>
       }
     >
-      <div className="pay-grid" onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void complete())}>
+      <div
+        className="pay-grid"
+        onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), void complete())}
+      >
         <div className="col gap-16">
           <div>
             <div className="tiny">Amount Due</div>
@@ -158,19 +189,32 @@ export function PaymentModal({
               const Icon = icons[t.method] ?? CreditCard;
               const active = !split && method === t.method;
               return (
-                <button key={t.method} role="radio" aria-checked={active} className={`method-card ${active ? "active" : ""}`} onClick={() => pickMethod(t.method)}>
+                <button
+                  key={t.method}
+                  role="radio"
+                  aria-checked={active}
+                  className={`method-card ${active ? "active" : ""}`}
+                  onClick={() => pickMethod(t.method)}
+                >
                   <Icon size={20} /> {t.label}
                 </button>
               );
             })}
-            <button role="radio" aria-checked={split} className={`method-card ${split ? "active" : ""}`} onClick={() => pickMethod("split")}>
+            <button
+              role="radio"
+              aria-checked={split}
+              className={`method-card ${split ? "active" : ""}`}
+              onClick={() => pickMethod("split")}
+            >
               <Split size={20} /> Split
             </button>
           </div>
           {!split ? (
             <>
               <div className="field">
-                <label htmlFor="pay-amount">{method === "cash" ? "Cash received" : `${methodLabel(method)} amount`}</label>
+                <label htmlFor="pay-amount">
+                  {method === "cash" ? "Cash received" : `${methodLabel(method)} amount`}
+                </label>
                 <input
                   id="pay-amount"
                   ref={amountRef}
@@ -196,7 +240,13 @@ export function PaymentModal({
               ) : (
                 <div className="field">
                   <label htmlFor="pay-ref">Reference {cfg(method)?.requires_reference ? "" : "(optional)"}</label>
-                  <input id="pay-ref" className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Approval code / last 4 digits / transfer ref" />
+                  <input
+                    id="pay-ref"
+                    className="input"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    placeholder="Approval code / last 4 digits / transfer ref"
+                  />
                   <div className="hint">
                     {method === "benefitpay"
                       ? "Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation."
@@ -209,7 +259,12 @@ export function PaymentModal({
             <div className="col">
               {rows.map((r, i) => (
                 <div key={i} className="row">
-                  <select className="select" style={{ width: 160 }} value={r.method} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}>
+                  <select
+                    className="select"
+                    style={{ width: 160 }}
+                    value={r.method}
+                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}
+                  >
                     {tenders.map((t) => (
                       <option key={t.method} value={t.method}>
                         {t.label}
@@ -225,13 +280,32 @@ export function PaymentModal({
                     onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))}
                     ref={i === 0 ? amountRef : undefined}
                   />
-                  <input className="input grow" placeholder="Reference (optional)" value={r.reference} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))} />
-                  <Button variant="ghost" aria-label="Remove payment" icon={<Trash2 size={16} />} onClick={() => setRows(rows.filter((_, j) => j !== i))} />
+                  <input
+                    className="input grow"
+                    placeholder="Reference (optional)"
+                    value={r.reference}
+                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))}
+                  />
+                  <Button
+                    variant="ghost"
+                    aria-label="Remove payment"
+                    icon={<Trash2 size={16} />}
+                    onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                  />
                 </div>
               ))}
               <Button
                 icon={<Plus size={16} />}
-                onClick={() => setRows([...rows, { method: tenders.find((t) => t.method !== rows.at(-1)?.method)?.method ?? "cash", amount: remaining > 0 ? formatAmount(remaining) : "", reference: "" }])}
+                onClick={() =>
+                  setRows([
+                    ...rows,
+                    {
+                      method: tenders.find((t) => t.method !== rows.at(-1)?.method)?.method ?? "cash",
+                      amount: remaining > 0 ? formatAmount(remaining) : "",
+                      reference: "",
+                    },
+                  ])
+                }
               >
                 Add Payment
               </Button>
@@ -243,7 +317,11 @@ export function PaymentModal({
               <div className="amount">{formatMoney(change)}</div>
             </div>
           ) : null}
-          {error ? <Banner tone="danger" title="Sale was not completed">{error}</Banner> : null}
+          {error ? (
+            <Banner tone="danger" title="Sale was not completed">
+              {error}
+            </Banner>
+          ) : null}
         </div>
         <div className="card" style={{ alignSelf: "start" }}>
           <div className="card-head">
@@ -346,7 +424,9 @@ export function SaleSuccess({
           {sale.receipt_number}
         </div>
         <div className="due">{formatMoney(sale.total_minor)}</div>
-        <div className="small muted">{sale.payments.map((p) => `${methodLabel(p.method)} ${formatMoney(p.tendered_minor)}`).join(" · ")}</div>
+        <div className="small muted">
+          {sale.payments.map((p) => `${methodLabel(p.method)} ${formatMoney(p.tendered_minor)}`).join(" · ")}
+        </div>
         {hasCashChange ? (
           <div className="change-panel" style={{ marginTop: 8, minWidth: 260 }}>
             <div className="label">CHANGE</div>

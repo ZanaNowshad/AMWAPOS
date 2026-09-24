@@ -135,9 +135,7 @@ impl AppCore {
     pub fn setup_status(&self) -> AppResult<SetupStatus> {
         let (complete, name) = self.db.read(|c| {
             let complete = settings::get_raw(c, settings::KEY_SETUP_COMPLETE)?.is_some();
-            let name: Option<String> = c
-                .query_row("SELECT name FROM business LIMIT 1", [], |r| r.get(0))
-                .optional()?;
+            let name: Option<String> = c.query_row("SELECT name FROM business LIMIT 1", [], |r| r.get(0)).optional()?;
             Ok((complete, name))
         })?;
         Ok(SetupStatus {
@@ -376,11 +374,7 @@ impl AppCore {
         } else {
             let attempts = user.failed_attempts + 1;
             let lock = attempts >= sec.max_failed_attempts;
-            let locked_until = if lock {
-                Some(time::fmt(now + chrono::Duration::minutes(sec.lockout_minutes)))
-            } else {
-                None
-            };
+            let locked_until = if lock { Some(time::fmt(now + chrono::Duration::minutes(sec.lockout_minutes))) } else { None };
             self.db.write(|tx| {
                 tx.execute(
                     "INSERT INTO user_login_state(user_id, failed_attempts, locked_until, last_failed_at) VALUES (?1,?2,?3,?4)
@@ -453,22 +447,15 @@ impl AppCore {
 
     /// Unlock a locked session with the session owner's PIN.
     pub fn unlock(&self, token: &str, pin: &str) -> AppResult<Session> {
-        let s = self
-            .sessions
-            .peek(token)
-            .ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found. Please log in."))?;
+        let s = self.sessions.peek(token).ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found. Please log in."))?;
         self.verify_user_pin(&s.user_id, pin, "unlock")?;
         self.sessions.set_locked(token, false)?;
-        self.sessions
-            .peek(token)
-            .ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found."))
+        self.sessions.peek(token).ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found."))
     }
 
     /// Session info without touching idle timers (works while locked).
     pub fn session_info(&self, token: &str) -> AppResult<Session> {
-        self.sessions
-            .peek(token)
-            .ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found. Please log in."))
+        self.sessions.peek(token).ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found. Please log in."))
     }
 
     /// A manager enters their PIN to approve one action for the current
@@ -488,14 +475,9 @@ impl AppCore {
         let approver = self.verify_user_pin(approver_user_id, pin, "approval")?;
         let perms = self.db.read(|c| auth::role_permissions(c, &approver.role_id))?;
         if !perms.contains(permission) {
-            return Err(AppError::new(
-                ErrorCode::Forbidden,
-                format!("{} is not allowed to approve this action.", approver.display_name),
-            ));
+            return Err(AppError::new(ErrorCode::Forbidden, format!("{} is not allowed to approve this action.", approver.display_name)));
         }
-        let token = self
-            .sessions
-            .issue_approval(&approver.user_id, &approver.display_name, permission);
+        let token = self.sessions.issue_approval(&approver.user_id, &approver.display_name, permission);
         let actor = self.actor(&requester, Some(approver.user_id.clone()));
         let summary = crate::setup::clean(summary, "Summary", 300, false)?;
         self.db.write(|tx| {

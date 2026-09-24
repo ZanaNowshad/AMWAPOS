@@ -35,14 +35,18 @@ export function ConnectionPill() {
     const cls = blocked || err ? "err" : pending > 0 ? "warn" : "ok";
     const text = blocked ? "Sync paused" : err ? "Hub disconnected" : pending > 0 ? `${pending} pending` : "Synced";
     return (
-      <span className={`status-pill ${cls}`} title={blocked ?? err ?? "Local checkout is always available. Changes sync automatically."}>
+      <span
+        className={`status-pill ${cls}`}
+        title={blocked ?? err ?? "Local checkout is always available. Changes sync automatically."}
+      >
         <span className="dot" aria-hidden /> {text}
       </span>
     );
   }
   return (
     <span className="status-pill" title="Local checkout is available. Online services will resume automatically.">
-      <span className="dot" aria-hidden style={{ color: online ? "#22c55e" : "#94a3b8" }} /> {online ? (mode === "hub" ? "Hub" : "Local") : "Offline"}
+      <span className="dot" aria-hidden style={{ color: online ? "#22c55e" : "#94a3b8" }} />{" "}
+      {online ? (mode === "hub" ? "Hub" : "Local") : "Offline"}
     </span>
   );
 }

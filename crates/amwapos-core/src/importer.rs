@@ -110,10 +110,7 @@ fn detect(headers: &[String]) -> HashMap<String, String> {
 }
 
 fn split_barcodes(s: &str) -> Vec<String> {
-    s.split(['|', ';', ','])
-        .map(|b| b.trim().to_string())
-        .filter(|b| !b.is_empty())
-        .collect()
+    s.split(['|', ';', ',']).map(|b| b.trim().to_string()).filter(|b| !b.is_empty()).collect()
 }
 
 fn looks_scientific(s: &str) -> bool {
@@ -158,16 +155,15 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
     if !mapping.contains_key("name") {
         return Err(AppError::validation("Map a column to the product Name."));
     }
-    let idx: HashMap<&str, usize> = mapping
-        .iter()
-        .filter_map(|(f, col)| headers.iter().position(|h| h == col).map(|i| (f.as_str(), i)))
-        .collect();
+    let idx: HashMap<&str, usize> =
+        mapping.iter().filter_map(|(f, col)| headers.iter().position(|h| h == col).map(|i| (f.as_str(), i))).collect();
     let tax_rules: Vec<(String, i64)> = {
         let mut st = c.prepare("SELECT tax_rule_id, rate_bp FROM tax_rules WHERE active=1 ORDER BY created_at")?;
         let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
         rows
     };
-    let default_tax = tax_rules.iter().max_by_key(|t| t.1).map(|t| t.0.clone()).ok_or_else(|| AppError::validation("Create a tax rule first."))?;
+    let default_tax =
+        tax_rules.iter().max_by_key(|t| t.1).map(|t| t.0.clone()).ok_or_else(|| AppError::validation("Create a tax rule first."))?;
     let categories: HashMap<String, String> = {
         let mut st = c.prepare("SELECT lower(name), category_id FROM categories WHERE active=1")?;
         let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<HashMap<_, _>, _>>()?;
@@ -204,7 +200,10 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
             match validate::barcode(&b) {
                 Ok(v) => {
                     if v.chars().all(|c| c.is_ascii_digit()) && ![8, 12, 13, 14].contains(&v.len()) {
-                        warnings.push(format!("Barcode {v} has {} digits (EAN/UPC codes have 8, 12, 13 or 14). Leading zeros may have been lost.", v.len()));
+                        warnings.push(format!(
+                            "Barcode {v} has {} digits (EAN/UPC codes have 8, 12, 13 or 14). Leading zeros may have been lost.",
+                            v.len()
+                        ));
                     }
                     if !barcodes.contains(&v) {
                         barcodes.push(v)
@@ -290,7 +289,9 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
         };
         // Existing data
         let existing: Option<(String, String)> = match &sku {
-            Some(sk) => c.query_row("SELECT product_id, name FROM products WHERE sku=?1 COLLATE NOCASE", [sk], |r| Ok((r.get(0)?, r.get(1)?))).optional()?,
+            Some(sk) => c
+                .query_row("SELECT product_id, name FROM products WHERE sku=?1 COLLATE NOCASE", [sk], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?,
             None => None,
         };
         let mut action = "create".to_string();
@@ -303,7 +304,10 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
                     warnings.push("Stock is ignored for existing products. Use a stock adjustment or stocktake.".into());
                 }
             } else {
-                errors.push(format!("SKU {} already exists ({pname}). Enable 'update existing products' to update it.", sku.clone().unwrap_or_default()));
+                errors.push(format!(
+                    "SKU {} already exists ({pname}). Enable 'update existing products' to update it.",
+                    sku.clone().unwrap_or_default()
+                ));
             }
         } else if price.is_none() {
             errors.push("Selling price is required for new products.".into());
@@ -318,9 +322,8 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
         if !errors.is_empty() {
             action = "error".into();
         }
-        let tax_id = tax_rate_bp
-            .and_then(|bp| tax_rules.iter().find(|t| t.1 == bp).map(|t| t.0.clone()))
-            .unwrap_or_else(|| default_tax.clone());
+        let tax_id =
+            tax_rate_bp.and_then(|bp| tax_rules.iter().find(|t| t.1 == bp).map(|t| t.0.clone())).unwrap_or_else(|| default_tax.clone());
         let unit = Some(get("unit")).filter(|u| !u.is_empty()).unwrap_or_else(|| if allow_dec { "kg".into() } else { "pcs".into() });
         let create = if action == "create" || action == "update" {
             Some(ProductCreate {

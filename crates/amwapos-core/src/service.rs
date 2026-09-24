@@ -32,10 +32,7 @@ impl SecretStore for MemorySecretStore {
         Ok(self.0.lock().map_err(|_| AppError::internal("poisoned"))?.get(key).cloned())
     }
     fn set(&self, key: &str, value: &str) -> AppResult<()> {
-        self.0
-            .lock()
-            .map_err(|_| AppError::internal("poisoned"))?
-            .insert(key.to_string(), value.to_string());
+        self.0.lock().map_err(|_| AppError::internal("poisoned"))?.insert(key.to_string(), value.to_string());
         Ok(())
     }
     fn delete(&self, key: &str) -> AppResult<()> {
@@ -86,7 +83,7 @@ impl AppCore {
         }
         let (db, migration) = Db::open(&db_path, create)?;
         db.write(|tx| crate::auth::seed_roles(tx))?;
-        let device = db.read(|c| load_device(c))?;
+        let device = db.read(load_device)?;
         Ok(AppCore {
             db,
             sessions: SessionStore::default(),
@@ -103,8 +100,7 @@ impl AppCore {
     }
 
     pub fn require_device(&self) -> AppResult<DeviceIdentity> {
-        self.device()
-            .ok_or_else(|| AppError::new(ErrorCode::NotSetUp, "This terminal has not been set up yet."))
+        self.device().ok_or_else(|| AppError::new(ErrorCode::NotSetUp, "This terminal has not been set up yet."))
     }
 
     pub(crate) fn set_device(&self, d: Option<DeviceIdentity>) {
@@ -121,23 +117,14 @@ impl AppCore {
 
     /// Resolve and validate a session token.
     pub fn session(&self, token: &str) -> AppResult<Session> {
-        let idle = self
-            .db
-            .read(|c| settings::get::<settings::PosSettings>(c, settings::KEY_POS))
-            .map(|p| p.idle_lock_minutes)
-            .unwrap_or(10);
+        let idle =
+            self.db.read(|c| settings::get::<settings::PosSettings>(c, settings::KEY_POS)).map(|p| p.idle_lock_minutes).unwrap_or(10);
         self.sessions.get_active(token, idle)
     }
 
     /// Authorize `perm` for the session, or via a manager approval token.
     /// Returns the approver's user id when an approval was consumed.
-    pub fn authorize(
-        &self,
-        s: &Session,
-        perm: &str,
-        approval_token: Option<&str>,
-        summary: &str,
-    ) -> AppResult<Option<String>> {
+    pub fn authorize(&self, s: &Session, perm: &str, approval_token: Option<&str>, summary: &str) -> AppResult<Option<String>> {
         if s.has(perm) {
             return Ok(None);
         }
@@ -155,18 +142,11 @@ impl AppCore {
     }
 
     pub fn actor(&self, s: &Session, approved_by: Option<String>) -> Actor {
-        Actor {
-            user_id: Some(s.user_id.clone()),
-            device_id: Some(s.device_id.clone()),
-            branch_id: Some(s.branch_id.clone()),
-            approved_by,
-        }
+        Actor { user_id: Some(s.user_id.clone()), device_id: Some(s.device_id.clone()), branch_id: Some(s.branch_id.clone()), approved_by }
     }
 
     pub fn store_timezone(&self, c: &Connection) -> AppResult<String> {
-        Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))
-            .optional()?
-            .unwrap_or_else(|| "Asia/Bahrain".to_string()))
+        Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0)).optional()?.unwrap_or_else(|| "Asia/Bahrain".to_string()))
     }
 
     pub fn currency(&self, c: &Connection) -> AppResult<(String, u32)> {

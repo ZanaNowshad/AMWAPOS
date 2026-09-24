@@ -46,7 +46,12 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
   const applyConfig = useCallback((c: PosConfig) => {
     configureMoney(c.currency, c.currency_digits);
     configureTimezone(c.timezone);
-    document.documentElement.dataset.theme = c.appearance.theme === "dark" ? "dark" : c.appearance.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme =
+      c.appearance.theme === "dark"
+        ? "dark"
+        : c.appearance.theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
     document.documentElement.dataset.density = c.appearance.density || "comfortable";
     document.documentElement.dataset.cashierFont = c.appearance.cashier_font || "normal";
     setConfig(c);
@@ -169,8 +174,40 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
   }, []);
 
   const value = useMemo<SessionCtx>(
-    () => ({ status, refreshStatus, session, config, locked, mode, setMode, has, login, logout, lock, unlock, switchUser, reloadConfig, handleAuthError }),
-    [status, refreshStatus, session, config, locked, mode, setMode, has, login, logout, lock, unlock, switchUser, reloadConfig, handleAuthError],
+    () => ({
+      status,
+      refreshStatus,
+      session,
+      config,
+      locked,
+      mode,
+      setMode,
+      has,
+      login,
+      logout,
+      lock,
+      unlock,
+      switchUser,
+      reloadConfig,
+      handleAuthError,
+    }),
+    [
+      status,
+      refreshStatus,
+      session,
+      config,
+      locked,
+      mode,
+      setMode,
+      has,
+      login,
+      logout,
+      lock,
+      unlock,
+      switchUser,
+      reloadConfig,
+      handleAuthError,
+    ],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

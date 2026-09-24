@@ -17,7 +17,19 @@ export function initials(name: string) {
     .join("");
 }
 
-export function PinEntry({ onSubmit, busy, error, title, autoFocus = true }: { onSubmit: (pin: string) => void; busy: boolean; error: string | null; title: string; autoFocus?: boolean }) {
+export function PinEntry({
+  onSubmit,
+  busy,
+  error,
+  title,
+  autoFocus = true,
+}: {
+  onSubmit: (pin: string) => void;
+  busy: boolean;
+  error: string | null;
+  title: string;
+  autoFocus?: boolean;
+}) {
   const [pin, setPin] = useState("");
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -114,12 +126,22 @@ export function LoginScreen() {
               {users && users.length > 8 ? (
                 <div className="scan-box">
                   <Search size={18} className="scan-icon" />
-                  <input className="input" placeholder="Search staff…" value={filter} onChange={(e) => setFilter(e.target.value)} autoFocus />
+                  <input
+                    className="input"
+                    placeholder="Search staff…"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    autoFocus
+                  />
                 </div>
               ) : null}
               <div className="user-tiles">
                 {shown.map((u) => (
-                  <button key={u.user_id} className={`user-tile ${u.locked ? "locked" : ""}`} onClick={() => (setSelected(u), setError(null))}>
+                  <button
+                    key={u.user_id}
+                    className={`user-tile ${u.locked ? "locked" : ""}`}
+                    onClick={() => (setSelected(u), setError(null))}
+                  >
                     <span className="avatar">{initials(u.display_name)}</span>
                     <span style={{ fontWeight: 600 }}>{u.display_name}</span>
                     <span className="tiny">
@@ -138,7 +160,11 @@ export function LoginScreen() {
             </div>
           ) : (
             <div className="pin-panel">
-              <Button variant="ghost" icon={<ArrowLeft size={16} />} onClick={() => (setSelected(null), setError(null))}>
+              <Button
+                variant="ghost"
+                icon={<ArrowLeft size={16} />}
+                onClick={() => (setSelected(null), setError(null))}
+              >
                 Back
               </Button>
               <div className="col" style={{ alignItems: "center", margin: "12px 0 16px" }}>
@@ -146,7 +172,11 @@ export function LoginScreen() {
                 <strong>{selected.display_name}</strong>
                 <span className="tiny">{selected.role_name}</span>
               </div>
-              {selected.locked ? <Banner tone="danger">This account is locked after too many incorrect PINs. Ask a manager to unlock it, or wait.</Banner> : null}
+              {selected.locked ? (
+                <Banner tone="danger">
+                  This account is locked after too many incorrect PINs. Ask a manager to unlock it, or wait.
+                </Banner>
+              ) : null}
               <PinEntry title="Enter your PIN" onSubmit={submit} busy={busy} error={error} />
             </div>
           )}

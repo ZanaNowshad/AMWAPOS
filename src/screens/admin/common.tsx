@@ -133,7 +133,12 @@ export function DataTable<T>({
                   key={c.key}
                   className={`${c.num ? "num" : ""} ${c.sort ? "sortable" : ""}`}
                   style={{ width: c.width }}
-                  onClick={() => c.sort && setSort((s) => (s?.key === c.key ? { key: c.key, dir: s.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 }))}
+                  onClick={() =>
+                    c.sort &&
+                    setSort((s) =>
+                      s?.key === c.key ? { key: c.key, dir: s.dir === 1 ? -1 : 1 } : { key: c.key, dir: 1 },
+                    )
+                  }
                   aria-sort={sort?.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}
                 >
                   {c.label}
@@ -185,7 +190,19 @@ export function DataTable<T>({
   );
 }
 
-export function Pager({ total, limit, offset, onChange, onLimit }: { total: number; limit: number; offset: number; onChange: (o: number) => void; onLimit?: (l: number) => void }) {
+export function Pager({
+  total,
+  limit,
+  offset,
+  onChange,
+  onLimit,
+}: {
+  total: number;
+  limit: number;
+  offset: number;
+  onChange: (o: number) => void;
+  onLimit?: (l: number) => void;
+}) {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(total, offset + limit);
   return (
@@ -194,7 +211,13 @@ export function Pager({ total, limit, offset, onChange, onLimit }: { total: numb
         {from}–{to} of {total.toLocaleString("en")}
       </span>
       {onLimit ? (
-        <select className="select" style={{ width: 90, height: 30 }} value={limit} onChange={(e) => onLimit(Number(e.target.value))} aria-label="Rows per page">
+        <select
+          className="select"
+          style={{ width: 90, height: 30 }}
+          value={limit}
+          onChange={(e) => onLimit(Number(e.target.value))}
+          aria-label="Rows per page"
+        >
           {[25, 50, 100].map((n) => (
             <option key={n} value={n}>
               {n} / page
@@ -213,7 +236,17 @@ export function Pager({ total, limit, offset, onChange, onLimit }: { total: numb
   );
 }
 
-export function Drawer({ title, onClose, children, actions }: { title: ReactNode; onClose: () => void; children: ReactNode; actions?: ReactNode }) {
+export function Drawer({
+  title,
+  onClose,
+  children,
+  actions,
+}: {
+  title: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+  actions?: ReactNode;
+}) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
@@ -279,7 +312,15 @@ export function Confirm({
   );
 }
 
-export function DateRange({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) {
+export function DateRange({
+  from,
+  to,
+  onChange,
+}: {
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
   const presets: [string, () => [string, string]][] = [
     ["Today", () => [todayLocal(), todayLocal()]],
     ["Yesterday", () => [todayLocal(-1), todayLocal(-1)]],
@@ -292,14 +333,34 @@ export function DateRange({ from, to, onChange }: { from: string; to: string; on
       {presets.map(([label, f]) => {
         const [a, b] = f();
         return (
-          <button key={label} className={`filter-chip ${a === from && b === to ? "active" : ""}`} onClick={() => onChange(a, b)}>
+          <button
+            key={label}
+            className={`filter-chip ${a === from && b === to ? "active" : ""}`}
+            onClick={() => onChange(a, b)}
+          >
             {label}
           </button>
         );
       })}
-      <input type="date" className="input" style={{ width: 150 }} value={from} max={to} onChange={(e) => onChange(e.target.value, to)} aria-label="From date" />
+      <input
+        type="date"
+        className="input"
+        style={{ width: 150 }}
+        value={from}
+        max={to}
+        onChange={(e) => onChange(e.target.value, to)}
+        aria-label="From date"
+      />
       <span className="muted">to</span>
-      <input type="date" className="input" style={{ width: 150 }} value={to} min={from} onChange={(e) => onChange(from, e.target.value)} aria-label="To date" />
+      <input
+        type="date"
+        className="input"
+        style={{ width: 150 }}
+        value={to}
+        min={from}
+        onChange={(e) => onChange(from, e.target.value)}
+        aria-label="To date"
+      />
     </div>
   );
 }

@@ -26,8 +26,7 @@ pub fn parse(s: &str) -> AppResult<DateTime<Utc>> {
 }
 
 pub fn tz(name: &str) -> AppResult<Tz> {
-    name.parse::<Tz>()
-        .map_err(|_| AppError::validation(format!("Unknown timezone '{name}'.")))
+    name.parse::<Tz>().map_err(|_| AppError::validation(format!("Unknown timezone '{name}'.")))
 }
 
 /// Business date (YYYY-MM-DD) for an instant in the given timezone.
@@ -41,8 +40,8 @@ pub fn local_date_range_utc(from: &str, to: &str, zone: &str) -> AppResult<(Stri
     let z = tz(zone)?;
     let f = NaiveDate::parse_from_str(from, "%Y-%m-%d")
         .map_err(|_| AppError::validation(format!("'{from}' is not a valid date (YYYY-MM-DD).")))?;
-    let t = NaiveDate::parse_from_str(to, "%Y-%m-%d")
-        .map_err(|_| AppError::validation(format!("'{to}' is not a valid date (YYYY-MM-DD).")))?;
+    let t =
+        NaiveDate::parse_from_str(to, "%Y-%m-%d").map_err(|_| AppError::validation(format!("'{to}' is not a valid date (YYYY-MM-DD).")))?;
     if t < f {
         return Err(AppError::validation("The end date is before the start date."));
     }

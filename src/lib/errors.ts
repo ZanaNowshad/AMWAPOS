@@ -9,7 +9,11 @@ export function explain(e: unknown): { title: string; message: string; action: s
     case "validation":
       return { title: "Please check the details", message, action: "" };
     case "forbidden":
-      return { title: "Not allowed", message: "You do not have permission to perform this action.", action: "Ask a manager." };
+      return {
+        title: "Not allowed",
+        message: "You do not have permission to perform this action.",
+        action: "Ask a manager.",
+      };
     case "duplicate":
       return { title: "Already exists", message, action: changed };
     case "conflict":
@@ -17,7 +21,11 @@ export function explain(e: unknown): { title: string; message: string; action: s
     case "database_busy":
       return { title: "The store database is busy", message, action: "Try again in a moment." };
     case "transport":
-      return { title: "Could not reach the application service", message, action: "Try again. If it keeps failing, restart AMWAPOS." };
+      return {
+        title: "Could not reach the application service",
+        message,
+        action: "Try again. If it keeps failing, restart AMWAPOS.",
+      };
     case "unauthenticated":
       return { title: "Session ended", message, action: "" };
     case "insufficient_disk":

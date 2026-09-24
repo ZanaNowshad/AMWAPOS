@@ -81,7 +81,15 @@ const EMPTY_CART: Cart = {
   notices: [],
 };
 
-export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftSummary; onShiftClosed: () => void; reloadShift: () => Promise<void> }) {
+export function PosScreen({
+  shift,
+  onShiftClosed,
+  reloadShift,
+}: {
+  shift: ShiftSummary;
+  onShiftClosed: () => void;
+  reloadShift: () => Promise<void>;
+}) {
   const { session, config, has, lock, setMode, logout, handleAuthError } = useSession();
   const toast = useToast();
   const approve = useApproval();
@@ -136,7 +144,10 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
 
   // Initial load: current cart, categories and quick products.
   useEffect(() => {
-    api.pos.cart().then((c) => applyCart(c)).catch(fail);
+    api.pos
+      .cart()
+      .then((c) => applyCart(c))
+      .catch(fail);
     api.categories
       .list()
       .then(setCategories)
@@ -145,7 +156,12 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
   }, [applyCart, fail, focusScan]);
 
   useEffect(() => {
-    const opts = activeCat === "fav" ? { favorites: true, limit: 60 } : activeCat === "all" ? { limit: 60 } : { category_id: activeCat, limit: 120 };
+    const opts =
+      activeCat === "fav"
+        ? { favorites: true, limit: 60 }
+        : activeCat === "all"
+          ? { limit: 60 }
+          : { category_id: activeCat, limit: 120 };
     api.pos
       .search("", opts)
       .then((r) => {
@@ -206,7 +222,10 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
           setModal({ kind: "unknown", barcode: r.barcode });
         } else {
           sounds.unknown();
-          setNotice({ tone: "warning", text: `${r.product_name ?? "This product"} is archived and cannot be sold. Ask a manager.` });
+          setNotice({
+            tone: "warning",
+            text: `${r.product_name ?? "This product"} is archived and cannot be sold. Ask a manager.`,
+          });
         }
       } catch (e) {
         fail(e);
@@ -325,7 +344,8 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
     const onKey = (e: KeyboardEvent) => {
       if (modal.kind !== "none") return;
       const target = e.target as HTMLElement;
-      const inField = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
+      const inField =
+        target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
       const fkeys: Record<string, () => void> = {
         F2: () => focusScan(),
         F3: () => setModal({ kind: "customer" }),
@@ -427,7 +447,10 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
           ) : null}
         </div>
         <ConnectionPill />
-        <span className="status-pill" title={config?.printer_configured ? "Receipt printer configured" : "No receipt printer configured"}>
+        <span
+          className="status-pill"
+          title={config?.printer_configured ? "Receipt printer configured" : "No receipt printer configured"}
+        >
           <Printer size={13} /> {config?.printer_configured ? (printFailed ? "Print failed" : "Printer") : "No printer"}
         </span>
         <div className="hitem">Shift {shift.shift_number}</div>
@@ -458,11 +481,29 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
               data-testid="scan-input"
             />
             {query ? (
-              <Button variant="ghost" size="sm" className="clear" aria-label="Clear search" icon={<X size={16} />} onClick={() => (setQuery(""), focusScan())} />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="clear"
+                aria-label="Clear search"
+                icon={<X size={16} />}
+                onClick={() => (setQuery(""), focusScan())}
+              />
             ) : null}
           </div>
           {notice ? (
-            <Banner tone={notice.tone} action={<Button variant="ghost" size="sm" aria-label="Dismiss" icon={<X size={14} />} onClick={() => setNotice(null)} />}>
+            <Banner
+              tone={notice.tone}
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Dismiss"
+                  icon={<X size={14} />}
+                  onClick={() => setNotice(null)}
+                />
+              }
+            >
               {notice.text}
             </Banner>
           ) : null}
@@ -496,7 +537,13 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
                   </div>
                 ) : (
                   results.map((r, i) => (
-                    <div key={r.product_id} role="option" aria-selected={i === sel} className={`result-row ${i === sel ? "sel" : ""}`} onMouseDown={(e) => (e.preventDefault(), void addProduct(r))}>
+                    <div
+                      key={r.product_id}
+                      role="option"
+                      aria-selected={i === sel}
+                      className={`result-row ${i === sel ? "sel" : ""}`}
+                      onMouseDown={(e) => (e.preventDefault(), void addProduct(r))}
+                    >
                       <div className="grow">
                         <div style={{ fontWeight: 600 }}>{r.name}</div>
                         <div className="tiny">
@@ -514,16 +561,26 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
             ) : (
               <>
                 <div className="cat-chips" role="tablist" aria-label="Categories">
-                  <button className={`filter-chip ${activeCat === "fav" ? "active" : ""}`} onClick={() => setActiveCat("fav")}>
+                  <button
+                    className={`filter-chip ${activeCat === "fav" ? "active" : ""}`}
+                    onClick={() => setActiveCat("fav")}
+                  >
                     Favorites
                   </button>
-                  <button className={`filter-chip ${activeCat === "all" ? "active" : ""}`} onClick={() => setActiveCat("all")}>
+                  <button
+                    className={`filter-chip ${activeCat === "all" ? "active" : ""}`}
+                    onClick={() => setActiveCat("all")}
+                  >
                     All
                   </button>
                   {categories
                     .filter((c) => c.product_count > 0)
                     .map((c) => (
-                      <button key={c.category_id} className={`filter-chip ${activeCat === c.category_id ? "active" : ""}`} onClick={() => setActiveCat(c.category_id)}>
+                      <button
+                        key={c.category_id}
+                        className={`filter-chip ${activeCat === c.category_id ? "active" : ""}`}
+                        onClick={() => setActiveCat(c.category_id)}
+                      >
                         {c.name}
                       </button>
                     ))}
@@ -550,27 +607,63 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
             <Button icon={<Users size={20} />} onClick={() => setModal({ kind: "customer" })} title="F3">
               Customer
             </Button>
-            <Button icon={<PauseCircle size={20} />} onClick={() => setModal({ kind: "hold" })} disabled={!hasLines || !has("pos.hold")} title="F4">
+            <Button
+              icon={<PauseCircle size={20} />}
+              onClick={() => setModal({ kind: "hold" })}
+              disabled={!hasLines || !has("pos.hold")}
+              title="F4"
+            >
               Hold
             </Button>
-            <Button icon={<ListRestart size={20} />} onClick={() => setModal({ kind: "held" })} disabled={!has("pos.hold")} title="F5">
+            <Button
+              icon={<ListRestart size={20} />}
+              onClick={() => setModal({ kind: "held" })}
+              disabled={!has("pos.hold")}
+              title="F5"
+            >
               Held
             </Button>
             <Button icon={<RotateCcw size={20} />} onClick={() => setModal({ kind: "refund" })} title="Refund">
               Refund
             </Button>
-            <Button icon={<MoreHorizontal size={20} />} onClick={() => setMoreOpen((v) => !v)} aria-expanded={moreOpen} title="F10">
+            <Button
+              icon={<MoreHorizontal size={20} />}
+              onClick={() => setMoreOpen((v) => !v)}
+              aria-expanded={moreOpen}
+              title="F10"
+            >
               More
             </Button>
             {moreOpen ? (
-              <div className="menu" style={{ bottom: 64, top: "auto", right: 0 }} role="menu" onMouseLeave={() => setMoreOpen(false)}>
+              <div
+                className="menu"
+                style={{ bottom: 64, top: "auto", right: 0 }}
+                role="menu"
+                onMouseLeave={() => setMoreOpen(false)}
+              >
                 {[
-                  { label: "Custom item", show: has("pos.custom_item") || config?.pos.allow_custom_item, run: () => setModal({ kind: "custom" }) },
+                  {
+                    label: "Custom item",
+                    show: has("pos.custom_item") || config?.pos.allow_custom_item,
+                    run: () => setModal({ kind: "custom" }),
+                  },
                   { label: "Sale discount", show: hasLines, run: () => setModal({ kind: "discount", lineId: null }) },
-                  { label: "Reprint / recent sales", show: has("pos.reprint"), run: () => setModal({ kind: "recent" }) },
+                  {
+                    label: "Reprint / recent sales",
+                    show: has("pos.reprint"),
+                    run: () => setModal({ kind: "recent" }),
+                  },
                   { label: "Print queue", show: true, run: () => setModal({ kind: "print_queue" }) },
-                  { label: "Delivery for last sale", show: !!lastSale, run: () => setModal({ kind: "delivery", saleId: lastSale?.sale_id ?? null }) },
-                  { label: "Open drawer (no sale)", show: true, run: () => setModal({ kind: "cash", cashKind: "no_sale" }) },
+                  {
+                    label: "Delivery for last sale",
+                    show: !!lastSale,
+                    run: () => setModal({ kind: "delivery", saleId: lastSale?.sale_id ?? null }),
+                  },
+                  {
+                    label: "Open drawer (no sale)",
+                    show: true,
+                    run: () => setModal({ kind: "cash", cashKind: "no_sale" }),
+                  },
                   { label: "Paid in", show: true, run: () => setModal({ kind: "cash", cashKind: "paid_in" }) },
                   { label: "Paid out", show: true, run: () => setModal({ kind: "cash", cashKind: "paid_out" }) },
                   { label: "Safe drop", show: true, run: () => setModal({ kind: "cash", cashKind: "safe_drop" }) },
@@ -590,7 +683,11 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
                         i.run();
                       }}
                     >
-                      {i.label === "Admin" ? <Settings2 size={15} /> : i.label.startsWith("Delivery") ? <Truck size={15} /> : null}
+                      {i.label === "Admin" ? (
+                        <Settings2 size={15} />
+                      ) : i.label.startsWith("Delivery") ? (
+                        <Truck size={15} />
+                      ) : null}
                       {i.label}
                     </button>
                   ))}
@@ -632,21 +729,46 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
                 </span>
               </div>
               <div className="row pay-btn">
-                <Button size="xl" variant="primary" className="grow" onClick={() => openPay(tenders[0]?.method ?? "cash")} disabled={!hasLines} data-testid="pay">
+                <Button
+                  size="xl"
+                  variant="primary"
+                  className="grow"
+                  onClick={() => openPay(tenders[0]?.method ?? "cash")}
+                  disabled={!hasLines}
+                  data-testid="pay"
+                >
                   PAY {formatMoney(cart.totals.total_minor)}
                 </Button>
               </div>
               <div className="row" style={{ marginTop: 8 }}>
-                <Button className="grow" icon={<Banknote size={16} />} kbd="F6" onClick={() => openPay("cash")} disabled={!hasLines}>
+                <Button
+                  className="grow"
+                  icon={<Banknote size={16} />}
+                  kbd="F6"
+                  onClick={() => openPay("cash")}
+                  disabled={!hasLines}
+                >
                   Cash
                 </Button>
                 {tenderEnabled("card") ? (
-                  <Button className="grow" icon={<CreditCard size={16} />} kbd="F7" onClick={() => openPay("card")} disabled={!hasLines}>
+                  <Button
+                    className="grow"
+                    icon={<CreditCard size={16} />}
+                    kbd="F7"
+                    onClick={() => openPay("card")}
+                    disabled={!hasLines}
+                  >
                     Card
                   </Button>
                 ) : null}
                 {tenderEnabled("benefitpay") ? (
-                  <Button className="grow" icon={<Smartphone size={16} />} kbd="F8" onClick={() => openPay("benefitpay")} disabled={!hasLines}>
+                  <Button
+                    className="grow"
+                    icon={<Smartphone size={16} />}
+                    kbd="F8"
+                    onClick={() => openPay("benefitpay")}
+                    disabled={!hasLines}
+                  >
                     BenefitPay
                   </Button>
                 ) : null}
@@ -662,7 +784,14 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
       </main>
 
       {modal.kind === "pay" && cart.cart_id ? (
-        <PaymentModal cart={cart} initialMethod={modal.method} tenders={tenders} onClose={closeModal} onPaid={afterSale} onCartChanged={applyCart} />
+        <PaymentModal
+          cart={cart}
+          initialMethod={modal.method}
+          tenders={tenders}
+          onClose={closeModal}
+          onPaid={afterSale}
+          onCartChanged={applyCart}
+        />
       ) : null}
       {modal.kind === "success" ? (
         <SaleSuccess
@@ -673,7 +802,11 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
             try {
               const r = await api.sales.reprint(modal.sale.sale_id);
               setLastSale({ ...modal.sale, print: r });
-              toast(r.status === "printed" ? "success" : "warning", r.status === "printed" ? "Receipt reprinted" : "Receipt not printed", r.message ?? undefined);
+              toast(
+                r.status === "printed" ? "success" : "warning",
+                r.status === "printed" ? "Receipt reprinted" : "Receipt not printed",
+                r.message ?? undefined,
+              );
             } catch (e) {
               fail(e);
             }
@@ -730,18 +863,24 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
         />
       ) : null}
       {modal.kind === "qty" ? (
-        <QtyDialog line={cart.lines.find((l) => l.line_id === modal.lineId)!} onClose={closeModal} onApply={(q) => (closeModal(), lineAction((tok) => api.pos.setQty(modal.lineId, q, tok)))} />
+        <QtyDialog
+          line={cart.lines.find((l) => l.line_id === modal.lineId)!}
+          onClose={closeModal}
+          onApply={(q) => (closeModal(), lineAction((tok) => api.pos.setQty(modal.lineId, q, tok)))}
+        />
       ) : null}
       {modal.kind === "discount" ? (
         <DiscountDialog
-          line={modal.lineId ? cart.lines.find((l) => l.line_id === modal.lineId) ?? null : null}
+          line={modal.lineId ? (cart.lines.find((l) => l.line_id === modal.lineId) ?? null) : null}
           cart={cart}
           maxBp={config?.pos.cashier_max_discount_bp ?? 1000}
           onClose={closeModal}
           onApply={(minor, bp) => {
             closeModal();
             const lineId = modal.lineId;
-            void lineAction((tok) => (lineId ? api.pos.lineDiscount(lineId, minor, bp, tok) : api.pos.cartDiscount(minor, bp, tok)));
+            void lineAction((tok) =>
+              lineId ? api.pos.lineDiscount(lineId, minor, bp, tok) : api.pos.cartDiscount(minor, bp, tok),
+            );
           }}
         />
       ) : null}
@@ -764,11 +903,15 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
           }}
         />
       ) : null}
-      {modal.kind === "cash" ? <CashEventDialog kind={modal.cashKind} onClose={closeModal} onDone={() => (closeModal(), void reloadShift())} /> : null}
+      {modal.kind === "cash" ? (
+        <CashEventDialog kind={modal.cashKind} onClose={closeModal} onDone={() => (closeModal(), void reloadShift())} />
+      ) : null}
       {modal.kind === "refund" ? <RefundFlow onClose={closeModal} onDone={() => void reloadShift()} /> : null}
       {modal.kind === "recent" ? <RecentSalesDialog onClose={closeModal} /> : null}
       {modal.kind === "print_queue" ? <PrintQueueDialog onClose={closeModal} /> : null}
-      {modal.kind === "delivery" ? <DeliveryQuickDialog saleId={modal.saleId} customer={cart.customer} onClose={closeModal} /> : null}
+      {modal.kind === "delivery" ? (
+        <DeliveryQuickDialog saleId={modal.saleId} customer={cart.customer} onClose={closeModal} />
+      ) : null}
       {modal.kind === "close_shift" ? (
         <ShiftClose
           shiftId={shift.shift_id}

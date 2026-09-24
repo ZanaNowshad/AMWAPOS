@@ -190,7 +190,13 @@ fn load_delivery(c: &Connection, id: &str) -> AppResult<DeliveryRow> {
 }
 
 impl AppCore {
-    pub fn customers_search(&self, token: &str, q: Option<String>, include_inactive: bool, limit: Option<i64>) -> AppResult<Vec<CustomerRow>> {
+    pub fn customers_search(
+        &self,
+        token: &str,
+        q: Option<String>,
+        include_inactive: bool,
+        limit: Option<i64>,
+    ) -> AppResult<Vec<CustomerRow>> {
         let s = self.session(token)?;
         s.require("customers.view")?;
         let limit = validate::limit(limit, 50, 500);

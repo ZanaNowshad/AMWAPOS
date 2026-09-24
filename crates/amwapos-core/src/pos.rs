@@ -166,10 +166,7 @@ fn ensure_cart(c: &Connection, s: &Session) -> AppResult<String> {
 }
 
 fn touch(c: &Connection, cart_id: &str) -> AppResult<()> {
-    c.execute(
-        "UPDATE carts SET updated_at=?2, version=version+1 WHERE cart_id=?1",
-        params![cart_id, time::now_str()],
-    )?;
+    c.execute("UPDATE carts SET updated_at=?2, version=version+1 WHERE cart_id=?1", params![cart_id, time::now_str()])?;
     Ok(())
 }
 
@@ -180,9 +177,7 @@ fn cart_for_edit(c: &Connection, s: &Session, cart_id: Option<&str>) -> AppResul
         None => active_cart_id(c, s)?.ok_or_else(|| AppError::conflict("There is no sale in progress."))?,
     };
     let (status, dev, user): (String, String, String) = c
-        .query_row("SELECT status, device_id, user_id FROM carts WHERE cart_id=?1", [&id], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-        })
+        .query_row("SELECT status, device_id, user_id FROM carts WHERE cart_id=?1", [&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .optional()?
         .ok_or_else(|| AppError::not_found("Sale"))?;
     if dev != s.device_id || user != s.user_id {
@@ -381,9 +376,9 @@ fn add_product_line(c: &Connection, cart_id: &str, p: &ProductForSale, qty: i64,
     if !p.active {
         return Err(AppError::conflict(format!("{} is archived and cannot be sold.", p.name)));
     }
-    let price = p.price.ok_or_else(|| {
-        AppError::new(ErrorCode::Validation, format!("{} has no selling price. Ask a manager to set one.", p.name))
-    })?;
+    let price = p
+        .price
+        .ok_or_else(|| AppError::new(ErrorCode::Validation, format!("{} has no selling price. Ask a manager to set one.", p.name)))?;
     validate::qty_positive(qty, p.allow_decimal, "Quantity")?;
     let last: Option<(String, String, i64, Option<String>, i64, i64)> = c
         .query_row(
@@ -408,11 +403,9 @@ fn add_product_line(c: &Connection, cart_id: &str, p: &ProductForSale, qty: i64,
     let bc: Option<String> = match barcode {
         Some(b) => Some(b.to_string()),
         None => c
-            .query_row(
-                "SELECT barcode FROM product_barcodes WHERE product_id=?1 ORDER BY is_primary DESC LIMIT 1",
-                [&p.product_id],
-                |r| r.get(0),
-            )
+            .query_row("SELECT barcode FROM product_barcodes WHERE product_id=?1 ORDER BY is_primary DESC LIMIT 1", [&p.product_id], |r| {
+                r.get(0)
+            })
             .optional()?,
     };
     c.execute(
@@ -420,8 +413,20 @@ fn add_product_line(c: &Connection, cart_id: &str, p: &ProductForSale, qty: i64,
              unit_price_minor, tax_rule_id, tax_rate_bp, tax_inclusive, is_custom, created_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10,?11,?12,?13,0,?14)",
         params![
-            lid, cart_id, line_no, p.product_id, p.name, p.sku, bc, p.unit, qty, price, p.tax_rule_id, p.rate_bp,
-            p.inclusive as i64, time::now_str()
+            lid,
+            cart_id,
+            line_no,
+            p.product_id,
+            p.name,
+            p.sku,
+            bc,
+            p.unit,
+            qty,
+            price,
+            p.tax_rule_id,
+            p.rate_bp,
+            p.inclusive as i64,
+            time::now_str()
         ],
     )?;
     touch(c, cart_id)?;
@@ -491,7 +496,14 @@ impl AppCore {
         })
     }
 
-    pub fn pos_search(&self, token: &str, q: &str, category_id: Option<String>, favorites: bool, limit: Option<i64>) -> AppResult<Vec<PosSearchRow>> {
+    pub fn pos_search(
+        &self,
+        token: &str,
+        q: &str,
+        category_id: Option<String>,
+        favorites: bool,
+        limit: Option<i64>,
+    ) -> AppResult<Vec<PosSearchRow>> {
         let s = self.session(token)?;
         require_sell(&s)?;
         let limit = validate::limit(limit, 40, 200);
@@ -652,8 +664,15 @@ impl AppCore {
             tx.execute("UPDATE cart_lines SET qty_milli=?2 WHERE line_id=?1", params![lid, qty_milli])?;
             touch(tx, &cid)?;
             if qty_milli < old_qty {
-                audit::record(tx, &self.actor(&s, approved.clone()), "pos.qty_reduced", "cart", Some(&cid), Some(&json!({ "line": name, "qty_milli": old_qty })),
-                    Some(&json!({ "qty_milli": qty_milli })))?;
+                audit::record(
+                    tx,
+                    &self.actor(&s, approved.clone()),
+                    "pos.qty_reduced",
+                    "cart",
+                    Some(&cid),
+                    Some(&json!({ "line": name, "qty_milli": old_qty })),
+                    Some(&json!({ "qty_milli": qty_milli })),
+                )?;
             }
             cart_view(tx, &s, &cid, vec![])
         })
@@ -673,10 +692,21 @@ impl AppCore {
         self.db.write(|tx| {
             let cart_id: String = tx.query_row("SELECT cart_id FROM cart_lines WHERE line_id=?1", [&lid], |r| r.get(0))?;
             let cid = cart_for_edit(tx, &s, Some(&cart_id))?;
-            let (qty, price): (i64, i64) = tx.query_row("SELECT qty_milli, unit_price_minor FROM cart_lines WHERE line_id=?1", [&lid], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let (qty, price): (i64, i64) =
+                tx.query_row("SELECT qty_milli, unit_price_minor FROM cart_lines WHERE line_id=?1", [&lid], |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })?;
             tx.execute("DELETE FROM cart_lines WHERE line_id=?1", [&lid])?;
             touch(tx, &cid)?;
-            audit::record(tx, &actor, "pos.line_removed", "cart", Some(&cid), Some(&json!({ "line": name, "qty_milli": qty, "unit_price_minor": price })), None)?;
+            audit::record(
+                tx,
+                &actor,
+                "pos.line_removed",
+                "cart",
+                Some(&cid),
+                Some(&json!({ "line": name, "qty_milli": qty, "unit_price_minor": price })),
+                None,
+            )?;
             cart_view(tx, &s, &cid, vec![])
         })
     }
@@ -724,9 +754,12 @@ impl AppCore {
                 self.authorize(&s, "pos.discount_override", approval_token.as_deref(), &format!("Discount on {name}")).map(|_| ())
             })?;
             if effective_bp > pos.cashier_max_discount_bp {
-                self.authorize(&s, "pos.discount_override", approval_token.as_deref(), &format!(
-                    "{}% discount on {name}", crate::money::format_decimal(effective_bp, 2)
-                ))?
+                self.authorize(
+                    &s,
+                    "pos.discount_override",
+                    approval_token.as_deref(),
+                    &format!("{}% discount on {name}", crate::money::format_decimal(effective_bp, 2)),
+                )?
             } else {
                 None
             }
@@ -739,13 +772,26 @@ impl AppCore {
                 params![lid, discount_minor, discount_bp, approved],
             )?;
             touch(tx, &cid)?;
-            audit::record(tx, &actor, "pos.line_discount", "cart", Some(&cid), None,
-                Some(&json!({ "line": name, "discount_minor": discount_minor, "discount_bp": discount_bp })))?;
+            audit::record(
+                tx,
+                &actor,
+                "pos.line_discount",
+                "cart",
+                Some(&cid),
+                None,
+                Some(&json!({ "line": name, "discount_minor": discount_minor, "discount_bp": discount_bp })),
+            )?;
             cart_view(tx, &s, &cid, vec![])
         })
     }
 
-    pub fn pos_cart_discount(&self, token: &str, discount_minor: i64, discount_bp: i64, approval_token: Option<String>) -> AppResult<CartView> {
+    pub fn pos_cart_discount(
+        &self,
+        token: &str,
+        discount_minor: i64,
+        discount_bp: i64,
+        approval_token: Option<String>,
+    ) -> AppResult<CartView> {
         let s = self.session(token)?;
         require_sell(&s)?;
         let pos: settings::PosSettings = self.db.read(|c| settings::get(c, settings::KEY_POS))?;
@@ -771,9 +817,12 @@ impl AppCore {
         let approved = if discount_minor == 0 && discount_bp == 0 {
             None
         } else if !s.has("pos.discount") || effective_bp > pos.cashier_max_discount_bp {
-            self.authorize(&s, "pos.discount_override", approval_token.as_deref(), &format!(
-                "{}% discount on sale", crate::money::format_decimal(effective_bp, 2)
-            ))?
+            self.authorize(
+                &s,
+                "pos.discount_override",
+                approval_token.as_deref(),
+                &format!("{}% discount on sale", crate::money::format_decimal(effective_bp, 2)),
+            )?
         } else {
             None
         };
@@ -785,22 +834,38 @@ impl AppCore {
                 params![cid, discount_minor, discount_bp, approved],
             )?;
             touch(tx, &cid)?;
-            audit::record(tx, &actor, "pos.cart_discount", "cart", Some(&cid), None,
-                Some(&json!({ "discount_minor": discount_minor, "discount_bp": discount_bp })))?;
+            audit::record(
+                tx,
+                &actor,
+                "pos.cart_discount",
+                "cart",
+                Some(&cid),
+                None,
+                Some(&json!({ "discount_minor": discount_minor, "discount_bp": discount_bp })),
+            )?;
             cart_view(tx, &s, &cid, vec![])
         })
     }
 
-    pub fn pos_price_override(&self, token: &str, line_id: &str, unit_price_minor: i64, reason: Option<String>, approval_token: Option<String>) -> AppResult<CartView> {
+    pub fn pos_price_override(
+        &self,
+        token: &str,
+        line_id: &str,
+        unit_price_minor: i64,
+        reason: Option<String>,
+        approval_token: Option<String>,
+    ) -> AppResult<CartView> {
         let s = self.session(token)?;
         require_sell(&s)?;
         let lid = validate::id(line_id, "Line")?;
         validate::money_non_negative(unit_price_minor, "Price")?;
         let reason = clean_opt(&reason, "Reason", 200)?;
         let (cart_id, name, catalog_price): (String, String, i64) = self.db.read(|c| {
-            c.query_row("SELECT cart_id, name, catalog_unit_price_minor FROM cart_lines WHERE line_id=?1", [&lid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-                .optional()?
-                .ok_or_else(|| AppError::not_found("Line"))
+            c.query_row("SELECT cart_id, name, catalog_unit_price_minor FROM cart_lines WHERE line_id=?1", [&lid], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .optional()?
+            .ok_or_else(|| AppError::not_found("Line"))
         })?;
         let approved = self.authorize(&s, "pos.price_override", approval_token.as_deref(), &format!("Change price of {name}"))?;
         let approver = approved.clone().unwrap_or_else(|| s.user_id.clone());
@@ -808,10 +873,20 @@ impl AppCore {
         self.db.write(|tx| {
             let cid = cart_for_edit(tx, &s, Some(&cart_id))?;
             let override_by = if unit_price_minor == catalog_price { None } else { Some(approver.clone()) };
-            tx.execute("UPDATE cart_lines SET unit_price_minor=?2, price_override_by=?3 WHERE line_id=?1", params![lid, unit_price_minor, override_by])?;
+            tx.execute(
+                "UPDATE cart_lines SET unit_price_minor=?2, price_override_by=?3 WHERE line_id=?1",
+                params![lid, unit_price_minor, override_by],
+            )?;
             touch(tx, &cid)?;
-            audit::record(tx, &actor, "pos.price_override", "cart", Some(&cid), Some(&json!({ "line": name, "unit_price_minor": catalog_price })),
-                Some(&json!({ "unit_price_minor": unit_price_minor, "reason": reason })))?;
+            audit::record(
+                tx,
+                &actor,
+                "pos.price_override",
+                "cart",
+                Some(&cid),
+                Some(&json!({ "line": name, "unit_price_minor": catalog_price })),
+                Some(&json!({ "unit_price_minor": unit_price_minor, "reason": reason })),
+            )?;
             cart_view(tx, &s, &cid, vec![])
         })
     }
@@ -824,7 +899,10 @@ impl AppCore {
             let cid = match customer_id.as_ref().filter(|x| !x.is_empty()) {
                 Some(c) => {
                     let c = validate::id(c, "Customer")?;
-                    let ok: bool = tx.query_row("SELECT 1 FROM customers WHERE customer_id=?1 AND active=1", [&c], |_| Ok(true)).optional()?.unwrap_or(false);
+                    let ok: bool = tx
+                        .query_row("SELECT 1 FROM customers WHERE customer_id=?1 AND active=1", [&c], |_| Ok(true))
+                        .optional()?
+                        .unwrap_or(false);
                     if !ok {
                         return Err(AppError::not_found("Customer"));
                     }
@@ -872,6 +950,7 @@ impl AppCore {
                  FROM carts c JOIN users u ON u.user_id=c.user_id LEFT JOIN customers cu ON cu.customer_id=c.customer_id
                  WHERE c.status='held' AND c.device_id=?1 ORDER BY c.held_at",
             )?;
+            #[allow(clippy::type_complexity)]
             let rows: Vec<(String, Option<i64>, Option<String>, String, String, Option<String>, Option<String>, i64, i64)> = st
                 .query_map([&s.device_id], |r| {
                     Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?))
@@ -916,7 +995,9 @@ impl AppCore {
                 tx.execute("UPDATE carts SET status='cancelled', updated_at=?2 WHERE cart_id=?1", params![active, time::now_str()])?;
             }
             let (status, dev, uid): (String, String, String) = tx
-                .query_row("SELECT status, device_id, user_id FROM carts WHERE cart_id=?1", [&cid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .query_row("SELECT status, device_id, user_id FROM carts WHERE cart_id=?1", [&cid], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Held sale"))?;
             if status != "held" || dev != s.device_id {
@@ -964,7 +1045,11 @@ impl AppCore {
                 }
             }
             let shift: Option<String> = tx
-                .query_row("SELECT shift_id FROM shifts WHERE device_id=?1 AND user_id=?2 AND status='open'", params![s.device_id, s.user_id], |r| r.get(0))
+                .query_row(
+                    "SELECT shift_id FROM shifts WHERE device_id=?1 AND user_id=?2 AND status='open'",
+                    params![s.device_id, s.user_id],
+                    |r| r.get(0),
+                )
                 .optional()?;
             tx.execute(
                 "UPDATE carts SET status='active', user_id=?2, shift_id=?3, updated_at=?4, version=version+1 WHERE cart_id=?1",
@@ -991,7 +1076,10 @@ impl AppCore {
         };
         let actor = self.actor(&s, approved);
         self.db.write(|tx| {
-            let n = tx.execute("UPDATE carts SET status='cancelled', updated_at=?2 WHERE cart_id=?1 AND status='held'", params![cid, time::now_str()])?;
+            let n = tx.execute(
+                "UPDATE carts SET status='cancelled', updated_at=?2 WHERE cart_id=?1 AND status='held'",
+                params![cid, time::now_str()],
+            )?;
             if n == 0 {
                 return Err(AppError::conflict("This held sale is no longer available."));
             }
@@ -1009,20 +1097,24 @@ impl AppCore {
             let (_, t) = pricing::price_cart(&line_inputs(&lines), 0, 0)?;
             Ok((cid, lines.len(), t.total_minor))
         })?;
-        let approved = if n > 0 {
-            self.authorize(&s, "pos.cancel_sale", approval_token.as_deref(), "Cancel the current sale")?
-        } else {
-            None
-        };
+        let approved =
+            if n > 0 { self.authorize(&s, "pos.cancel_sale", approval_token.as_deref(), "Cancel the current sale")? } else { None };
         let actor = self.actor(&s, approved);
         self.db.write(|tx| {
             let cid = cart_for_edit(tx, &s, Some(&cid))?;
             tx.execute("UPDATE carts SET status='cancelled', updated_at=?2 WHERE cart_id=?1", params![cid, time::now_str()])?;
             if n > 0 {
-                audit::record(tx, &actor, "pos.sale_cancelled", "cart", Some(&cid), None, Some(&json!({ "lines": n, "total_minor": total })))?;
+                audit::record(
+                    tx,
+                    &actor,
+                    "pos.sale_cancelled",
+                    "cart",
+                    Some(&cid),
+                    None,
+                    Some(&json!({ "lines": n, "total_minor": total })),
+                )?;
             }
             Ok(CartView::empty())
         })
     }
 }
-

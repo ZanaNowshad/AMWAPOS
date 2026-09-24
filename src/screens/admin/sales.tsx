@@ -27,7 +27,11 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
             icon={<Printer size={14} />}
             onClick={async () => {
               const r = await api.sales.reprint(saleId);
-              toast(r.status === "printed" ? "success" : "warning", r.status === "printed" ? "Reprinted" : "Not printed", r.message ?? undefined);
+              toast(
+                r.status === "printed" ? "success" : "warning",
+                r.status === "printed" ? "Reprinted" : "Not printed",
+                r.message ?? undefined,
+              );
             }}
           >
             Reprint
@@ -58,7 +62,13 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
             <>
               <dl className="kv">
                 <dt>Status</dt>
-                <dd>{s.refunds.length ? <Chip tone="warning">Refunds recorded</Chip> : <Chip tone="success">Completed</Chip>}</dd>
+                <dd>
+                  {s.refunds.length ? (
+                    <Chip tone="warning">Refunds recorded</Chip>
+                  ) : (
+                    <Chip tone="success">Completed</Chip>
+                  )}
+                </dd>
                 <dt>Date</dt>
                 <dd>{formatDateTime(s.completed_at)}</dd>
                 <dt>Cashier</dt>
@@ -84,7 +94,9 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
                     <tr key={i.sale_item_id}>
                       <td>
                         {i.name}
-                        {i.refunded_qty_milli ? <div className="tiny">Refunded {formatQty(i.refunded_qty_milli)}</div> : null}
+                        {i.refunded_qty_milli ? (
+                          <div className="tiny">Refunded {formatQty(i.refunded_qty_milli)}</div>
+                        ) : null}
                       </td>
                       <td className="num">{formatQty(i.qty_milli)}</td>
                       <td className="num">{formatMoney(i.unit_price_minor)}</td>
@@ -111,7 +123,9 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
                     </span>
                     <span className="num">
                       {formatMoney(p.amount_minor)}
-                      {p.change_minor ? ` (tendered ${formatMoney(p.tendered_minor)}, change ${formatMoney(p.change_minor)})` : ""}
+                      {p.change_minor
+                        ? ` (tendered ${formatMoney(p.tendered_minor)}, change ${formatMoney(p.change_minor)})`
+                        : ""}
                     </span>
                   </div>
                 ))}
@@ -155,14 +169,29 @@ export function SalesPage() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(50);
   const [open, setOpen] = useState<string | null>(null);
-  const { data, loading, error } = useLoad(() => api.sales.list({ from, to, receipt: receipt || undefined, method: method || undefined, limit, offset }), [from, to, receipt, method, limit, offset]);
+  const { data, loading, error } = useLoad(
+    () => api.sales.list({ from, to, receipt: receipt || undefined, method: method || undefined, limit, offset }),
+    [from, to, receipt, method, limit, offset],
+  );
   return (
     <div>
       <PageHeader title="Sales" subtitle="Completed sales. Records are immutable; corrections are made with refunds." />
       <div className="filters">
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b), setOffset(0))} />
-        <input className="input" style={{ width: 200 }} placeholder="Receipt number" value={receipt} onChange={(e) => (setReceipt(e.target.value), setOffset(0))} />
-        <select className="select" style={{ width: 160 }} value={method} onChange={(e) => (setMethod(e.target.value), setOffset(0))} aria-label="Payment method">
+        <input
+          className="input"
+          style={{ width: 200 }}
+          placeholder="Receipt number"
+          value={receipt}
+          onChange={(e) => (setReceipt(e.target.value), setOffset(0))}
+        />
+        <select
+          className="select"
+          style={{ width: 160 }}
+          value={method}
+          onChange={(e) => (setMethod(e.target.value), setOffset(0))}
+          aria-label="Payment method"
+        >
           <option value="">All payments</option>
           {["cash", "card", "benefitpay", "bank_transfer"].map((m) => (
             <option key={m} value={m}>
@@ -179,22 +208,46 @@ export function SalesPage() {
         onRowClick={(r) => setOpen(r.sale_id)}
         empty={<div className="empty">No sales in this period.</div>}
         columns={[
-          { key: "r", label: "Receipt", render: (r) => <span className="mono">{r.receipt_number}</span>, sort: (r) => r.receipt_number },
+          {
+            key: "r",
+            label: "Receipt",
+            render: (r) => <span className="mono">{r.receipt_number}</span>,
+            sort: (r) => r.receipt_number,
+          },
           { key: "t", label: "Time", render: (r) => formatShort(r.completed_at), sort: (r) => r.completed_at },
           { key: "c", label: "Cashier", render: (r) => r.cashier_name, sort: (r) => r.cashier_name },
           { key: "d", label: "Terminal", render: (r) => r.device_name ?? "—" },
           { key: "cu", label: "Customer", render: (r) => r.customer_name ?? "—" },
           { key: "i", label: "Items", num: true, render: (r) => formatQty(r.item_count_milli) },
           { key: "p", label: "Payment", render: (r) => r.methods.split(",").map(methodLabel).join(", ") },
-          { key: "tot", label: "Total", num: true, render: (r) => <Money minor={r.total_minor} />, sort: (r) => r.total_minor },
+          {
+            key: "tot",
+            label: "Total",
+            num: true,
+            render: (r) => <Money minor={r.total_minor} />,
+            sort: (r) => r.total_minor,
+          },
           {
             key: "s",
             label: "Status",
-            render: (r) => (r.status === "completed" ? <Chip tone="success">Completed</Chip> : <Chip tone="warning">{r.status === "refunded" ? "Refunded" : "Partly refunded"}</Chip>),
+            render: (r) =>
+              r.status === "completed" ? (
+                <Chip tone="success">Completed</Chip>
+              ) : (
+                <Chip tone="warning">{r.status === "refunded" ? "Refunded" : "Partly refunded"}</Chip>
+              ),
           },
         ]}
       />
-      {data ? <Pager total={data.total} limit={limit} offset={offset} onChange={setOffset} onLimit={(l) => (setLimit(l), setOffset(0))} /> : null}
+      {data ? (
+        <Pager
+          total={data.total}
+          limit={limit}
+          offset={offset}
+          onChange={setOffset}
+          onLimit={(l) => (setLimit(l), setOffset(0))}
+        />
+      ) : null}
       {open ? <SaleDrawer saleId={open} onClose={() => setOpen(null)} /> : null}
     </div>
   );
@@ -221,13 +274,32 @@ export function RefundsPage() {
         empty={<div className="empty">No refunds in this period.</div>}
         columns={[
           { key: "n", label: "Refund Receipt", render: (r) => <span className="mono">{r.refund_receipt_number}</span> },
-          { key: "o", label: "Original Receipt", render: (r) => <span className="mono">{r.original_receipt_number}</span> },
-          { key: "d", label: "Date", render: (r) => formatShort(String(r.created_at)), sort: (r) => String(r.created_at) },
+          {
+            key: "o",
+            label: "Original Receipt",
+            render: (r) => <span className="mono">{r.original_receipt_number}</span>,
+          },
+          {
+            key: "d",
+            label: "Date",
+            render: (r) => formatShort(String(r.created_at)),
+            sort: (r) => String(r.created_at),
+          },
           { key: "u", label: "User", render: (r) => r.user_name ?? "—" },
           { key: "a", label: "Approved By", render: (r) => r.approver_name ?? "—" },
           { key: "re", label: "Reason", render: (r) => r.reason },
-          { key: "m", label: "Refunded to", render: (r) => String(r.methods).split(",").filter(Boolean).map(methodLabel).join(", ") },
-          { key: "t", label: "Amount", num: true, render: (r) => <Money minor={-Number(r.total_minor)} />, sort: (r) => Number(r.total_minor) },
+          {
+            key: "m",
+            label: "Refunded to",
+            render: (r) => String(r.methods).split(",").filter(Boolean).map(methodLabel).join(", "),
+          },
+          {
+            key: "t",
+            label: "Amount",
+            num: true,
+            render: (r) => <Money minor={-Number(r.total_minor)} />,
+            sort: (r) => Number(r.total_minor),
+          },
         ]}
       />
       {open ? <SaleDrawer saleId={open} onClose={() => setOpen(null)} /> : null}
@@ -261,7 +333,12 @@ export function ShiftsPage() {
           { key: "cl", label: "Closed", render: (r) => formatShort(r.closed_at) },
           { key: "s", label: "Sales", num: true, render: (r) => <Money minor={r.sales_total_minor} /> },
           { key: "e", label: "Expected Cash", num: true, render: (r) => <Money minor={r.expected_cash_minor} /> },
-          { key: "cc", label: "Counted", num: true, render: (r) => (r.counted_cash_minor === null ? "—" : <Money minor={r.counted_cash_minor} />) },
+          {
+            key: "cc",
+            label: "Counted",
+            num: true,
+            render: (r) => (r.counted_cash_minor === null ? "—" : <Money minor={r.counted_cash_minor} />),
+          },
           {
             key: "v",
             label: "Variance",
@@ -271,13 +348,19 @@ export function ShiftsPage() {
                 "—"
               ) : (
                 <span className="row" style={{ justifyContent: "flex-end" }}>
-                  {Math.abs(r.variance_minor) > 1000 ? <AlertTriangle size={14} color="var(--warning)" aria-label="Large variance" /> : null}
+                  {Math.abs(r.variance_minor) > 1000 ? (
+                    <AlertTriangle size={14} color="var(--warning)" aria-label="Large variance" />
+                  ) : null}
                   <Money minor={r.variance_minor} />
                 </span>
               ),
             sort: (r) => Math.abs(r.variance_minor ?? 0),
           },
-          { key: "st", label: "Status", render: (r) => (r.status === "open" ? <Chip tone="info">Open</Chip> : <Chip>Closed</Chip>) },
+          {
+            key: "st",
+            label: "Status",
+            render: (r) => (r.status === "open" ? <Chip tone="info">Open</Chip> : <Chip>Closed</Chip>),
+          },
         ]}
       />
       {open ? (
@@ -290,7 +373,10 @@ export function ShiftsPage() {
 }
 
 function ShiftDetail({ s }: { s: ShiftSummary }) {
-  const { data: report } = useLoad(() => (s.status === "closed" ? api.receipts.preview("shift_report", s.shift_id) : Promise.resolve(null)), [s.shift_id]);
+  const { data: report } = useLoad(
+    () => (s.status === "closed" ? api.receipts.preview("shift_report", s.shift_id) : Promise.resolve(null)),
+    [s.shift_id],
+  );
   const { data: events } = useLoad(() => api.cash.list({ shift_id: s.shift_id }), [s.shift_id]);
   return (
     <div className="stack-16">
@@ -352,10 +438,19 @@ export function CashEventsPage() {
   const rows = ((data as R[] | null) ?? null)?.filter((r) => !kind || r.kind === kind) ?? null;
   return (
     <div>
-      <PageHeader title="Cash" subtitle="Paid in, paid out, safe drops and no-sale drawer openings. Completed events cannot be edited." />
+      <PageHeader
+        title="Cash"
+        subtitle="Paid in, paid out, safe drops and no-sale drawer openings. Completed events cannot be edited."
+      />
       <div className="filters">
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b))} />
-        <select className="select" style={{ width: 160 }} value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Type">
+        <select
+          className="select"
+          style={{ width: 160 }}
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+          aria-label="Type"
+        >
           <option value="">All types</option>
           <option value="paid_in">Paid in</option>
           <option value="paid_out">Paid out</option>
@@ -370,7 +465,12 @@ export function CashEventsPage() {
         rowKey={(r) => String(r.cash_event_id)}
         empty={<div className="empty">No cash events in this period.</div>}
         columns={[
-          { key: "t", label: "Time", render: (r) => formatShort(String(r.created_at)), sort: (r) => String(r.created_at) },
+          {
+            key: "t",
+            label: "Time",
+            render: (r) => formatShort(String(r.created_at)),
+            sort: (r) => String(r.created_at),
+          },
           { key: "k", label: "Type", render: (r) => String(r.kind).replace("_", " ") },
           { key: "a", label: "Amount", num: true, render: (r) => <Money minor={Number(r.amount_minor)} /> },
           { key: "r", label: "Reason", render: (r) => r.reason },

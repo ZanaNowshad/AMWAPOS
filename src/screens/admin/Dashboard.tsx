@@ -40,8 +40,24 @@ export function Dashboard() {
   const cards: { label: string; value: string; now: number | null; prev: number | null; money?: boolean }[] = [
     { label: "Today Sales (net)", value: formatMoney(k.sales), now: k.sales, prev: k.sales_prev, money: true },
     { label: "Transactions", value: String(k.transactions ?? 0), now: k.transactions, prev: k.transactions_prev },
-    { label: "Average Basket", value: formatMoney(k.average_basket), now: k.average_basket, prev: k.average_basket_prev, money: true },
-    ...(has("reports.financial") ? [{ label: "Gross Profit", value: formatMoney(k.gross_profit), now: k.gross_profit, prev: k.gross_profit_prev, money: true }] : []),
+    {
+      label: "Average Basket",
+      value: formatMoney(k.average_basket),
+      now: k.average_basket,
+      prev: k.average_basket_prev,
+      money: true,
+    },
+    ...(has("reports.financial")
+      ? [
+          {
+            label: "Gross Profit",
+            value: formatMoney(k.gross_profit),
+            now: k.gross_profit,
+            prev: k.gross_profit_prev,
+            money: true,
+          },
+        ]
+      : []),
     { label: "Refunds", value: `${formatMoney(k.refunds)} (${k.refund_count ?? 0})`, now: null, prev: null },
   ];
   return (
@@ -70,7 +86,12 @@ export function Dashboard() {
             <h3>Sales by hour — today</h3>
           </div>
           <div className="card-body">
-            <BarChart label="Hourly sales today" data={data.hourly.filter((h) => h.hour >= 6 || h.sales > 0).map((h) => ({ label: `${String(h.hour).padStart(2, "0")}:00`, value: h.sales }))} />
+            <BarChart
+              label="Hourly sales today"
+              data={data.hourly
+                .filter((h) => h.hour >= 6 || h.sales > 0)
+                .map((h) => ({ label: `${String(h.hour).padStart(2, "0")}:00`, value: h.sales }))}
+            />
           </div>
         </div>
         <div className="card">
@@ -80,8 +101,17 @@ export function Dashboard() {
           <div className="card-body col">
             {data.attention.length === 0 ? <div className="muted small">Nothing needs attention right now.</div> : null}
             {data.attention.map((a, i) => (
-              <button key={i} className="result-row" style={{ border: 0, background: "none", textAlign: "left", borderRadius: 8 }} onClick={() => nav(a.link.split("?")[0])}>
-                {a.severity === "error" ? <CircleAlert size={17} color="var(--danger)" /> : <AlertTriangle size={17} color="var(--warning)" />}
+              <button
+                key={i}
+                className="result-row"
+                style={{ border: 0, background: "none", textAlign: "left", borderRadius: 8 }}
+                onClick={() => nav(a.link.split("?")[0])}
+              >
+                {a.severity === "error" ? (
+                  <CircleAlert size={17} color="var(--danger)" />
+                ) : (
+                  <AlertTriangle size={17} color="var(--warning)" />
+                )}
                 <span className="grow">{a.text}</span>
                 <ChevronRight size={16} />
               </button>
@@ -89,7 +119,8 @@ export function Dashboard() {
             <div className="divider" />
             <div className="small">
               <div>
-                Open deliveries: <strong>{data.counts.open_deliveries}</strong> · Active shifts: <strong>{data.counts.active_shifts}</strong>
+                Open deliveries: <strong>{data.counts.open_deliveries}</strong> · Active shifts:{" "}
+                <strong>{data.counts.active_shifts}</strong>
               </div>
               <div className="muted">Backup: {data.health.backup.summary}</div>
               <div className="muted">Sync: {data.health.sync.summary}</div>
@@ -147,7 +178,9 @@ export function Dashboard() {
               ))}
             </tbody>
           </table>
-          {data.low_stock.length === 0 ? <div className="empty">All tracked products are above their reorder points.</div> : null}
+          {data.low_stock.length === 0 ? (
+            <div className="empty">All tracked products are above their reorder points.</div>
+          ) : null}
         </div>
       </div>
     </div>

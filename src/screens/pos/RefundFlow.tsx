@@ -43,7 +43,7 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
       setQty({});
       setRestock(Object.fromEntries(s.items.map((i) => [i.sale_item_id, true])));
       const methods = Array.from(new Set(s.payments.map((p) => p.method)));
-      setMethod(methods.includes("cash") ? "cash" : methods[0] ?? "cash");
+      setMethod(methods.includes("cash") ? "cash" : (methods[0] ?? "cash"));
       setStep("select");
     } catch (e) {
       fail(e);
@@ -54,7 +54,11 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
 
   const lines = () =>
     (sale?.items ?? [])
-      .map((i) => ({ sale_item_id: i.sale_item_id, qty_milli: parseQty(qty[i.sale_item_id] ?? "") ?? 0, restock: restock[i.sale_item_id] ?? true }))
+      .map((i) => ({
+        sale_item_id: i.sale_item_id,
+        qty_milli: parseQty(qty[i.sale_item_id] ?? "") ?? 0,
+        restock: restock[i.sale_item_id] ?? true,
+      }))
       .filter((l) => l.qty_milli > 0);
 
   const reasonText = reason === "Other" ? other.trim() : reason;
@@ -71,7 +75,13 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     }
     setBusy(true);
     try {
-      const p = await api.refunds.preview({ sale_id: sale!.sale_id, lines: lines(), reason: reasonText, operation_id: opId, tenders: [] });
+      const p = await api.refunds.preview({
+        sale_id: sale!.sale_id,
+        lines: lines(),
+        reason: reasonText,
+        operation_id: opId,
+        tenders: [],
+      });
       const t = p.total_minor > 0 ? [{ method, amount_minor: p.total_minor }] : [];
       setPreview({ ...p, tenders: t });
       setStep("review");
@@ -87,7 +97,14 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     setError(null);
     try {
       const r = await approve((tok) =>
-        api.refunds.create({ sale_id: sale!.sale_id, lines: lines(), reason: reasonText, operation_id: opId, tenders: preview!.tenders, approval_token: tok }),
+        api.refunds.create({
+          sale_id: sale!.sale_id,
+          lines: lines(),
+          reason: reasonText,
+          operation_id: opId,
+          tenders: preview!.tenders,
+          approval_token: tok,
+        }),
       );
       setResult(r);
       setStep("done");
@@ -121,7 +138,15 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
           </label>
           <div className="scan-box">
             <Search size={18} className="scan-icon" />
-            <input id="refund-receipt" className="input" placeholder="Scan or type the receipt number, e.g. T01-0000123" value={receipt} onChange={(e) => setReceipt(e.target.value)} onKeyDown={(e) => e.key === "Enter" && find()} autoFocus />
+            <input
+              id="refund-receipt"
+              className="input"
+              placeholder="Scan or type the receipt number, e.g. T01-0000123"
+              value={receipt}
+              onChange={(e) => setReceipt(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && find()}
+              autoFocus
+            />
           </div>
           {error ? <Banner tone="danger">{error}</Banner> : null}
         </div>
@@ -150,7 +175,8 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
         <div className="grid-3">
           <div>
             <div className="tiny" style={{ marginBottom: 8 }}>
-              {formatDateTime(sale.completed_at)} · {sale.cashier_name} · {sale.device_name} · paid {sale.payments.map((p) => methodLabel(p.method)).join(", ")}
+              {formatDateTime(sale.completed_at)} · {sale.cashier_name} · {sale.device_name} · paid{" "}
+              {sale.payments.map((p) => methodLabel(p.method)).join(", ")}
             </div>
             <table className="table">
               <thead>
@@ -191,13 +217,22 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                             aria-label={`Refund quantity for ${i.name}`}
                             onChange={(e) => setQty({ ...qty, [i.sale_item_id]: e.target.value })}
                           />
-                          <Button size="sm" disabled={avail <= 0} onClick={() => setQty({ ...qty, [i.sale_item_id]: formatQty(avail) })}>
+                          <Button
+                            size="sm"
+                            disabled={avail <= 0}
+                            onClick={() => setQty({ ...qty, [i.sale_item_id]: formatQty(avail) })}
+                          >
                             All
                           </Button>
                         </div>
                       </td>
                       <td>
-                        <Checkbox label="" checked={restock[i.sale_item_id] ?? true} onChange={(b) => setRestock({ ...restock, [i.sale_item_id]: b })} disabled={!i.product_id} />
+                        <Checkbox
+                          label=""
+                          checked={restock[i.sale_item_id] ?? true}
+                          onChange={(b) => setRestock({ ...restock, [i.sale_item_id]: b })}
+                          disabled={!i.product_id}
+                        />
                       </td>
                     </tr>
                   );
@@ -213,7 +248,14 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                   <option key={r}>{r}</option>
                 ))}
               </select>
-              {reason === "Other" ? <input className="input" placeholder="Describe the reason" value={other} onChange={(e) => setOther(e.target.value)} /> : null}
+              {reason === "Other" ? (
+                <input
+                  className="input"
+                  placeholder="Describe the reason"
+                  value={other}
+                  onChange={(e) => setOther(e.target.value)}
+                />
+              ) : null}
             </div>
             <div className="field">
               <label htmlFor="refund-method">Refund to</label>
@@ -225,7 +267,9 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                 ))}
               </select>
             </div>
-            <div className="tiny">Refunds are limited to quantities not yet refunded. Restocked items return to inventory.</div>
+            <div className="tiny">
+              Refunds are limited to quantities not yet refunded. Restocked items return to inventory.
+            </div>
             {error ? <Banner tone="danger">{error}</Banner> : null}
           </div>
         </div>
@@ -271,7 +315,9 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
               {formatMoney(preview.total_minor)}
             </dd>
             <dt>Refunded to</dt>
-            <dd>{preview.tenders.map((t) => `${methodLabel(t.method)} ${formatMoney(t.amount_minor)}`).join(", ") || "—"}</dd>
+            <dd>
+              {preview.tenders.map((t) => `${methodLabel(t.method)} ${formatMoney(t.amount_minor)}`).join(", ") || "—"}
+            </dd>
             <dt>Reason</dt>
             <dd>{reasonText}</dd>
           </dl>
@@ -300,8 +346,14 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
           </div>
           <div style={{ fontWeight: 700 }}>{result.refund_receipt_number}</div>
           <div className="due">{formatMoney(result.total_minor)}</div>
-          <div className="small muted">{result.tenders.map((t) => `${methodLabel(t.method)} ${formatMoney(t.amount_minor)}`).join(" · ")}</div>
-          {result.print?.status === "failed" ? <Banner tone="warning" title="Refund completed — receipt could not be printed">{result.print.message}</Banner> : null}
+          <div className="small muted">
+            {result.tenders.map((t) => `${methodLabel(t.method)} ${formatMoney(t.amount_minor)}`).join(" · ")}
+          </div>
+          {result.print?.status === "failed" ? (
+            <Banner tone="warning" title="Refund completed — receipt could not be printed">
+              {result.print.message}
+            </Banner>
+          ) : null}
         </div>
       </Modal>
     );

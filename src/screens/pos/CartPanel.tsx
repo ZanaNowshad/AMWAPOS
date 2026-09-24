@@ -37,7 +37,8 @@ export function CartPanel({
       <div className="cart-head">
         <h3 className="grow">Current Sale</h3>
         <span className="tiny" data-testid="line-count">
-          {cart.lines.length} {cart.lines.length === 1 ? "line" : "lines"} · {formatQty(cart.totals.item_count_milli)} items
+          {cart.lines.length} {cart.lines.length === 1 ? "line" : "lines"} · {formatQty(cart.totals.item_count_milli)}{" "}
+          items
         </span>
       </div>
       <div className="cart-lines" ref={listRef} role="list" aria-label="Cart">
@@ -76,7 +77,12 @@ export function CartPanel({
                 </span>
                 <span className="num">× {formatMoney(l.unit_price_minor)}</span>
                 {l.price_overridden ? <span className="chip warning">Price changed</span> : null}
-                {l.discount_minor > 0 ? <span className="chip brand">−{formatMoney(l.discount_minor)}{l.line_discount_bp ? ` (${formatPercent(l.line_discount_bp)})` : ""}</span> : null}
+                {l.discount_minor > 0 ? (
+                  <span className="chip brand">
+                    −{formatMoney(l.discount_minor)}
+                    {l.line_discount_bp ? ` (${formatPercent(l.line_discount_bp)})` : ""}
+                  </span>
+                ) : null}
                 <span className="grow" />
                 <span className="ellipsis" style={{ maxWidth: 140 }}>
                   {l.barcode ?? l.sku ?? (l.is_custom ? "Custom item" : "")}
@@ -95,7 +101,12 @@ export function CartPanel({
                       Price
                     </Button>
                   ) : null}
-                  <Button size="sm" variant="danger-outline" icon={<Trash2 size={14} />} onClick={() => onRemove(l.line_id)}>
+                  <Button
+                    size="sm"
+                    variant="danger-outline"
+                    icon={<Trash2 size={14} />}
+                    onClick={() => onRemove(l.line_id)}
+                  >
                     Remove
                   </Button>
                 </div>

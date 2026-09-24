@@ -162,10 +162,5 @@ pub fn verify_chain(conn: &Connection) -> AppResult<ChainReport> {
         }
         prev = stored;
     }
-    Ok(ChainReport {
-        entries: n,
-        valid: true,
-        first_broken_seq: None,
-        message: format!("All {n} audit entries verified."),
-    })
+    Ok(ChainReport { entries: n, valid: true, first_broken_seq: None, message: format!("All {n} audit entries verified.") })
 }

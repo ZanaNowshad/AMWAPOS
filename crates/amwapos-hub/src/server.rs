@@ -233,10 +233,12 @@ pub fn router(core: Arc<AppCore>) -> Router {
 }
 
 /// Serve the hub API until `shutdown` resolves.
-pub async fn serve(core: Arc<AppCore>, addr: SocketAddr, shutdown: impl std::future::Future<Output = ()> + Send + 'static) -> std::io::Result<()> {
+pub async fn serve(
+    core: Arc<AppCore>,
+    addr: SocketAddr,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "hub API listening");
-    axum::serve(listener, router(core).into_make_service_with_connect_info::<SocketAddr>())
-        .with_graceful_shutdown(shutdown)
-        .await
+    axum::serve(listener, router(core).into_make_service_with_connect_info::<SocketAddr>()).with_graceful_shutdown(shutdown).await
 }

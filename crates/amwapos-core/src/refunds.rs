@@ -154,7 +154,14 @@ fn compute(c: &rusqlite::Connection, sale_id: &str, lines: &[RefundLineInput]) -
         out.tax += tax_amt;
         out.cost += cost_amt;
         out.lines.push((
-            RefundPreviewLine { sale_item_id: iid, name, qty_milli: l.qty_milli, amount_minor: amount, tax_minor: tax_amt, restock: l.restock && pid.is_some() },
+            RefundPreviewLine {
+                sale_item_id: iid,
+                name,
+                qty_milli: l.qty_milli,
+                amount_minor: amount,
+                tax_minor: tax_amt,
+                restock: l.restock && pid.is_some(),
+            },
             pid,
             cost_amt,
             track == 1,
@@ -199,7 +206,8 @@ impl AppCore {
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Sale"))
         })?;
-        let approved = self.authorize(&s, "refund.create", req.approval_token.as_deref(), &format!("Refund on receipt {rn_for_summary}"))?;
+        let approved =
+            self.authorize(&s, "refund.create", req.approval_token.as_deref(), &format!("Refund on receipt {rn_for_summary}"))?;
         let device = self.require_device()?;
         let actor = self.actor(&s, approved.clone());
         let result = self.db.write(|tx| {
@@ -351,11 +359,7 @@ fn default_tenders(c: &rusqlite::Connection, sale_id: &str, total: i64, given: &
         if total == 0 {
             return Ok(vec![]);
         }
-        let method = if methods.iter().any(|m| m.0 == "cash") || methods.is_empty() {
-            "cash".to_string()
-        } else {
-            methods[0].0.clone()
-        };
+        let method = if methods.iter().any(|m| m.0 == "cash") || methods.is_empty() { "cash".to_string() } else { methods[0].0.clone() };
         return Ok(vec![RefundTenderInput { method, amount_minor: total, reference: None }]);
     }
     let mut sum = 0;

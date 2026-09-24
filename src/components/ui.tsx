@@ -12,8 +12,26 @@ type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   loading?: boolean;
 };
 
-export function Button({ variant = "default", size = "md", block, icon, kbd, loading, className = "", children, disabled, ...rest }: BtnProps) {
-  const cls = ["btn", variant !== "default" ? variant : "", size !== "md" ? size : "", block ? "block" : "", !children ? "icon" : "", className]
+export function Button({
+  variant = "default",
+  size = "md",
+  block,
+  icon,
+  kbd,
+  loading,
+  className = "",
+  children,
+  disabled,
+  ...rest
+}: BtnProps) {
+  const cls = [
+    "btn",
+    variant !== "default" ? variant : "",
+    size !== "md" ? size : "",
+    block ? "block" : "",
+    !children ? "icon" : "",
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
   return (
@@ -69,16 +87,36 @@ export function TextInput({
   className = "",
   fieldClass = "",
   ...rest
-}: InputHTMLAttributes<HTMLInputElement> & { label?: string; hint?: ReactNode; error?: string | null; fieldClass?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label?: string;
+  hint?: ReactNode;
+  error?: string | null;
+  fieldClass?: string;
+}) {
   const id = useId();
   return (
     <Field label={label} hint={hint} error={error} required={required} htmlFor={rest.id ?? id} className={fieldClass}>
-      <input id={rest.id ?? id} className={`input ${error ? "invalid" : ""} ${className}`} aria-invalid={!!error} {...rest} />
+      <input
+        id={rest.id ?? id}
+        className={`input ${error ? "invalid" : ""} ${className}`}
+        aria-invalid={!!error}
+        {...rest}
+      />
     </Field>
   );
 }
 
-export function Checkbox({ label, checked, onChange, disabled }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Checkbox({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: ReactNode;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <label className="checkbox">
       <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
@@ -88,10 +126,22 @@ export function Checkbox({ label, checked, onChange, disabled }: { label: ReactN
 }
 
 export function Money({ minor, className = "" }: { minor: number | null | undefined; className?: string }) {
-  return <span className={`money ${minor !== null && minor !== undefined && minor < 0 ? "neg-num" : ""} ${className}`}>{formatMoney(minor)}</span>;
+  return (
+    <span className={`money ${minor !== null && minor !== undefined && minor < 0 ? "neg-num" : ""} ${className}`}>
+      {formatMoney(minor)}
+    </span>
+  );
 }
 
-export function Chip({ tone = "default", children, dot }: { tone?: "default" | "success" | "warning" | "danger" | "info" | "brand"; children: ReactNode; dot?: boolean }) {
+export function Chip({
+  tone = "default",
+  children,
+  dot,
+}: {
+  tone?: "default" | "success" | "warning" | "danger" | "info" | "brand";
+  children: ReactNode;
+  dot?: boolean;
+}) {
   return (
     <span className={`chip ${tone}`}>
       {dot ? <span className="dot" aria-hidden /> : null}
@@ -102,7 +152,17 @@ export function Chip({ tone = "default", children, dot }: { tone?: "default" | "
 
 const bannerIcon = { info: Info, success: CheckCircle2, warning: AlertTriangle, danger: XCircle };
 
-export function Banner({ tone = "info", title, children, action }: { tone?: "info" | "success" | "warning" | "danger"; title?: ReactNode; children?: ReactNode; action?: ReactNode }) {
+export function Banner({
+  tone = "info",
+  title,
+  children,
+  action,
+}: {
+  tone?: "info" | "success" | "warning" | "danger";
+  title?: ReactNode;
+  children?: ReactNode;
+  action?: ReactNode;
+}) {
   const Icon = bannerIcon[tone];
   return (
     <div className={`banner ${tone}`} role={tone === "danger" || tone === "warning" ? "alert" : "status"}>
@@ -121,7 +181,11 @@ export function Empty({ title, children, actions }: { title: string; children?: 
     <div className="empty">
       <h3>{title}</h3>
       {children ? <p style={{ margin: "0 0 16px" }}>{children}</p> : null}
-      {actions ? <div className="row" style={{ justifyContent: "center" }}>{actions}</div> : null}
+      {actions ? (
+        <div className="row" style={{ justifyContent: "center" }}>
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -136,7 +200,8 @@ export function Skeleton({ rows = 5 }: { rows?: number }) {
   );
 }
 
-const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function Modal({
   title,
@@ -162,7 +227,10 @@ export function Modal({
   useEffect(() => {
     const previously = document.activeElement as HTMLElement | null;
     const el = ref.current;
-    const target = (initialFocus && el?.querySelector<HTMLElement>(initialFocus)) || el?.querySelector<HTMLElement>("[autofocus]") || el?.querySelector<HTMLElement>(FOCUSABLE);
+    const target =
+      (initialFocus && el?.querySelector<HTMLElement>(initialFocus)) ||
+      el?.querySelector<HTMLElement>("[autofocus]") ||
+      el?.querySelector<HTMLElement>(FOCUSABLE);
     target?.focus();
     return () => {
       previously?.focus?.();
@@ -190,7 +258,14 @@ export function Modal({
   };
   return createPortal(
     <div className="backdrop" onMouseDown={(e) => closeOnBackdrop && e.target === e.currentTarget && onClose?.()}>
-      <div ref={ref} className={`modal ${size}`} role="dialog" aria-modal="true" aria-labelledby={labelledBy ?? titleId} onKeyDown={onKey}>
+      <div
+        ref={ref}
+        className={`modal ${size}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={labelledBy ?? titleId}
+        onKeyDown={onKey}
+      >
         <div className="modal-head">
           <h2 id={titleId} className="grow" style={{ fontSize: 18 }}>
             {title}
@@ -210,7 +285,12 @@ export function Keypad({ onKey, extra }: { onKey: (k: string) => void; extra?: s
   return (
     <div className="keypad">
       {keys.map((k) => (
-        <button key={k} type="button" onClick={() => onKey(k === "⌫" ? "Backspace" : k)} aria-label={k === "⌫" ? "Delete digit" : k}>
+        <button
+          key={k}
+          type="button"
+          onClick={() => onKey(k === "⌫" ? "Backspace" : k)}
+          aria-label={k === "⌫" ? "Delete digit" : k}
+        >
           {k}
         </button>
       ))}
@@ -218,11 +298,25 @@ export function Keypad({ onKey, extra }: { onKey: (k: string) => void; extra?: s
   );
 }
 
-export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { key: T; label: string }[]; value: T; onChange: (t: T) => void }) {
+export function Tabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { key: T; label: string }[];
+  value: T;
+  onChange: (t: T) => void;
+}) {
   return (
     <div className="tabs" role="tablist">
       {tabs.map((t) => (
-        <button key={t.key} role="tab" aria-selected={value === t.key} className={`tab ${value === t.key ? "active" : ""}`} onClick={() => onChange(t.key)}>
+        <button
+          key={t.key}
+          role="tab"
+          aria-selected={value === t.key}
+          className={`tab ${value === t.key ? "active" : ""}`}
+          onClick={() => onChange(t.key)}
+        >
           {t.label}
         </button>
       ))}
@@ -245,13 +339,27 @@ export function StockStatus({ status }: { status: string }) {
   }
 }
 
-export function PageHeader({ title, subtitle, actions, crumbs }: { title: string; subtitle?: ReactNode; actions?: ReactNode; crumbs?: string }) {
+export function PageHeader({
+  title,
+  subtitle,
+  actions,
+  crumbs,
+}: {
+  title: string;
+  subtitle?: ReactNode;
+  actions?: ReactNode;
+  crumbs?: string;
+}) {
   return (
     <div className="page-header">
       <div className="grow">
         {crumbs ? <div className="tiny">{crumbs}</div> : null}
         <h1>{title}</h1>
-        {subtitle ? <div className="muted" style={{ marginTop: 4 }}>{subtitle}</div> : null}
+        {subtitle ? (
+          <div className="muted" style={{ marginTop: 4 }}>
+            {subtitle}
+          </div>
+        ) : null}
       </div>
       {actions ? <div className="row">{actions}</div> : null}
     </div>

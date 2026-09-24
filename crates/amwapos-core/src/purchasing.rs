@@ -480,21 +480,39 @@ impl AppCore {
                 .query_row("SELECT status FROM purchase_orders WHERE po_id=?1", [&id], |r| r.get(0))
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Purchase order"))?;
-            let received: i64 = tx.query_row("SELECT COALESCE(SUM(qty_received_milli),0) FROM purchase_order_items WHERE po_id=?1", [&id], |r| r.get(0))?;
+            let received: i64 =
+                tx.query_row("SELECT COALESCE(SUM(qty_received_milli),0) FROM purchase_order_items WHERE po_id=?1", [&id], |r| r.get(0))?;
             match (cur.as_str(), status) {
                 ("draft", "ordered") => {
-                    tx.execute("UPDATE purchase_orders SET status='ordered', ordered_at=?2, updated_at=?2, version=version+1 WHERE po_id=?1", params![id, time::now_str()])?;
+                    tx.execute(
+                        "UPDATE purchase_orders SET status='ordered', ordered_at=?2, updated_at=?2, version=version+1 WHERE po_id=?1",
+                        params![id, time::now_str()],
+                    )?;
                 }
                 ("draft", "cancelled") | ("ordered", "cancelled") if received == 0 => {
-                    tx.execute("UPDATE purchase_orders SET status='cancelled', updated_at=?2, version=version+1 WHERE po_id=?1", params![id, time::now_str()])?;
+                    tx.execute(
+                        "UPDATE purchase_orders SET status='cancelled', updated_at=?2, version=version+1 WHERE po_id=?1",
+                        params![id, time::now_str()],
+                    )?;
                 }
                 ("partially_received", "received") => {
                     // Close a PO short: remaining quantities will not arrive.
-                    tx.execute("UPDATE purchase_orders SET status='received', updated_at=?2, version=version+1 WHERE po_id=?1", params![id, time::now_str()])?;
+                    tx.execute(
+                        "UPDATE purchase_orders SET status='received', updated_at=?2, version=version+1 WHERE po_id=?1",
+                        params![id, time::now_str()],
+                    )?;
                 }
                 _ => return Err(AppError::conflict(format!("A purchase order that is {cur} cannot become {status}."))),
             }
-            audit::record(tx, &actor, "po.status", "purchase_order", Some(&id), Some(&json!({ "status": cur })), Some(&json!({ "status": status })))?;
+            audit::record(
+                tx,
+                &actor,
+                "po.status",
+                "purchase_order",
+                Some(&id),
+                Some(&json!({ "status": cur })),
+                Some(&json!({ "status": status })),
+            )?;
             Ok(())
         })?;
         self.purchase_order_get(token, &id)

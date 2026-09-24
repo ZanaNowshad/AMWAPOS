@@ -80,12 +80,10 @@ impl Env {
     pub fn user(&self, name: &str, role: &str, pin: &str) -> (String, String) {
         let u = self
             .core
-            .user_create(&self.owner_token, amwapos_core::users::UserInput {
-                display_name: name.into(),
-                role_id: role.into(),
-                pin: Some(pin.into()),
-                active: true,
-            })
+            .user_create(
+                &self.owner_token,
+                amwapos_core::users::UserInput { display_name: name.into(), role_id: role.into(), pin: Some(pin.into()), active: true },
+            )
             .unwrap();
         let t = self.core.login(&u.user_id, pin).unwrap().token;
         (u.user_id, t)

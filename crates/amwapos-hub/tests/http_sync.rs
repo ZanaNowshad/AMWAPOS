@@ -26,10 +26,16 @@ async fn terminal_pairs_and_syncs_over_http() {
     let hub_dir = tempfile::tempdir().unwrap();
     let hub_core = Arc::new(AppCore::open(hub_dir.path(), Arc::new(MemorySecretStore::default())).unwrap());
     let hub = Runtime::with_bind(hub_core.clone(), Ipv4Addr::LOCALHOST, Duration::from_millis(200));
-    call(&hub, "setup.initialize", None, json!({
-        "business_name": "Test Mart", "branch_name": "Main", "vat_rate_bp": 1000, "owner_name": "Owner",
-        "owner_pin": "4826", "device_name": "Hub PC", "device_code": "H01"
-    })).await;
+    call(
+        &hub,
+        "setup.initialize",
+        None,
+        json!({
+            "business_name": "Test Mart", "branch_name": "Main", "vat_rate_bp": 1000, "owner_name": "Owner",
+            "owner_pin": "4826", "device_name": "Hub PC", "device_code": "H01"
+        }),
+    )
+    .await;
     let users = call(&hub, "auth.users", None, json!({})).await;
     let owner = users[0]["user_id"].as_str().unwrap().to_string();
     let ht = call(&hub, "auth.login", None, json!({ "user_id": owner, "pin": "4826" })).await["token"].as_str().unwrap().to_string();
@@ -52,7 +58,9 @@ async fn terminal_pairs_and_syncs_over_http() {
     let probe = call(&term, "sync.probe", None, json!({ "hub_url": url })).await;
     assert_eq!(probe["info"]["business_name"], "Test Mart");
     // Wrong code is refused.
-    let bad = term.dispatch("sync.join", None, json!({ "hub_url": url, "code": "00000000", "device_name": "Till 2", "device_code": "T02" })).await;
+    let bad = term
+        .dispatch("sync.join", None, json!({ "hub_url": url, "code": "00000000", "device_name": "Till 2", "device_code": "T02" }))
+        .await;
     assert!(bad.is_err());
     let st = call(&term, "sync.join", None, json!({ "hub_url": url, "code": code, "device_name": "Till 2", "device_code": "T02" })).await;
     assert_eq!(st["setup_complete"], true);
@@ -60,9 +68,15 @@ async fn terminal_pairs_and_syncs_over_http() {
     call(&term, "shift.open", Some(&tt), json!({ "opening_float_minor": 0, "operation_id": op() })).await;
     let scan = call(&term, "pos.scan", Some(&tt), json!({ "barcode": "0012345678905" })).await;
     assert_eq!(scan["outcome"], "added");
-    let sale = call(&term, "pos.finalize", Some(&tt), json!({
-        "cart_id": scan["cart"]["cart_id"], "operation_id": op(), "tenders": [{ "method": "cash", "amount_minor": 2500 }]
-    })).await;
+    let sale = call(
+        &term,
+        "pos.finalize",
+        Some(&tt),
+        json!({
+            "cart_id": scan["cart"]["cart_id"], "operation_id": op(), "tenders": [{ "method": "cash", "amount_minor": 2500 }]
+        }),
+    )
+    .await;
     assert!(sale["receipt_number"].as_str().unwrap().starts_with("T02-"));
     let r = call(&term, "sync.run_now", Some(&tt), json!({})).await;
     assert!(r["pushed"].as_u64().unwrap() >= 3, "{r}");
@@ -76,15 +90,24 @@ async fn terminal_pairs_and_syncs_over_http() {
     assert_eq!(hub_status_before["pending"], 0);
     drop(hub);
     // Point the terminal at a dead port to simulate the outage deterministically.
-    term_core.db.write(|tx| {
-        let mut s: Value = amwapos_core::settings::get_raw(tx, amwapos_core::sync::KEY_SYNC)?.unwrap();
-        s["hub_url"] = json!(format!("http://127.0.0.1:{}", free_port()));
-        amwapos_core::settings::put(tx, amwapos_core::sync::KEY_SYNC, &s, None)
-    }).unwrap();
+    term_core
+        .db
+        .write(|tx| {
+            let mut s: Value = amwapos_core::settings::get_raw(tx, amwapos_core::sync::KEY_SYNC)?.unwrap();
+            s["hub_url"] = json!(format!("http://127.0.0.1:{}", free_port()));
+            amwapos_core::settings::put(tx, amwapos_core::sync::KEY_SYNC, &s, None)
+        })
+        .unwrap();
     let scan = call(&term, "pos.scan", Some(&tt), json!({ "barcode": "0012345678905" })).await;
-    call(&term, "pos.finalize", Some(&tt), json!({
-        "cart_id": scan["cart"]["cart_id"], "operation_id": op(), "tenders": [{ "method": "cash", "amount_minor": 2500 }]
-    })).await;
+    call(
+        &term,
+        "pos.finalize",
+        Some(&tt),
+        json!({
+            "cart_id": scan["cart"]["cart_id"], "operation_id": op(), "tenders": [{ "method": "cash", "amount_minor": 2500 }]
+        }),
+    )
+    .await;
     let err = term.dispatch("sync.run_now", Some(tt.clone()), json!({})).await.unwrap_err();
     assert!(err.retryable, "{}", err.message);
     assert!(err.message.contains("not reachable"));

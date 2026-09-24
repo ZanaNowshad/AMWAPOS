@@ -66,7 +66,18 @@ const initial: Draft = {
   pair_code: "",
 };
 
-const NEW_STEPS = ["Welcome", "Business", "Branch", "Tax", "Owner", "Terminal", "Receipt", "Printer", "Backup", "Review"] as const;
+const NEW_STEPS = [
+  "Welcome",
+  "Business",
+  "Branch",
+  "Tax",
+  "Owner",
+  "Terminal",
+  "Receipt",
+  "Printer",
+  "Backup",
+  "Review",
+] as const;
 const JOIN_STEPS = ["Welcome", "Hub", "Terminal", "Review"] as const;
 
 export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
@@ -129,7 +140,12 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
     setError(null);
     try {
       if (d.path === "join") {
-        await api.sync.join({ hub_url: d.hub_url, code: d.pair_code, device_name: d.device_name, device_code: d.device_code.toUpperCase() });
+        await api.sync.join({
+          hub_url: d.hub_url,
+          code: d.pair_code,
+          device_name: d.device_name,
+          device_code: d.device_code.toUpperCase(),
+        });
       } else {
         await api.setup.initialize({
           business_name: d.business_name,
@@ -160,7 +176,14 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
             paper_width_mm: d.paper_width_mm,
             title: "TAX INVOICE",
           },
-          printer: { mode: d.printer_mode, target: d.printer_target, paper_width_mm: d.paper_width_mm, cut: true, drawer_pulse: true, code_page: "cp437" },
+          printer: {
+            mode: d.printer_mode,
+            target: d.printer_target,
+            paper_width_mm: d.paper_width_mm,
+            cut: true,
+            drawer_pulse: true,
+            code_page: "cp437",
+          },
           backup_directory: d.backup_directory || null,
         });
       }
@@ -214,7 +237,11 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
           <strong>AMWAPOS Setup</strong>
         </div>
         {steps.map((s, i) => (
-          <div key={s} className={`wizard-step ${i === step ? "active" : i < step ? "done" : ""}`} aria-current={i === step ? "step" : undefined}>
+          <div
+            key={s}
+            className={`wizard-step ${i === step ? "active" : i < step ? "done" : ""}`}
+            aria-current={i === step ? "step" : undefined}
+          >
             <span className="n">{i < step ? <Check size={14} /> : i + 1}</span>
             {s}
           </div>
@@ -227,20 +254,33 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
               <>
                 <div>
                   <h1>Welcome to AMWAPOS</h1>
-                  <p className="muted">Set up this computer. Everything runs locally; the Internet is not required to sell.</p>
+                  <p className="muted">
+                    Set up this computer. Everything runs locally; the Internet is not required to sell.
+                  </p>
                 </div>
                 <div className="choice-cards">
-                  <button className={`choice-card ${d.path === "new" && d.mode === "standalone" ? "active" : ""}`} onClick={() => setD({ ...d, path: "new", mode: "standalone" })}>
+                  <button
+                    className={`choice-card ${d.path === "new" && d.mode === "standalone" ? "active" : ""}`}
+                    onClick={() => setD({ ...d, path: "new", mode: "standalone" })}
+                  >
                     <Store size={22} color="var(--brand)" />
                     <h3>New store (single computer)</h3>
                     <div className="small muted">Create the business on this computer.</div>
                   </button>
-                  <button className={`choice-card ${d.path === "new" && d.mode === "hub" ? "active" : ""}`} onClick={() => setD({ ...d, path: "new", mode: "hub" })}>
+                  <button
+                    className={`choice-card ${d.path === "new" && d.mode === "hub" ? "active" : ""}`}
+                    onClick={() => setD({ ...d, path: "new", mode: "hub" })}
+                  >
                     <Server size={22} color="var(--brand)" />
                     <h3>New store as hub</h3>
-                    <div className="small muted">This computer holds the master data; other tills connect over the store network.</div>
+                    <div className="small muted">
+                      This computer holds the master data; other tills connect over the store network.
+                    </div>
                   </button>
-                  <button className={`choice-card ${d.path === "join" ? "active" : ""}`} onClick={() => setD({ ...d, path: "join", device_name: "Till 2", device_code: "T02" })}>
+                  <button
+                    className={`choice-card ${d.path === "join" ? "active" : ""}`}
+                    onClick={() => setD({ ...d, path: "join", device_name: "Till 2", device_code: "T02" })}
+                  >
                     <Network size={22} color="var(--brand)" />
                     <h3>Join an existing hub</h3>
                     <div className="small muted">Pair this till with the store's hub using a code.</div>
@@ -252,12 +292,33 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
               <>
                 <h2>Business identity</h2>
                 <div className="form-grid">
-                  <TextInput label="Business name" required value={d.business_name} onChange={(e) => set("business_name", e.target.value)} autoFocus fieldClass="span-2" />
-                  <TextInput label="Arabic name" value={d.business_name_ar} dir="rtl" onChange={(e) => set("business_name_ar", e.target.value)} />
+                  <TextInput
+                    label="Business name"
+                    required
+                    value={d.business_name}
+                    onChange={(e) => set("business_name", e.target.value)}
+                    autoFocus
+                    fieldClass="span-2"
+                  />
+                  <TextInput
+                    label="Arabic name"
+                    value={d.business_name_ar}
+                    dir="rtl"
+                    onChange={(e) => set("business_name_ar", e.target.value)}
+                  />
                   <TextInput label="Phone" value={d.phone} onChange={(e) => set("phone", e.target.value)} />
                   <TextInput label="CR number" value={d.cr_number} onChange={(e) => set("cr_number", e.target.value)} />
-                  <TextInput label="VAT number" value={d.vat_number} onChange={(e) => set("vat_number", e.target.value)} />
-                  <TextInput label="Address" value={d.address} onChange={(e) => set("address", e.target.value)} fieldClass="span-2" />
+                  <TextInput
+                    label="VAT number"
+                    value={d.vat_number}
+                    onChange={(e) => set("vat_number", e.target.value)}
+                  />
+                  <TextInput
+                    label="Address"
+                    value={d.address}
+                    onChange={(e) => set("address", e.target.value)}
+                    fieldClass="span-2"
+                  />
                 </div>
               </>
             ) : null}
@@ -265,8 +326,21 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
               <>
                 <h2>Branch</h2>
                 <div className="form-grid">
-                  <TextInput label="Branch name" required value={d.branch_name} onChange={(e) => set("branch_name", e.target.value)} autoFocus />
-                  <TextInput label="Branch code" required value={d.branch_code} maxLength={8} onChange={(e) => set("branch_code", e.target.value.toUpperCase())} hint="Short code used in backups and reports." />
+                  <TextInput
+                    label="Branch name"
+                    required
+                    value={d.branch_name}
+                    onChange={(e) => set("branch_name", e.target.value)}
+                    autoFocus
+                  />
+                  <TextInput
+                    label="Branch code"
+                    required
+                    value={d.branch_code}
+                    maxLength={8}
+                    onChange={(e) => set("branch_code", e.target.value.toUpperCase())}
+                    hint="Short code used in backups and reports."
+                  />
                   <Field label="Currency" hint="Cannot be changed after the first sale.">
                     <select className="select" value={d.currency} onChange={(e) => set("currency", e.target.value)}>
                       <option value="BHD">BHD — Bahraini Dinar (3 decimals)</option>
@@ -279,9 +353,11 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
                   </Field>
                   <Field label="Timezone">
                     <select className="select" value={d.timezone} onChange={(e) => set("timezone", e.target.value)}>
-                      {["Asia/Bahrain", "Asia/Riyadh", "Asia/Dubai", "Asia/Kuwait", "Asia/Muscat", "Asia/Qatar"].map((z) => (
-                        <option key={z}>{z}</option>
-                      ))}
+                      {["Asia/Bahrain", "Asia/Riyadh", "Asia/Dubai", "Asia/Kuwait", "Asia/Muscat", "Asia/Qatar"].map(
+                        (z) => (
+                          <option key={z}>{z}</option>
+                        ),
+                      )}
                     </select>
                   </Field>
                 </div>
@@ -294,9 +370,21 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
                   Tax rules are versioned and can be changed later. Verify the current VAT rate with your tax adviser.
                 </p>
                 <div className="form-grid">
-                  <TextInput label="Standard VAT rate (%)" required value={d.vat_rate} onChange={(e) => set("vat_rate", e.target.value)} inputMode="decimal" autoFocus hint={vatBp !== null ? `Stored as ${formatPercent(vatBp)}` : undefined} />
+                  <TextInput
+                    label="Standard VAT rate (%)"
+                    required
+                    value={d.vat_rate}
+                    onChange={(e) => set("vat_rate", e.target.value)}
+                    inputMode="decimal"
+                    autoFocus
+                    hint={vatBp !== null ? `Stored as ${formatPercent(vatBp)}` : undefined}
+                  />
                   <Field label="Selling prices">
-                    <Checkbox label="Prices include VAT" checked={d.prices_include_vat} onChange={(v) => set("prices_include_vat", v)} />
+                    <Checkbox
+                      label="Prices include VAT"
+                      checked={d.prices_include_vat}
+                      onChange={(v) => set("prices_include_vat", v)}
+                    />
                   </Field>
                 </div>
               </>
@@ -305,9 +393,33 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
               <>
                 <h2>Owner account</h2>
                 <div className="form-grid">
-                  <TextInput label="Owner name" required value={d.owner_name} onChange={(e) => set("owner_name", e.target.value)} autoFocus fieldClass="span-2" />
-                  <TextInput label="PIN" required type="password" inputMode="numeric" autoComplete="new-password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} hint="4–8 digits. Avoid 1234 or repeated digits." />
-                  <TextInput label="Confirm PIN" required type="password" inputMode="numeric" autoComplete="new-password" value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 8))} />
+                  <TextInput
+                    label="Owner name"
+                    required
+                    value={d.owner_name}
+                    onChange={(e) => set("owner_name", e.target.value)}
+                    autoFocus
+                    fieldClass="span-2"
+                  />
+                  <TextInput
+                    label="PIN"
+                    required
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    value={pin}
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                    hint="4–8 digits. Avoid 1234 or repeated digits."
+                  />
+                  <TextInput
+                    label="Confirm PIN"
+                    required
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="new-password"
+                    value={pin2}
+                    onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  />
                 </div>
               </>
             ) : null}
@@ -315,8 +427,21 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
               <>
                 <h2>This terminal</h2>
                 <div className="form-grid">
-                  <TextInput label="Terminal name" required value={d.device_name} onChange={(e) => set("device_name", e.target.value)} autoFocus />
-                  <TextInput label="Terminal code" required value={d.device_code} maxLength={8} onChange={(e) => set("device_code", e.target.value.toUpperCase())} hint="Prefix of receipt numbers, e.g. T01-0000001. Must be unique in the store." />
+                  <TextInput
+                    label="Terminal name"
+                    required
+                    value={d.device_name}
+                    onChange={(e) => set("device_name", e.target.value)}
+                    autoFocus
+                  />
+                  <TextInput
+                    label="Terminal code"
+                    required
+                    value={d.device_code}
+                    maxLength={8}
+                    onChange={(e) => set("device_code", e.target.value.toUpperCase())}
+                    hint="Prefix of receipt numbers, e.g. T01-0000001. Must be unique in the store."
+                  />
                 </div>
               </>
             ) : null}
@@ -325,13 +450,22 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
                 <h2>Receipt</h2>
                 <div className="form-grid">
                   <Field label="Header lines" className="span-2">
-                    <textarea className="textarea" value={d.header} onChange={(e) => set("header", e.target.value)} placeholder="Optional, one per line" />
+                    <textarea
+                      className="textarea"
+                      value={d.header}
+                      onChange={(e) => set("header", e.target.value)}
+                      placeholder="Optional, one per line"
+                    />
                   </Field>
                   <Field label="Footer lines" className="span-2">
                     <textarea className="textarea" value={d.footer} onChange={(e) => set("footer", e.target.value)} />
                   </Field>
                   <Field label="Paper width">
-                    <select className="select" value={d.paper_width_mm} onChange={(e) => set("paper_width_mm", Number(e.target.value))}>
+                    <select
+                      className="select"
+                      value={d.paper_width_mm}
+                      onChange={(e) => set("paper_width_mm", Number(e.target.value))}
+                    >
                       <option value={80}>80 mm</option>
                       <option value={58}>58 mm</option>
                     </select>
@@ -342,17 +476,29 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
             {name === "Printer" ? (
               <>
                 <h2>Receipt printer</h2>
-                <p className="muted">You can configure or test the printer later in Settings → Printers. A printer problem never cancels a sale.</p>
+                <p className="muted">
+                  You can configure or test the printer later in Settings → Printers. A printer problem never cancels a
+                  sale.
+                </p>
                 <div className="form-grid">
                   <Field label="Connection">
-                    <select className="select" value={d.printer_mode} onChange={(e) => set("printer_mode", e.target.value)}>
+                    <select
+                      className="select"
+                      value={d.printer_mode}
+                      onChange={(e) => set("printer_mode", e.target.value)}
+                    >
                       <option value="none">Configure later</option>
                       <option value="windows">Windows printer (spooler)</option>
                       <option value="network">Network printer (ESC/POS, port 9100)</option>
                     </select>
                   </Field>
                   {d.printer_mode !== "none" ? (
-                    <TextInput label={d.printer_mode === "network" ? "Printer IP address" : "Windows printer name"} value={d.printer_target} onChange={(e) => set("printer_target", e.target.value)} placeholder={d.printer_mode === "network" ? "192.168.1.50:9100" : "EPSON TM-T20III Receipt"} />
+                    <TextInput
+                      label={d.printer_mode === "network" ? "Printer IP address" : "Windows printer name"}
+                      value={d.printer_target}
+                      onChange={(e) => set("printer_target", e.target.value)}
+                      placeholder={d.printer_mode === "network" ? "192.168.1.50:9100" : "EPSON TM-T20III Receipt"}
+                    />
                   ) : null}
                 </div>
               </>
@@ -360,16 +506,33 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
             {name === "Backup" ? (
               <>
                 <h2>Backups</h2>
-                <p className="muted">Automatic daily backups are verified after creation. Choose a folder on a different disk or a USB drive if possible.</p>
-                <TextInput label="Backup folder" value={d.backup_directory} onChange={(e) => set("backup_directory", e.target.value)} placeholder="Default: data folder\backups" />
+                <p className="muted">
+                  Automatic daily backups are verified after creation. Choose a folder on a different disk or a USB
+                  drive if possible.
+                </p>
+                <TextInput
+                  label="Backup folder"
+                  value={d.backup_directory}
+                  onChange={(e) => set("backup_directory", e.target.value)}
+                  placeholder="Default: data folder\backups"
+                />
               </>
             ) : null}
             {name === "Hub" ? (
               <>
                 <h2>Connect to the hub</h2>
-                <p className="muted">On the hub computer open Admin → Sync / Hub → Pair terminal to get a pairing code.</p>
+                <p className="muted">
+                  On the hub computer open Admin → Sync / Hub → Pair terminal to get a pairing code.
+                </p>
                 <div className="row" style={{ alignItems: "flex-end" }}>
-                  <TextInput label="Hub address" value={d.hub_url} onChange={(e) => set("hub_url", e.target.value)} placeholder="192.168.1.10:47800" fieldClass="grow" autoFocus />
+                  <TextInput
+                    label="Hub address"
+                    value={d.hub_url}
+                    onChange={(e) => set("hub_url", e.target.value)}
+                    placeholder="192.168.1.10:47800"
+                    fieldClass="grow"
+                    autoFocus
+                  />
                   <Button icon={<Search size={16} />} onClick={discover}>
                     Find hub
                   </Button>
@@ -393,7 +556,13 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
                     Hub {String(probe.hub_name)} · AMWAPOS {String(probe.app_version)}
                   </Banner>
                 ) : null}
-                <TextInput label="Pairing code" value={d.pair_code} maxLength={8} inputMode="numeric" onChange={(e) => set("pair_code", e.target.value.replace(/\D/g, ""))} />
+                <TextInput
+                  label="Pairing code"
+                  value={d.pair_code}
+                  maxLength={8}
+                  inputMode="numeric"
+                  onChange={(e) => set("pair_code", e.target.value.replace(/\D/g, ""))}
+                />
               </>
             ) : null}
             {name === "Review" ? (

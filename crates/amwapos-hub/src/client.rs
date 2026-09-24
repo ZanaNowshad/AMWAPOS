@@ -48,7 +48,10 @@ async fn decode<T: DeserializeOwned>(resp: reqwest::Response) -> AppResult<T> {
 }
 
 fn unreachable(base: &str, e: reqwest::Error) -> AppError {
-    let mut err = AppError::new(ErrorCode::Sync, format!("The hub at {base} is not reachable ({e}). Local selling continues; changes will sync when the hub is back."));
+    let mut err = AppError::new(
+        ErrorCode::Sync,
+        format!("The hub at {base} is not reachable ({e}). Local selling continues; changes will sync when the hub is back."),
+    );
     err.retryable = true;
     err
 }

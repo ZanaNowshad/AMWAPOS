@@ -23,9 +23,7 @@ fn req<T: DeserializeOwned>(args: &Value, key: &str) -> AppResult<T> {
 fn opt<T: DeserializeOwned>(args: &Value, key: &str) -> AppResult<Option<T>> {
     match args.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(v) => serde_json::from_value(v.clone())
-            .map(Some)
-            .map_err(|e| AppError::validation(format!("Invalid argument '{key}': {e}"))),
+        Some(v) => serde_json::from_value(v.clone()).map(Some).map_err(|e| AppError::validation(format!("Invalid argument '{key}': {e}"))),
     }
 }
 
@@ -38,13 +36,12 @@ fn out<T: Serialize>(r: AppResult<T>) -> AppResult<Value> {
 }
 
 /// Commands that do not require a session.
-pub const PUBLIC: &[&str] = &["app.ping", "setup.status", "setup.initialize", "auth.users", "auth.login", "auth.unlock", "auth.session", "auth.logout"];
+pub const PUBLIC: &[&str] =
+    &["app.ping", "setup.status", "setup.initialize", "auth.users", "auth.login", "auth.unlock", "auth.session", "auth.logout"];
 
 pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> AppResult<Value> {
     let started = std::time::Instant::now();
-    let tk = || -> AppResult<&str> {
-        token.ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Please log in."))
-    };
+    let tk = || -> AppResult<&str> { token.ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Please log in.")) };
     let result = match cmd {
         "app.ping" => Ok(serde_json::json!({ "ok": true, "version": crate::audit::APP_VERSION })),
         // setup & auth
@@ -80,12 +77,21 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "reason")?,
             opt(&args, "effective_from")?,
         )),
-        "products.bulk_price" => out(core.product_bulk_price(tk()?, req(&args, "changes")?, opt(&args, "reason")?, &req::<String>(&args, "operation_id")?)),
-        "products.cost_update" => out(core.product_cost_update(tk()?, &req::<String>(&args, "product_id")?, req(&args, "cost_minor")?, opt(&args, "reason")?)),
+        "products.bulk_price" => {
+            out(core.product_bulk_price(tk()?, req(&args, "changes")?, opt(&args, "reason")?, &req::<String>(&args, "operation_id")?))
+        }
+        "products.cost_update" => {
+            out(core.product_cost_update(tk()?, &req::<String>(&args, "product_id")?, req(&args, "cost_minor")?, opt(&args, "reason")?))
+        }
         "products.export_csv" => out(core.products_export_csv(tk()?, opt(&args, "include_archived")?.unwrap_or(false))),
         "products.import_preview" => out(core.products_import_preview(tk()?, all(&args)?)),
         "products.import_apply" => out(core.products_import_apply(tk()?, all(&args)?)),
-        "barcodes.add" => out(core.barcode_add(tk()?, &req::<String>(&args, "product_id")?, &req::<String>(&args, "barcode")?, opt(&args, "make_primary")?.unwrap_or(false))),
+        "barcodes.add" => out(core.barcode_add(
+            tk()?,
+            &req::<String>(&args, "product_id")?,
+            &req::<String>(&args, "barcode")?,
+            opt(&args, "make_primary")?.unwrap_or(false),
+        )),
         "barcodes.remove" => out(core.barcode_remove(tk()?, &req::<String>(&args, "barcode_id")?)),
         "barcodes.set_primary" => out(core.barcode_set_primary(tk()?, &req::<String>(&args, "barcode_id")?)),
         "barcodes.unknown_list" => out(core.unknown_barcodes_list(tk()?, opt(&args, "status")?)),
@@ -100,7 +106,13 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         )),
         "categories.archive" => out(core.category_archive(tk()?, &req::<String>(&args, "category_id")?, opt(&args, "reassign_to")?)),
         "tax.list" => out(core.tax_rules_list(tk()?)),
-        "tax.create" => out(core.tax_rule_create(tk()?, &req::<String>(&args, "name")?, req(&args, "rate_bp")?, req(&args, "inclusive")?, opt(&args, "replace_rule_id")?)),
+        "tax.create" => out(core.tax_rule_create(
+            tk()?,
+            &req::<String>(&args, "name")?,
+            req(&args, "rate_bp")?,
+            req(&args, "inclusive")?,
+            opt(&args, "replace_rule_id")?,
+        )),
         "tax.set_active" => out(core.tax_rule_set_active(tk()?, &req::<String>(&args, "tax_rule_id")?, req(&args, "active")?)),
         // POS
         "pos.config" => out(core.pos_config(tk()?)),
@@ -115,7 +127,9 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         )),
         "pos.add_product" => out(core.pos_add_product(tk()?, &req::<String>(&args, "product_id")?, opt(&args, "qty_milli")?)),
         "pos.add_custom" => out(core.pos_add_custom_item(tk()?, all(&args)?)),
-        "pos.set_qty" => out(core.pos_set_quantity(tk()?, &req::<String>(&args, "line_id")?, req(&args, "qty_milli")?, opt(&args, "approval_token")?)),
+        "pos.set_qty" => {
+            out(core.pos_set_quantity(tk()?, &req::<String>(&args, "line_id")?, req(&args, "qty_milli")?, opt(&args, "approval_token")?))
+        }
         "pos.remove_line" => out(core.pos_remove_line(tk()?, &req::<String>(&args, "line_id")?, opt(&args, "approval_token")?)),
         "pos.line_discount" => out(core.pos_line_discount(
             tk()?,
@@ -124,8 +138,19 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "discount_bp")?.unwrap_or(0),
             opt(&args, "approval_token")?,
         )),
-        "pos.cart_discount" => out(core.pos_cart_discount(tk()?, opt(&args, "discount_minor")?.unwrap_or(0), opt(&args, "discount_bp")?.unwrap_or(0), opt(&args, "approval_token")?)),
-        "pos.price_override" => out(core.pos_price_override(tk()?, &req::<String>(&args, "line_id")?, req(&args, "unit_price_minor")?, opt(&args, "reason")?, opt(&args, "approval_token")?)),
+        "pos.cart_discount" => out(core.pos_cart_discount(
+            tk()?,
+            opt(&args, "discount_minor")?.unwrap_or(0),
+            opt(&args, "discount_bp")?.unwrap_or(0),
+            opt(&args, "approval_token")?,
+        )),
+        "pos.price_override" => out(core.pos_price_override(
+            tk()?,
+            &req::<String>(&args, "line_id")?,
+            req(&args, "unit_price_minor")?,
+            opt(&args, "reason")?,
+            opt(&args, "approval_token")?,
+        )),
         "pos.set_customer" => out(core.pos_set_customer(tk()?, opt(&args, "customer_id")?)),
         "pos.hold" => out(core.pos_hold(tk()?, opt(&args, "note")?)),
         "pos.held" => out(core.pos_held_list(tk()?)),
@@ -152,7 +177,9 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "shift.current" => out(core.shift_current(tk()?)),
         "shift.open" => out(core.shift_open(tk()?, req(&args, "opening_float_minor")?, &req::<String>(&args, "operation_id")?)),
         "shift.get" => out(core.shift_get(tk()?, &req::<String>(&args, "shift_id")?)),
-        "shift.close" => out(core.shift_close(tk()?, &req::<String>(&args, "shift_id")?, all(&args)?).map(|(s, p)| serde_json::json!({ "summary": s, "print": p }))),
+        "shift.close" => out(core
+            .shift_close(tk()?, &req::<String>(&args, "shift_id")?, all(&args)?)
+            .map(|(s, p)| serde_json::json!({ "summary": s, "print": p }))),
         "shift.list" => out(core.shifts_list(tk()?, opt(&args, "from")?, opt(&args, "to")?, opt(&args, "limit")?)),
         "cash.event" => out(core.cash_event(tk()?, all(&args)?)),
         "cash.list" => out(core.cash_events_list(tk()?, opt(&args, "shift_id")?, opt(&args, "from")?, opt(&args, "to")?)),
@@ -171,8 +198,12 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             req(&args, "qty_milli")?,
             &opt::<String>(&args, "mode")?.unwrap_or_else(|| "set".into()),
         )),
-        "stocktake.set_status" => out(core.stocktake_set_status(tk()?, &req::<String>(&args, "stocktake_id")?, &req::<String>(&args, "status")?)),
-        "stocktake.finalize" => out(core.stocktake_finalize(tk()?, &req::<String>(&args, "stocktake_id")?, &req::<String>(&args, "operation_id")?)),
+        "stocktake.set_status" => {
+            out(core.stocktake_set_status(tk()?, &req::<String>(&args, "stocktake_id")?, &req::<String>(&args, "status")?))
+        }
+        "stocktake.finalize" => {
+            out(core.stocktake_finalize(tk()?, &req::<String>(&args, "stocktake_id")?, &req::<String>(&args, "operation_id")?))
+        }
         // purchasing
         "suppliers.list" => out(core.suppliers_list(tk()?, opt(&args, "q")?, opt(&args, "include_inactive")?.unwrap_or(false))),
         "suppliers.get" => out(core.supplier_get(tk()?, &req::<String>(&args, "supplier_id")?)),
@@ -183,7 +214,9 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "po.set_status" => out(core.purchase_order_set_status(tk()?, &req::<String>(&args, "po_id")?, &req::<String>(&args, "status")?)),
         "po.receive" => out(core.purchase_order_receive(tk()?, all(&args)?)),
         // customers & deliveries
-        "customers.search" => out(core.customers_search(tk()?, opt(&args, "q")?, opt(&args, "include_inactive")?.unwrap_or(false), opt(&args, "limit")?)),
+        "customers.search" => {
+            out(core.customers_search(tk()?, opt(&args, "q")?, opt(&args, "include_inactive")?.unwrap_or(false), opt(&args, "limit")?))
+        }
         "customers.get" => out(core.customer_get(tk()?, &req::<String>(&args, "customer_id")?)),
         "customers.save" => out(core.customer_save(tk()?, opt(&args, "customer_id")?, req(&args, "customer")?)),
         "customers.add_note" => out(core.customer_add_note(tk()?, &req::<String>(&args, "customer_id")?, &req::<String>(&args, "note")?)),
@@ -210,7 +243,13 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "users.unlock" => out(core.user_unlock(tk()?, &req::<String>(&args, "user_id")?)),
         "roles.list" => out(core.roles_list(tk()?)),
         "roles.permissions" => out(core.permissions_catalog(tk()?)),
-        "roles.save" => out(core.role_save(tk()?, opt(&args, "role_id")?, &req::<String>(&args, "name")?, opt(&args, "description")?, req(&args, "permissions")?)),
+        "roles.save" => out(core.role_save(
+            tk()?,
+            opt(&args, "role_id")?,
+            &req::<String>(&args, "name")?,
+            opt(&args, "description")?,
+            req(&args, "permissions")?,
+        )),
         // system
         "settings.get" => out(core.settings_get(tk()?, &req::<String>(&args, "key")?)),
         "settings.save" => out(core.settings_save(tk()?, &req::<String>(&args, "key")?, req(&args, "value")?)),
@@ -226,7 +265,9 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "backup.list" => out(core.backups_list(tk()?)),
         "backup.create" => out(core.backup_create(tk()?, opt(&args, "directory")?)),
         "backup.inspect" => out(core.backup_inspect(tk()?, &req::<String>(&args, "path")?)),
-        "backup.restore" => out(core.backup_restore(tk()?, &req::<String>(&args, "path")?, opt(&args, "acknowledge_different_business")?.unwrap_or(false))),
+        "backup.restore" => {
+            out(core.backup_restore(tk()?, &req::<String>(&args, "path")?, opt(&args, "acknowledge_different_business")?.unwrap_or(false)))
+        }
         // sync
         "sync.status" => out(core.sync_status(tk()?)),
         "sync.pairing_code" => out(core.sync_issue_pairing_code(tk()?, opt(&args, "device_name")?)),

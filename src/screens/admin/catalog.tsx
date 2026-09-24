@@ -2,13 +2,41 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Archive, Download, Plus, Star, Trash2, Upload, RotateCcw } from "lucide-react";
 import { api } from "../../api";
-import type { CategoryRow, ProductDetail, ProductInput, ProductRow, TaxRuleRow, UnknownBarcodeRow } from "../../api/types";
+import type {
+  CategoryRow,
+  ProductDetail,
+  ProductInput,
+  ProductRow,
+  TaxRuleRow,
+  UnknownBarcodeRow,
+} from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { newOperationId } from "../../lib/ids";
-import { formatAmount, formatMoney, formatPercent, formatQty, parseMoney, parsePercent, parseQty } from "../../lib/money";
+import {
+  formatAmount,
+  formatMoney,
+  formatPercent,
+  formatQty,
+  parseMoney,
+  parsePercent,
+  parseQty,
+} from "../../lib/money";
 import { formatDateTime, formatShort } from "../../lib/time";
-import { Banner, Button, Checkbox, Chip, Empty, Field, Money, PageHeader, Skeleton, StockStatus, Tabs, TextInput } from "../../components/ui";
+import {
+  Banner,
+  Button,
+  Checkbox,
+  Chip,
+  Empty,
+  Field,
+  Money,
+  PageHeader,
+  Skeleton,
+  StockStatus,
+  Tabs,
+  TextInput,
+} from "../../components/ui";
 import { Confirm, DataTable, Drawer, Pager, download, useAction, useLoad, type Column } from "./common";
 import { AdjustDialog } from "./inventory";
 
@@ -27,7 +55,15 @@ export function ProductsPage() {
   const act = useAction();
   const cats = useLoad(() => api.categories.list(), []);
   const { data, loading, error, reload } = useLoad(
-    () => api.products.search({ q: q || undefined, category_id: cat || undefined, status, stock: stock || undefined, limit, offset }),
+    () =>
+      api.products.search({
+        q: q || undefined,
+        category_id: cat || undefined,
+        status,
+        stock: stock || undefined,
+        limit,
+        offset,
+      }),
     [q, cat, status, stock, limit, offset],
   );
   const showCost = has("products.view_cost");
@@ -38,7 +74,9 @@ export function ProductsPage() {
       render: (r) => (
         <div>
           <div style={{ fontWeight: 600 }}>
-            {r.is_favorite ? <Star size={12} fill="var(--warning)" color="var(--warning)" style={{ marginRight: 4 }} /> : null}
+            {r.is_favorite ? (
+              <Star size={12} fill="var(--warning)" color="var(--warning)" style={{ marginRight: 4 }} />
+            ) : null}
             {r.name}
           </div>
           {r.name_ar ? (
@@ -58,17 +96,47 @@ export function ProductsPage() {
         r.primary_barcode ? (
           <span className="mono">
             {r.primary_barcode}
-            {r.barcode_count > 1 ? <span className="chip" style={{ marginLeft: 6 }}>+{r.barcode_count - 1}</span> : null}
+            {r.barcode_count > 1 ? (
+              <span className="chip" style={{ marginLeft: 6 }}>
+                +{r.barcode_count - 1}
+              </span>
+            ) : null}
           </span>
         ) : (
           <span className="muted">—</span>
         ),
     },
     { key: "cat", label: "Category", render: (r) => r.category_name ?? "—", sort: (r) => r.category_name ?? "" },
-    { key: "price", label: "Price", num: true, render: (r) => (r.price_minor === null ? <Chip tone="danger">No price</Chip> : <Money minor={r.price_minor} />), sort: (r) => r.price_minor ?? -1 },
-    ...(showCost ? [{ key: "cost", label: "Cost", num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} />, sort: (r: ProductRow) => r.cost_minor ?? 0 }] : []),
-    { key: "stock", label: "Stock", num: true, render: (r) => (r.track_inventory ? formatQty(r.stock_milli) : "—"), sort: (r) => r.stock_milli },
-    { key: "st", label: "Status", render: (r) => (r.active ? <StockStatus status={r.stock_status} /> : <Chip>Archived</Chip>) },
+    {
+      key: "price",
+      label: "Price",
+      num: true,
+      render: (r) => (r.price_minor === null ? <Chip tone="danger">No price</Chip> : <Money minor={r.price_minor} />),
+      sort: (r) => r.price_minor ?? -1,
+    },
+    ...(showCost
+      ? [
+          {
+            key: "cost",
+            label: "Cost",
+            num: true,
+            render: (r: ProductRow) => <Money minor={r.cost_minor} />,
+            sort: (r: ProductRow) => r.cost_minor ?? 0,
+          },
+        ]
+      : []),
+    {
+      key: "stock",
+      label: "Stock",
+      num: true,
+      render: (r) => (r.track_inventory ? formatQty(r.stock_milli) : "—"),
+      sort: (r) => r.stock_milli,
+    },
+    {
+      key: "st",
+      label: "Status",
+      render: (r) => (r.active ? <StockStatus status={r.stock_status} /> : <Chip>Archived</Chip>),
+    },
   ];
   const bulk = async (active: boolean) => {
     const n = await act.run(() => api.products.bulkSetActive(Array.from(sel), active));
@@ -108,8 +176,21 @@ export function ProductsPage() {
         }
       />
       <div className="filters">
-        <input className="input" style={{ width: 280 }} placeholder="Search name, SKU or barcode…" value={q} onChange={(e) => (setQ(e.target.value), setOffset(0))} aria-label="Search products" />
-        <select className="select" style={{ width: 180 }} value={cat} onChange={(e) => (setCat(e.target.value), setOffset(0))} aria-label="Category">
+        <input
+          className="input"
+          style={{ width: 280 }}
+          placeholder="Search name, SKU or barcode…"
+          value={q}
+          onChange={(e) => (setQ(e.target.value), setOffset(0))}
+          aria-label="Search products"
+        />
+        <select
+          className="select"
+          style={{ width: 180 }}
+          value={cat}
+          onChange={(e) => (setCat(e.target.value), setOffset(0))}
+          aria-label="Category"
+        >
           <option value="">All categories</option>
           {(cats.data ?? []).map((c) => (
             <option key={c.category_id} value={c.category_id}>
@@ -117,12 +198,24 @@ export function ProductsPage() {
             </option>
           ))}
         </select>
-        <select className="select" style={{ width: 140 }} value={status} onChange={(e) => (setStatus(e.target.value), setOffset(0))} aria-label="Status">
+        <select
+          className="select"
+          style={{ width: 140 }}
+          value={status}
+          onChange={(e) => (setStatus(e.target.value), setOffset(0))}
+          aria-label="Status"
+        >
           <option value="active">Active</option>
           <option value="archived">Archived</option>
           <option value="all">All</option>
         </select>
-        <select className="select" style={{ width: 150 }} value={stock} onChange={(e) => (setStock(e.target.value), setOffset(0))} aria-label="Stock">
+        <select
+          className="select"
+          style={{ width: 150 }}
+          value={stock}
+          onChange={(e) => (setStock(e.target.value), setOffset(0))}
+          aria-label="Stock"
+        >
           <option value="">Any stock</option>
           <option value="low">Low stock</option>
           <option value="out">Out of stock</option>
@@ -158,7 +251,15 @@ export function ProductsPage() {
           </Empty>
         }
       />
-      {data ? <Pager total={data.total} limit={limit} offset={offset} onChange={setOffset} onLimit={(l) => (setLimit(l), setOffset(0))} /> : null}
+      {data ? (
+        <Pager
+          total={data.total}
+          limit={limit}
+          offset={offset}
+          onChange={setOffset}
+          onLimit={(l) => (setLimit(l), setOffset(0))}
+        />
+      ) : null}
       {sel.size > 0 ? (
         <div className="batch-bar">
           <strong>{sel.size} selected</strong>
@@ -285,7 +386,13 @@ export function ProductEditorPage() {
       act.setError("Reorder point must be a number.");
       return;
     }
-    const input = { ...form, reorder_point_milli: rp, sku: form.sku || null, name_ar: form.name_ar || null, description: form.description || null };
+    const input = {
+      ...form,
+      reorder_point_milli: rp,
+      sku: form.sku || null,
+      name_ar: form.name_ar || null,
+      description: form.description || null,
+    };
     if (isNew) {
       const p = parseMoney(price);
       if (p === null || p < 0) {
@@ -299,7 +406,13 @@ export function ProductEditorPage() {
       }
       const o = opening.trim() ? parseQty(opening) : null;
       const created = await act.run(() =>
-        api.products.create({ ...input, price_minor: p, cost_minor: has("products.view_cost") ? c : null, barcodes: bcInput.trim() ? [...barcodes, bcInput.trim()] : barcodes, opening_stock_milli: o }),
+        api.products.create({
+          ...input,
+          price_minor: p,
+          cost_minor: has("products.view_cost") ? c : null,
+          barcodes: bcInput.trim() ? [...barcodes, bcInput.trim()] : barcodes,
+          opening_stock_milli: o,
+        }),
       );
       if (created) {
         toast("success", "Product created");
@@ -307,7 +420,9 @@ export function ProductEditorPage() {
         nav(`/admin/products/${created.product_id}`, { replace: true });
       }
     } else if (detail) {
-      const updated = await act.run(() => api.products.update({ ...input, product_id: detail.product_id, expected_version: detail.version }));
+      const updated = await act.run(() =>
+        api.products.update({ ...input, product_id: detail.product_id, expected_version: detail.version }),
+      );
       if (updated) {
         toast("success", "Product saved");
         await loadDetail();
@@ -328,7 +443,12 @@ export function ProductEditorPage() {
   return (
     <div>
       <div className="page-header">
-        <Button variant="ghost" icon={<ArrowLeft size={18} />} aria-label="Back" onClick={() => (dirty ? setLeave(true) : nav("/admin/products"))} />
+        <Button
+          variant="ghost"
+          icon={<ArrowLeft size={18} />}
+          aria-label="Back"
+          onClick={() => (dirty ? setLeave(true) : nav("/admin/products"))}
+        />
         <div className="grow">
           <div className="tiny">Products</div>
           <h1>
@@ -361,11 +481,36 @@ export function ProductEditorPage() {
         <div className="grid-3">
           <div className="card card-pad">
             <div className="form-grid">
-              <TextInput label="Name" required value={form.name} onChange={(e) => set("name", e.target.value)} fieldClass="span-2" disabled={!canEdit} autoFocus={isNew} />
-              <TextInput label="Arabic name" dir="rtl" value={form.name_ar ?? ""} onChange={(e) => set("name_ar", e.target.value)} disabled={!canEdit} />
-              <TextInput label="SKU" value={form.sku ?? ""} onChange={(e) => set("sku", e.target.value)} hint={isNew ? "Leave empty to generate." : undefined} disabled={!canEdit} />
+              <TextInput
+                label="Name"
+                required
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                fieldClass="span-2"
+                disabled={!canEdit}
+                autoFocus={isNew}
+              />
+              <TextInput
+                label="Arabic name"
+                dir="rtl"
+                value={form.name_ar ?? ""}
+                onChange={(e) => set("name_ar", e.target.value)}
+                disabled={!canEdit}
+              />
+              <TextInput
+                label="SKU"
+                value={form.sku ?? ""}
+                onChange={(e) => set("sku", e.target.value)}
+                hint={isNew ? "Leave empty to generate." : undefined}
+                disabled={!canEdit}
+              />
               <Field label="Category">
-                <select className="select" value={form.category_id ?? ""} onChange={(e) => set("category_id", e.target.value || null)} disabled={!canEdit}>
+                <select
+                  className="select"
+                  value={form.category_id ?? ""}
+                  onChange={(e) => set("category_id", e.target.value || null)}
+                  disabled={!canEdit}
+                >
                   <option value="">Uncategorised</option>
                   {(cats.data ?? []).map((c) => (
                     <option key={c.category_id} value={c.category_id}>
@@ -375,7 +520,12 @@ export function ProductEditorPage() {
                 </select>
               </Field>
               <Field label="Tax rule" required>
-                <select className="select" value={form.tax_rule_id} onChange={(e) => set("tax_rule_id", e.target.value)} disabled={!canEdit}>
+                <select
+                  className="select"
+                  value={form.tax_rule_id}
+                  onChange={(e) => set("tax_rule_id", e.target.value)}
+                  disabled={!canEdit}
+                >
                   {(taxes.data ?? [])
                     .filter((t) => t.active || t.tax_rule_id === form.tax_rule_id)
                     .map((t) => (
@@ -386,14 +536,46 @@ export function ProductEditorPage() {
                 </select>
               </Field>
               <Field label="Description" className="span-2">
-                <textarea className="textarea" value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} disabled={!canEdit} />
+                <textarea
+                  className="textarea"
+                  value={form.description ?? ""}
+                  onChange={(e) => set("description", e.target.value)}
+                  disabled={!canEdit}
+                />
               </Field>
-              <TextInput label="Unit" value={form.unit} onChange={(e) => set("unit", e.target.value)} hint="pcs, kg, box…" disabled={!canEdit} />
-              <TextInput label="Reorder point" className="num" value={reorder} onChange={(e) => (setReorder(e.target.value), setDirty(true))} disabled={!canEdit} />
+              <TextInput
+                label="Unit"
+                value={form.unit}
+                onChange={(e) => set("unit", e.target.value)}
+                hint="pcs, kg, box…"
+                disabled={!canEdit}
+              />
+              <TextInput
+                label="Reorder point"
+                className="num"
+                value={reorder}
+                onChange={(e) => (setReorder(e.target.value), setDirty(true))}
+                disabled={!canEdit}
+              />
               <div className="col span-2">
-                <Checkbox label="Track stock" checked={form.track_inventory} onChange={(v) => set("track_inventory", v)} disabled={!canEdit} />
-                <Checkbox label="Sold by weight / decimal quantity" checked={form.allow_decimal_quantity} onChange={(v) => set("allow_decimal_quantity", v)} disabled={!canEdit} />
-                <Checkbox label="Show in POS favorites" checked={form.is_favorite} onChange={(v) => set("is_favorite", v)} disabled={!canEdit} />
+                <Checkbox
+                  label="Track stock"
+                  checked={form.track_inventory}
+                  onChange={(v) => set("track_inventory", v)}
+                  disabled={!canEdit}
+                />
+                <Checkbox
+                  label="Sold by weight / decimal quantity"
+                  checked={form.allow_decimal_quantity}
+                  onChange={(v) => set("allow_decimal_quantity", v)}
+                  disabled={!canEdit}
+                />
+                <Checkbox
+                  label="Show in POS favorites"
+                  checked={form.is_favorite}
+                  onChange={(v) => set("is_favorite", v)}
+                  disabled={!canEdit}
+                />
               </div>
             </div>
           </div>
@@ -401,15 +583,46 @@ export function ProductEditorPage() {
             {isNew ? (
               <div className="card card-pad col gap-16">
                 <h3>Price & stock</h3>
-                <TextInput label="Selling price" required className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder={formatAmount(0)} />
-                {has("products.view_cost") ? <TextInput label="Cost" className="num" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder={formatAmount(0)} /> : null}
-                <TextInput label="Opening stock" className="num" inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} disabled={!form.track_inventory} />
-                <Field label="Barcodes" hint="Press Enter after each barcode. Barcodes are stored as text; leading zeros are kept.">
+                <TextInput
+                  label="Selling price"
+                  required
+                  className="num"
+                  inputMode="decimal"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder={formatAmount(0)}
+                />
+                {has("products.view_cost") ? (
+                  <TextInput
+                    label="Cost"
+                    className="num"
+                    inputMode="decimal"
+                    value={cost}
+                    onChange={(e) => setCost(e.target.value)}
+                    placeholder={formatAmount(0)}
+                  />
+                ) : null}
+                <TextInput
+                  label="Opening stock"
+                  className="num"
+                  inputMode="decimal"
+                  value={opening}
+                  onChange={(e) => setOpening(e.target.value)}
+                  disabled={!form.track_inventory}
+                />
+                <Field
+                  label="Barcodes"
+                  hint="Press Enter after each barcode. Barcodes are stored as text; leading zeros are kept."
+                >
                   <div className="row wrap">
                     {barcodes.map((b) => (
                       <span key={b} className="chip brand mono">
                         {b}
-                        <button className="link" aria-label={`Remove ${b}`} onClick={() => setBarcodes(barcodes.filter((x) => x !== b))}>
+                        <button
+                          className="link"
+                          aria-label={`Remove ${b}`}
+                          onClick={() => setBarcodes(barcodes.filter((x) => x !== b))}
+                        >
                           ×
                         </button>
                       </span>
@@ -463,7 +676,13 @@ export function ProductEditorPage() {
       {tab === "inventory" && detail ? <InventoryTab detail={detail} onChanged={loadDetail} /> : null}
       {tab === "history" && detail ? <HistoryTab productId={detail.product_id} /> : null}
       {leave ? (
-        <Confirm title="Discard unsaved changes?" confirmLabel="Discard" danger onCancel={() => setLeave(false)} onConfirm={() => nav("/admin/products")}>
+        <Confirm
+          title="Discard unsaved changes?"
+          confirmLabel="Discard"
+          danger
+          onCancel={() => setLeave(false)}
+          onConfirm={() => nav("/admin/products")}
+        >
           You have unsaved changes to this product.
         </Confirm>
       ) : null}
@@ -471,7 +690,15 @@ export function ProductEditorPage() {
   );
 }
 
-function BarcodesTab({ detail, onChanged, canEdit }: { detail: ProductDetail; onChanged: (d: ProductDetail) => void; canEdit: boolean }) {
+function BarcodesTab({
+  detail,
+  onChanged,
+  canEdit,
+}: {
+  detail: ProductDetail;
+  onChanged: (d: ProductDetail) => void;
+  canEdit: boolean;
+}) {
   const nav = useNavigate();
   const [v, setV] = useState("");
   const [owner, setOwner] = useState<{ id: string; name: string } | null>(null);
@@ -518,11 +745,23 @@ function BarcodesTab({ detail, onChanged, canEdit }: { detail: ProductDetail; on
                 {canEdit ? (
                   <div className="row" style={{ justifyContent: "flex-end" }}>
                     {!b.is_primary ? (
-                      <Button size="sm" onClick={async () => onChanged((await act.run(() => api.barcodes.setPrimary(b.barcode_id))) ?? detail)}>
+                      <Button
+                        size="sm"
+                        onClick={async () =>
+                          onChanged((await act.run(() => api.barcodes.setPrimary(b.barcode_id))) ?? detail)
+                        }
+                      >
                         Set Primary
                       </Button>
                     ) : null}
-                    <Button size="sm" variant="danger-outline" icon={<Trash2 size={14} />} onClick={async () => onChanged((await act.run(() => api.barcodes.remove(b.barcode_id))) ?? detail)}>
+                    <Button
+                      size="sm"
+                      variant="danger-outline"
+                      icon={<Trash2 size={14} />}
+                      onClick={async () =>
+                        onChanged((await act.run(() => api.barcodes.remove(b.barcode_id))) ?? detail)
+                      }
+                    >
                       Remove
                     </Button>
                   </div>
@@ -532,17 +771,35 @@ function BarcodesTab({ detail, onChanged, canEdit }: { detail: ProductDetail; on
           ))}
         </tbody>
       </table>
-      {detail.barcodes.length === 0 ? <div className="empty">No barcodes. Add one so the product can be scanned.</div> : null}
+      {detail.barcodes.length === 0 ? (
+        <div className="empty">No barcodes. Add one so the product can be scanned.</div>
+      ) : null}
       {canEdit ? (
         <div className="card-body col">
           <div className="row">
-            <input className="input mono grow" placeholder="Scan or type a barcode" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && v.trim() && add()} aria-label="New barcode" />
+            <input
+              className="input mono grow"
+              placeholder="Scan or type a barcode"
+              value={v}
+              onChange={(e) => setV(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && v.trim() && add()}
+              aria-label="New barcode"
+            />
             <Button variant="primary" icon={<Plus size={16} />} onClick={add} disabled={!v.trim()} loading={act.busy}>
               Add Barcode
             </Button>
           </div>
           {act.error ? (
-            <Banner tone="danger" action={owner ? <button className="link" onClick={() => nav(`/admin/products/${owner.id}`)}>Open {owner.name}</button> : null}>
+            <Banner
+              tone="danger"
+              action={
+                owner ? (
+                  <button className="link" onClick={() => nav(`/admin/products/${owner.id}`)}>
+                    Open {owner.name}
+                  </button>
+                ) : null
+              }
+            >
               {act.error}
             </Banner>
           ) : null}
@@ -559,7 +816,8 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
   const [reason, setReason] = useState("");
   const [cost, setCost] = useState(detail.avg_cost_minor !== null ? formatAmount(detail.avg_cost_minor) : "");
   const act = useAction();
-  const margin = detail.price_minor && detail.avg_cost_minor !== null ? detail.price_minor - detail.avg_cost_minor : null;
+  const margin =
+    detail.price_minor && detail.avg_cost_minor !== null ? detail.price_minor - detail.avg_cost_minor : null;
   return (
     <div className="grid-2">
       <div className="card card-pad col gap-16">
@@ -568,7 +826,13 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
         {has("prices.manage") ? (
           <>
             <div className="form-grid">
-              <TextInput label="New price" className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+              <TextInput
+                label="New price"
+                className="num"
+                inputMode="decimal"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+              />
               <TextInput label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
             <Button
@@ -576,7 +840,9 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
               disabled={parseMoney(price) === null}
               loading={act.busy}
               onClick={async () => {
-                const r = await act.run(() => api.products.priceUpdate(detail.product_id, parseMoney(price)!, reason || null));
+                const r = await act.run(() =>
+                  api.products.priceUpdate(detail.product_id, parseMoney(price)!, reason || null),
+                );
                 if (r) {
                   toast("success", "Price changed");
                   setReason("");
@@ -621,15 +887,26 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
             <dt>Last cost</dt>
             <dd>{formatMoney(detail.last_cost_minor)}</dd>
             <dt>Unit margin</dt>
-            <dd className={margin !== null && margin < 0 ? "neg-num" : ""}>{margin === null ? "—" : formatMoney(margin)}</dd>
+            <dd className={margin !== null && margin < 0 ? "neg-num" : ""}>
+              {margin === null ? "—" : formatMoney(margin)}
+            </dd>
           </dl>
           {has("products.manage") ? (
             <div className="row" style={{ alignItems: "flex-end" }}>
-              <TextInput label="Set standard cost" className="num" value={cost} onChange={(e) => setCost(e.target.value)} fieldClass="grow" hint="Overrides the weighted average. Receiving updates it automatically." />
+              <TextInput
+                label="Set standard cost"
+                className="num"
+                value={cost}
+                onChange={(e) => setCost(e.target.value)}
+                fieldClass="grow"
+                hint="Overrides the weighted average. Receiving updates it automatically."
+              />
               <Button
                 disabled={parseMoney(cost) === null}
                 onClick={async () => {
-                  const r = await act.run(() => api.products.costUpdate(detail.product_id, parseMoney(cost)!, "Manual"));
+                  const r = await act.run(() =>
+                    api.products.costUpdate(detail.product_id, parseMoney(cost)!, "Manual"),
+                  );
                   if (r) {
                     toast("success", "Cost updated");
                     await onChanged();
@@ -669,14 +946,18 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
 function InventoryTab({ detail, onChanged }: { detail: ProductDetail; onChanged: () => Promise<void> }) {
   const { has } = useSession();
   const [adjust, setAdjust] = useState(false);
-  const moves = useLoad(() => api.inventory.movements({ product_id: detail.product_id, limit: 100 }), [detail.product_id, detail.stock_milli]);
+  const moves = useLoad(
+    () => api.inventory.movements({ product_id: detail.product_id, limit: 100 }),
+    [detail.product_id, detail.stock_milli],
+  );
   return (
     <div className="col gap-16">
       <div className="card card-pad row">
         <div className="grow">
           <div className="tiny">On hand</div>
           <div className="due">
-            {detail.track_inventory ? formatQty(detail.stock_milli) : "Not tracked"} <span className="small muted">{detail.unit}</span>
+            {detail.track_inventory ? formatQty(detail.stock_milli) : "Not tracked"}{" "}
+            <span className="small muted">{detail.unit}</span>
           </div>
           <div className="small muted">Reorder point {formatQty(detail.reorder_point_milli)}</div>
         </div>
@@ -695,7 +976,17 @@ function InventoryTab({ detail, onChanged }: { detail: ProductDetail; onChanged:
         columns={[
           { key: "t", label: "Time", render: (r) => formatShort(r.created_at) },
           { key: "k", label: "Type", render: (r) => r.kind },
-          { key: "q", label: "Qty Change", num: true, render: (r) => <span className={r.qty_delta_milli > 0 ? "pos-num" : "neg-num"}>{r.qty_delta_milli > 0 ? "+" : ""}{formatQty(r.qty_delta_milli)}</span> },
+          {
+            key: "q",
+            label: "Qty Change",
+            num: true,
+            render: (r) => (
+              <span className={r.qty_delta_milli > 0 ? "pos-num" : "neg-num"}>
+                {r.qty_delta_milli > 0 ? "+" : ""}
+                {formatQty(r.qty_delta_milli)}
+              </span>
+            ),
+          },
           { key: "b", label: "Balance", num: true, render: (r) => formatQty(r.balance_after_milli) },
           { key: "s", label: "Source", render: (r) => r.source_ref ?? r.source_type },
           { key: "r", label: "Reason", render: (r) => r.reason ?? "—" },
@@ -718,7 +1009,13 @@ function InventoryTab({ detail, onChanged }: { detail: ProductDetail; onChanged:
 
 function HistoryTab({ productId }: { productId: string }) {
   const { has } = useSession();
-  const audit = useLoad(() => (has("audit.view") ? api.audit.list({ entity_type: "product", entity_id: productId, limit: 100 }) : Promise.resolve(null)), [productId]);
+  const audit = useLoad(
+    () =>
+      has("audit.view")
+        ? api.audit.list({ entity_type: "product", entity_id: productId, limit: 100 })
+        : Promise.resolve(null),
+    [productId],
+  );
   if (!has("audit.view")) return <div className="empty">Your role cannot view the audit history.</div>;
   return (
     <DataTable
@@ -731,7 +1028,15 @@ function HistoryTab({ productId }: { productId: string }) {
         { key: "e", label: "Event", render: (r) => r.event_type },
         { key: "u", label: "User", render: (r) => r.user_name ?? "System" },
         { key: "a", label: "Approved by", render: (r) => r.approver_name ?? "—" },
-        { key: "d", label: "Change", render: (r) => <span className="small mono ellipsis" style={{ maxWidth: 420, display: "inline-block" }}>{JSON.stringify(r.after ?? r.before)}</span> },
+        {
+          key: "d",
+          label: "Change",
+          render: (r) => (
+            <span className="small mono ellipsis" style={{ maxWidth: 420, display: "inline-block" }}>
+              {JSON.stringify(r.after ?? r.before)}
+            </span>
+          ),
+        },
       ]}
     />
   );
@@ -751,7 +1056,7 @@ export function CategoriesPage() {
   const open = (c: CategoryRow | "new") => {
     setEditing(c);
     setName(c === "new" ? "" : c.name);
-    setParent(c === "new" ? "" : c.parent_id ?? "");
+    setParent(c === "new" ? "" : (c.parent_id ?? ""));
   };
   const byId = new Map((data ?? []).map((c) => [c.category_id, c]));
   return (
@@ -773,9 +1078,24 @@ export function CategoriesPage() {
         rowKey={(r) => r.category_id}
         onRowClick={canEdit ? open : undefined}
         columns={[
-          { key: "n", label: "Name", render: (r) => (r.parent_id ? `${byId.get(r.parent_id)?.name ?? "…"} › ${r.name}` : r.name), sort: (r) => r.name },
-          { key: "p", label: "Active products", num: true, render: (r) => r.product_count, sort: (r) => r.product_count },
-          { key: "s", label: "Status", render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Archived</Chip>) },
+          {
+            key: "n",
+            label: "Name",
+            render: (r) => (r.parent_id ? `${byId.get(r.parent_id)?.name ?? "…"} › ${r.name}` : r.name),
+            sort: (r) => r.name,
+          },
+          {
+            key: "p",
+            label: "Active products",
+            num: true,
+            render: (r) => r.product_count,
+            sort: (r) => r.product_count,
+          },
+          {
+            key: "s",
+            label: "Status",
+            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Archived</Chip>),
+          },
           {
             key: "a",
             label: "",
@@ -811,7 +1131,13 @@ export function CategoriesPage() {
               loading={act.busy}
               disabled={!name.trim()}
               onClick={async () => {
-                const r = await act.run(() => api.categories.save({ category_id: editing === "new" ? null : editing.category_id, name, parent_id: parent || null }));
+                const r = await act.run(() =>
+                  api.categories.save({
+                    category_id: editing === "new" ? null : editing.category_id,
+                    name,
+                    parent_id: parent || null,
+                  }),
+                );
                 if (r) {
                   toast("success", "Category saved");
                   setEditing(null);
@@ -843,7 +1169,12 @@ export function CategoriesPage() {
           {archive.product_count > 0 ? (
             <div className="col">
               <span>{archive.product_count} product(s) use this category. Move them to:</span>
-              <select className="select" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Move products to">
+              <select
+                className="select"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                aria-label="Move products to"
+              >
                 <option value="">Choose category…</option>
                 {(data ?? [])
                   .filter((c) => c.active && c.category_id !== archive.category_id)
@@ -876,7 +1207,10 @@ export function PricingPage() {
   const [reason, setReason] = useState("");
   const act = useAction();
   const cats = useLoad(() => api.categories.list(), []);
-  const { data, loading, reload } = useLoad(() => api.products.search({ q: q || undefined, category_id: cat || undefined, limit: 500 }), [q, cat]);
+  const { data, loading, reload } = useLoad(
+    () => api.products.search({ q: q || undefined, category_id: cat || undefined, limit: 500 }),
+    [q, cat],
+  );
   const computeNew = (p: ProductRow): number | null => {
     if (p.price_minor === null) return null;
     const base = p.price_minor;
@@ -905,7 +1239,13 @@ export function PricingPage() {
     [data, sel, rule],
   );
   const apply = async () => {
-    const r = await act.run(() => api.products.bulkPrice(changes.map((c) => ({ product_id: c.p.product_id, amount_minor: c.next! })), reason || "Bulk price change", newOperationId()));
+    const r = await act.run(() =>
+      api.products.bulkPrice(
+        changes.map((c) => ({ product_id: c.p.product_id, amount_minor: c.next! })),
+        reason || "Bulk price change",
+        newOperationId(),
+      ),
+    );
     if (r) {
       toast("success", `${r.changed} price(s) changed`);
       setConfirm(false);
@@ -916,10 +1256,26 @@ export function PricingPage() {
   if (!has("prices.manage")) return null;
   return (
     <div>
-      <PageHeader title="Pricing" subtitle="Bulk price changes. Every change is previewed first and recorded in price history." />
+      <PageHeader
+        title="Pricing"
+        subtitle="Bulk price changes. Every change is previewed first and recorded in price history."
+      />
       <div className="filters">
-        <input className="input" style={{ width: 240 }} placeholder="Search products…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search" />
-        <select className="select" style={{ width: 180 }} value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
+        <input
+          className="input"
+          style={{ width: 240 }}
+          placeholder="Search products…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          aria-label="Search"
+        />
+        <select
+          className="select"
+          style={{ width: 180 }}
+          value={cat}
+          onChange={(e) => setCat(e.target.value)}
+          aria-label="Category"
+        >
           <option value="">All categories</option>
           {(cats.data ?? []).map((c) => (
             <option key={c.category_id} value={c.category_id}>
@@ -928,13 +1284,27 @@ export function PricingPage() {
           ))}
         </select>
         <span className="grow" />
-        <select className="select" style={{ width: 170 }} value={rule.kind} onChange={(e) => setRule({ kind: e.target.value as Rule["kind"], value: e.target.value === "round" ? "0.050" : rule.value })} aria-label="Rule">
+        <select
+          className="select"
+          style={{ width: 170 }}
+          value={rule.kind}
+          onChange={(e) =>
+            setRule({ kind: e.target.value as Rule["kind"], value: e.target.value === "round" ? "0.050" : rule.value })
+          }
+          aria-label="Rule"
+        >
           <option value="percent">Percentage change</option>
           <option value="fixed">Fixed change</option>
           <option value="set">Set price</option>
           <option value="round">Round up to</option>
         </select>
-        <input className="input num" style={{ width: 110 }} value={rule.value} onChange={(e) => setRule({ ...rule, value: e.target.value })} aria-label="Rule value" />
+        <input
+          className="input num"
+          style={{ width: 110 }}
+          value={rule.value}
+          onChange={(e) => setRule({ ...rule, value: e.target.value })}
+          aria-label="Rule value"
+        />
         <Button variant="primary" disabled={changes.length === 0} onClick={() => setConfirm(true)}>
           Preview {changes.length} change(s)
         </Button>
@@ -957,17 +1327,35 @@ export function PricingPage() {
                   key: "m",
                   label: "Margin",
                   num: true,
-                  render: (r: ProductRow) => (r.price_minor && r.cost_minor !== null ? formatPercent(Math.round(((r.price_minor - r.cost_minor) * 10000) / r.price_minor)) : "—"),
+                  render: (r: ProductRow) =>
+                    r.price_minor && r.cost_minor !== null
+                      ? formatPercent(Math.round(((r.price_minor - r.cost_minor) * 10000) / r.price_minor))
+                      : "—",
                 },
               ]
             : []),
-          { key: "x", label: "New Price", num: true, render: (r) => (sel.has(r.product_id) ? <strong>{formatMoney(computeNew(r))}</strong> : <span className="muted">—</span>) },
+          {
+            key: "x",
+            label: "New Price",
+            num: true,
+            render: (r) =>
+              sel.has(r.product_id) ? <strong>{formatMoney(computeNew(r))}</strong> : <span className="muted">—</span>,
+          },
         ]}
       />
       {confirm ? (
-        <Confirm title="Apply price changes" confirmLabel={`Change ${changes.length} price(s)`} busy={act.busy} error={act.error} onCancel={() => setConfirm(false)} onConfirm={apply}>
+        <Confirm
+          title="Apply price changes"
+          confirmLabel={`Change ${changes.length} price(s)`}
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => setConfirm(false)}
+          onConfirm={apply}
+        >
           <div className="col gap-16">
-            <div>Change the selling price of {changes.length} product(s). New prices apply immediately at every till.</div>
+            <div>
+              Change the selling price of {changes.length} product(s). New prices apply immediately at every till.
+            </div>
             <div style={{ maxHeight: 240, overflow: "auto" }}>
               <table className="table">
                 <tbody>
@@ -1024,7 +1412,14 @@ export function UnknownBarcodesPage() {
           {
             key: "s",
             label: "Status",
-            render: (r) => (r.status === "open" ? <Chip tone="warning">Open</Chip> : r.status === "resolved" ? <Chip tone="success">Resolved · {r.resolved_product_name}</Chip> : <Chip>Dismissed</Chip>),
+            render: (r) =>
+              r.status === "open" ? (
+                <Chip tone="warning">Open</Chip>
+              ) : r.status === "resolved" ? (
+                <Chip tone="success">Resolved · {r.resolved_product_name}</Chip>
+              ) : (
+                <Chip>Dismissed</Chip>
+              ),
           },
         ]}
       />
@@ -1035,7 +1430,13 @@ export function UnknownBarcodesPage() {
               Scanned {open.scan_count} time(s), last on {formatDateTime(open.last_seen_at)}.
             </div>
             <h3>Assign to an existing product</h3>
-            <input className="input" placeholder="Search product by name or SKU…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+            <input
+              className="input"
+              placeholder="Search product by name or SKU…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
             {(results.data?.rows ?? []).map((p) => (
               <div key={p.product_id} className="result-row">
                 <div className="grow">
@@ -1062,7 +1463,10 @@ export function UnknownBarcodesPage() {
             ))}
             <div className="divider" />
             <div className="row">
-              <Button variant="primary" onClick={() => nav(`/admin/products/new?barcode=${encodeURIComponent(open.barcode)}`)}>
+              <Button
+                variant="primary"
+                onClick={() => nav(`/admin/products/new?barcode=${encodeURIComponent(open.barcode)}`)}
+              >
                 Create product
               </Button>
               <Button

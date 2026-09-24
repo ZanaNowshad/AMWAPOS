@@ -51,11 +51,7 @@ pub struct Totals {
     pub item_count_milli: i64,
 }
 
-pub fn price_cart(
-    lines: &[LineInput],
-    cart_discount_minor: i64,
-    cart_discount_bp: i64,
-) -> AppResult<(Vec<LineResult>, Totals)> {
+pub fn price_cart(lines: &[LineInput], cart_discount_minor: i64, cart_discount_bp: i64) -> AppResult<(Vec<LineResult>, Totals)> {
     if cart_discount_minor < 0 || !(0..=10000).contains(&cart_discount_bp) {
         return Err(AppError::validation("Invalid cart discount."));
     }
@@ -78,27 +74,15 @@ pub fn price_cart(
             return Err(AppError::validation("Invalid tax rate."));
         }
         let gross = extend(l.unit_price_minor, l.qty_milli)?;
-        let ld = if l.line_discount_bp > 0 {
-            percent_of(gross, l.line_discount_bp)?
-        } else {
-            l.line_discount_minor
-        };
+        let ld = if l.line_discount_bp > 0 { percent_of(gross, l.line_discount_bp)? } else { l.line_discount_minor };
         if ld > gross {
             return Err(AppError::validation("A line discount cannot exceed the line amount."));
         }
         after_line.push(gross - ld);
-        results.push(LineResult {
-            gross_minor: gross,
-            line_discount_minor: ld,
-            ..Default::default()
-        });
+        results.push(LineResult { gross_minor: gross, line_discount_minor: ld, ..Default::default() });
     }
     let base: i64 = after_line.iter().sum();
-    let cart_disc = if cart_discount_bp > 0 {
-        percent_of(base, cart_discount_bp)?
-    } else {
-        cart_discount_minor
-    };
+    let cart_disc = if cart_discount_bp > 0 { percent_of(base, cart_discount_bp)? } else { cart_discount_minor };
     if cart_disc > base {
         return Err(AppError::validation("The discount cannot exceed the sale amount."));
     }
@@ -145,11 +129,7 @@ pub struct TenderApplied {
 
 /// Validate tenders against the amount due. Only methods in `change_methods`
 /// (cash) may be over-tendered; change is taken from those tenders.
-pub fn apply_tenders(
-    total_minor: i64,
-    tenders: &[TenderInput],
-    change_methods: &[&str],
-) -> AppResult<(Vec<TenderApplied>, i64)> {
+pub fn apply_tenders(total_minor: i64, tenders: &[TenderInput], change_methods: &[&str]) -> AppResult<(Vec<TenderApplied>, i64)> {
     if tenders.is_empty() {
         if total_minor == 0 {
             return Ok((vec![], 0));
@@ -163,9 +143,7 @@ pub fn apply_tenders(
         if t.amount_minor <= 0 {
             return Err(AppError::validation("Each payment amount must be greater than zero."));
         }
-        sum = sum
-            .checked_add(t.amount_minor)
-            .ok_or_else(|| AppError::validation("Payment total is out of range."))?;
+        sum = sum.checked_add(t.amount_minor).ok_or_else(|| AppError::validation("Payment total is out of range."))?;
         if change_methods.contains(&t.method.as_str()) {
             change_capable += t.amount_minor;
         } else {
@@ -173,16 +151,11 @@ pub fn apply_tenders(
         }
     }
     if non_change > total_minor {
-        return Err(AppError::validation(
-            "Card and other non-cash payments cannot exceed the amount due.",
-        ));
+        return Err(AppError::validation("Card and other non-cash payments cannot exceed the amount due."));
     }
     if sum < total_minor {
-        return Err(AppError::validation(format!(
-            "Payments are short by {} (minor units).",
-            total_minor - sum
-        ))
-        .with_details(serde_json::json!({ "remaining_minor": total_minor - sum })));
+        return Err(AppError::validation(format!("Payments are short by {} (minor units).", total_minor - sum))
+            .with_details(serde_json::json!({ "remaining_minor": total_minor - sum })));
     }
     let mut change = sum - total_minor;
     if change > change_capable {
@@ -235,10 +208,7 @@ pub fn prorate(
     if refund_qty_milli == remaining_qty {
         return Ok(original_amount - already_refunded_amount);
     }
-    let v = div_round(
-        original_amount as i128 * refund_qty_milli as i128,
-        original_qty_milli as i128,
-    );
+    let v = div_round(original_amount as i128 * refund_qty_milli as i128, original_qty_milli as i128);
     let v = i64::try_from(v).map_err(|_| AppError::validation("Amount out of range."))?;
     // Never refund more than what remains of the original amount.
     Ok(v.min(original_amount - already_refunded_amount))
@@ -345,12 +315,7 @@ mod tests {
             }
             let bp = if rnd(2) == 0 { rnd(2000) as i64 } else { 0 };
             let (res, t) = price_cart(&lines, 0, bp).unwrap();
-            let excl_tax: i64 = res
-                .iter()
-                .zip(&lines)
-                .filter(|(_, l)| !l.tax_inclusive)
-                .map(|(r, _)| r.tax_minor)
-                .sum();
+            let excl_tax: i64 = res.iter().zip(&lines).filter(|(_, l)| !l.tax_inclusive).map(|(r, _)| r.tax_minor).sum();
             assert_eq!(t.total_minor, t.subtotal_minor - t.discount_minor + excl_tax);
             assert_eq!(t.total_minor, res.iter().map(|r| r.line_total_minor).sum::<i64>());
             assert!(res.iter().all(|r| r.net_minor >= 0 && r.tax_minor >= 0));
@@ -359,12 +324,8 @@ mod tests {
 
     #[test]
     fn tenders_cash_change() {
-        let (a, change) = apply_tenders(
-            18450,
-            &[TenderInput { method: "cash".into(), amount_minor: 20000, reference: None }],
-            &["cash"],
-        )
-        .unwrap();
+        let (a, change) =
+            apply_tenders(18450, &[TenderInput { method: "cash".into(), amount_minor: 20000, reference: None }], &["cash"]).unwrap();
         assert_eq!(change, 1550);
         assert_eq!(a[0].amount_minor, 18450);
         assert_eq!(a[0].change_minor, 1550);

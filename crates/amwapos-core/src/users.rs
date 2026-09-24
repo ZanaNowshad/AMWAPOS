@@ -81,11 +81,7 @@ fn load_user(c: &rusqlite::Connection, id: &str) -> AppResult<UserRow> {
 }
 
 fn owner_count(c: &rusqlite::Connection, except: &str) -> AppResult<i64> {
-    Ok(c.query_row(
-        "SELECT COUNT(*) FROM users WHERE role_id=?1 AND active=1 AND user_id<>?2",
-        params![ROLE_OWNER, except],
-        |r| r.get(0),
-    )?)
+    Ok(c.query_row("SELECT COUNT(*) FROM users WHERE role_id=?1 AND active=1 AND user_id<>?2", params![ROLE_OWNER, except], |r| r.get(0))?)
 }
 
 impl AppCore {
@@ -266,7 +262,14 @@ impl AppCore {
     }
 
     /// Create or update a role's permissions. The Owner role is protected.
-    pub fn role_save(&self, token: &str, role_id: Option<String>, name: &str, description: Option<String>, permissions: Vec<String>) -> AppResult<Vec<RoleRow>> {
+    pub fn role_save(
+        &self,
+        token: &str,
+        role_id: Option<String>,
+        name: &str,
+        description: Option<String>,
+        permissions: Vec<String>,
+    ) -> AppResult<Vec<RoleRow>> {
         let s = self.session(token)?;
         s.require("roles.manage")?;
         self.require_back_office_writable()?;
@@ -287,12 +290,23 @@ impl AppCore {
                         return Err(AppError::conflict("The Owner role always has every permission and cannot be edited."));
                     }
                     let before: Vec<String> = auth::role_permissions(tx, &id)?.into_iter().collect();
-                    let n = tx.execute("UPDATE roles SET name=?2, description=?3, updated_at=?4 WHERE role_id=?1", params![id, name, desc, now])?;
+                    let n = tx.execute(
+                        "UPDATE roles SET name=?2, description=?3, updated_at=?4 WHERE role_id=?1",
+                        params![id, name, desc, now],
+                    )?;
                     if n == 0 {
                         return Err(AppError::not_found("Role"));
                     }
                     tx.execute("DELETE FROM role_permissions WHERE role_id=?1", [&id])?;
-                    audit::record(tx, &actor, "role.updated", "role", Some(&id), Some(&json!({ "permissions": before })), Some(&json!({ "name": name, "permissions": permissions })))?;
+                    audit::record(
+                        tx,
+                        &actor,
+                        "role.updated",
+                        "role",
+                        Some(&id),
+                        Some(&json!({ "permissions": before })),
+                        Some(&json!({ "name": name, "permissions": permissions })),
+                    )?;
                     id
                 }
                 None => {
@@ -301,7 +315,15 @@ impl AppCore {
                         "INSERT INTO roles(role_id, name, description, is_system, created_at, updated_at) VALUES (?1,?2,?3,0,?4,?4)",
                         params![id, name, desc, now],
                     )?;
-                    audit::record(tx, &actor, "role.created", "role", Some(&id), None, Some(&json!({ "name": name, "permissions": permissions })))?;
+                    audit::record(
+                        tx,
+                        &actor,
+                        "role.created",
+                        "role",
+                        Some(&id),
+                        None,
+                        Some(&json!({ "name": name, "permissions": permissions })),
+                    )?;
                     id
                 }
             };

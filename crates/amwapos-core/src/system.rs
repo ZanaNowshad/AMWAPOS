@@ -151,7 +151,8 @@ impl AppCore {
             let appearance: settings::AppearanceSettings = settings::get(c, settings::KEY_APPEARANCE)?;
             let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
             let (currency, digits) = self.currency(c)?;
-            let (name, tz): (String, String) = c.query_row("SELECT name, timezone FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let (name, tz): (String, String) =
+                c.query_row("SELECT name, timezone FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
             Ok(json!({
                 "pos": pos, "payments": pay.tenders.into_iter().filter(|t| t.enabled).collect::<Vec<_>>(),
                 "shift": { "blind_close": shift.blind_close }, "appearance": appearance,
@@ -234,7 +235,9 @@ impl AppCore {
             let tz = self.store_timezone(c)?;
             let mut w = vec!["1=1".to_string()];
             let mut args: Vec<rusqlite::types::Value> = vec![];
-            for (v, col) in [(&q.user_id, "a.user_id"), (&q.entity_type, "a.entity_type"), (&q.entity_id, "a.entity_id"), (&q.device_id, "a.device_id")] {
+            for (v, col) in
+                [(&q.user_id, "a.user_id"), (&q.entity_type, "a.entity_type"), (&q.entity_id, "a.entity_id"), (&q.device_id, "a.device_id")]
+            {
                 if let Some(v) = v.as_ref().filter(|x| !x.is_empty()) {
                     args.push(v.clone().into());
                     w.push(format!("{col}=?{}", args.len()));
@@ -245,14 +248,16 @@ impl AppCore {
                 w.push(format!("a.event_type LIKE ?{}", args.len()));
             }
             if q.from.is_some() || q.to.is_some() {
-                let (a, b) = time::local_date_range_utc(q.from.as_deref().unwrap_or("2000-01-01"), q.to.as_deref().unwrap_or("2999-12-31"), &tz)?;
+                let (a, b) =
+                    time::local_date_range_utc(q.from.as_deref().unwrap_or("2000-01-01"), q.to.as_deref().unwrap_or("2999-12-31"), &tz)?;
                 args.push(a.into());
                 w.push(format!("a.created_at>=?{}", args.len()));
                 args.push(b.into());
                 w.push(format!("a.created_at<?{}", args.len()));
             }
             let ws = w.join(" AND ");
-            let total: i64 = c.query_row(&format!("SELECT COUNT(*) FROM audit_logs a WHERE {ws}"), params_from_iter(args.iter()), |r| r.get(0))?;
+            let total: i64 =
+                c.query_row(&format!("SELECT COUNT(*) FROM audit_logs a WHERE {ws}"), params_from_iter(args.iter()), |r| r.get(0))?;
             let mut st = c.prepare(&format!(
                 "SELECT a.seq, a.audit_id, a.created_at, u.display_name, ap.display_name, d.name, a.event_type, a.entity_type, a.entity_id,
                         a.before_json, a.after_json, a.previous_hash, a.audit_hash
@@ -395,7 +400,11 @@ impl AppCore {
                 "data_dir": self.data_dir.to_string_lossy(),
             }),
         });
-        let integrity = if full_integrity { self.db.integrity_check()? } else { self.db.read(|c| Ok(vec![c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))?]))? };
+        let integrity = if full_integrity {
+            self.db.integrity_check()?
+        } else {
+            self.db.read(|c| Ok(vec![c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0))?]))?
+        };
         let ok = integrity.len() == 1 && integrity[0] == "ok";
         let (mode, page_count, page_size, freelist): (String, i64, i64, i64) = self.db.read(|c| {
             Ok((
@@ -407,7 +416,9 @@ impl AppCore {
         })?;
         let counts = self.db.read(|c| {
             let mut m = serde_json::Map::new();
-            for t in ["products", "product_barcodes", "sales", "sale_items", "refunds", "stock_movements", "customers", "audit_logs", "shifts"] {
+            for t in
+                ["products", "product_barcodes", "sales", "sale_items", "refunds", "stock_movements", "customers", "audit_logs", "shifts"]
+            {
                 let n: i64 = c.query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get(0))?;
                 m.insert(t.into(), n.into());
             }
@@ -416,7 +427,11 @@ impl AppCore {
         out.push(DiagnosticItem {
             component: "Database".into(),
             state: if ok { "ok".into() } else { "error".into() },
-            summary: if ok { format!("SQLite integrity: OK · Schema {}", self.db.schema_version()?) } else { "Integrity check reported problems".into() },
+            summary: if ok {
+                format!("SQLite integrity: OK · Schema {}", self.db.schema_version()?)
+            } else {
+                "Integrity check reported problems".into()
+            },
             details: json!({
                 "path": self.db.path().to_string_lossy(), "journal_mode": mode, "schema_version": self.db.schema_version()?,
                 "size_bytes": page_count * page_size, "free_pages": freelist, "integrity": integrity, "records": counts,
@@ -440,12 +455,14 @@ impl AppCore {
         let (failed, last_err): (i64, Option<String>) = self.db.read(|c| {
             Ok((
                 c.query_row("SELECT COUNT(*) FROM print_jobs WHERE status='failed'", [], |r| r.get(0))?,
-                c.query_row("SELECT last_error FROM print_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 1", [], |r| r.get(0)).optional()?.flatten(),
+                c.query_row("SELECT last_error FROM print_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 1", [], |r| r.get(0))
+                    .optional()?
+                    .flatten(),
             ))
         })?;
         out.push(DiagnosticItem {
             component: "Printer".into(),
-            state: if printer.mode == "none" { "warning".into() } else if failed > 0 { "warning".into() } else { "ok".into() },
+            state: if printer.mode == "none" || failed > 0 { "warning".into() } else { "ok".into() },
             summary: if printer.mode == "none" { "No receipt printer configured".into() } else { format!("{} printer · {} failed job(s)", printer.mode, failed) },
             details: json!({ "mode": printer.mode, "target": printer.target, "paper_width_mm": printer.paper_width_mm, "failed_jobs": failed, "last_error": last_err }),
         });
@@ -466,8 +483,15 @@ impl AppCore {
         let free = crate::backup::free_space(&self.data_dir);
         out.push(DiagnosticItem {
             component: "Storage".into(),
-            state: match free { Some(f) if f < 2 * 1024 * 1024 * 1024 => "warning".into(), Some(_) => "ok".into(), None => "info".into() },
-            summary: match free { Some(f) => format!("{:.1} GB free", f as f64 / 1_073_741_824.0), None => "Free space unknown".into() },
+            state: match free {
+                Some(f) if f < 2 * 1024 * 1024 * 1024 => "warning".into(),
+                Some(_) => "ok".into(),
+                None => "info".into(),
+            },
+            summary: match free {
+                Some(f) => format!("{:.1} GB free", f as f64 / 1_073_741_824.0),
+                None => "Free space unknown".into(),
+            },
             details: json!({ "free_bytes": free }),
         });
         Ok(out)
@@ -478,16 +502,21 @@ impl AppCore {
     pub fn diagnostics_export(&self, token: &str) -> AppResult<Value> {
         let items = self.diagnostics(token, true)?;
         let recent_errors = self.db.read(|c| {
-            let mut st = c.prepare("SELECT kind, last_error, updated_at FROM print_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 20")?;
+            let mut st =
+                c.prepare("SELECT kind, last_error, updated_at FROM print_jobs WHERE status='failed' ORDER BY updated_at DESC LIMIT 20")?;
             let rows = st
-                .query_map([], |r| Ok(json!({ "kind": r.get::<_, String>(0)?, "error": r.get::<_, Option<String>>(1)?, "at": r.get::<_, String>(2)? })))?
+                .query_map([], |r| {
+                    Ok(json!({ "kind": r.get::<_, String>(0)?, "error": r.get::<_, Option<String>>(1)?, "at": r.get::<_, String>(2)? }))
+                })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })?;
         let migrations = self.db.read(|c| {
             let mut st = c.prepare("SELECT version, name, applied_at FROM schema_migrations ORDER BY version")?;
             let rows = st
-                .query_map([], |r| Ok(json!({ "version": r.get::<_, i64>(0)?, "name": r.get::<_, String>(1)?, "applied_at": r.get::<_, String>(2)? })))?
+                .query_map([], |r| {
+                    Ok(json!({ "version": r.get::<_, i64>(0)?, "name": r.get::<_, String>(1)?, "applied_at": r.get::<_, String>(2)? }))
+                })?
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })?;

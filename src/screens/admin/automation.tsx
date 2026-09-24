@@ -2,7 +2,17 @@ import { Bot, FileScan, MessageCircle, BadgeCheck } from "lucide-react";
 import type { ComponentType } from "react";
 import { Banner, PageHeader } from "../../components/ui";
 
-function NotConfigured({ icon: Icon, title, summary, needs }: { icon: ComponentType<{ size?: number; color?: string }>; title: string; summary: string; needs: string[] }) {
+function NotConfigured({
+  icon: Icon,
+  title,
+  summary,
+  needs,
+}: {
+  icon: ComponentType<{ size?: number; color?: string }>;
+  title: string;
+  summary: string;
+  needs: string[];
+}) {
   return (
     <div>
       <PageHeader title={title} />
@@ -37,7 +47,11 @@ export const WhatsAppPage = () => (
     icon={MessageCircle}
     title="WhatsApp"
     summary="Send receipts and delivery updates through a WhatsApp account linked by QR code."
-    needs={["The AMWAPOS WhatsApp sidecar (bundled in a later release)", "A WhatsApp account to link from Linked Devices", "Owner approval of message templates"]}
+    needs={[
+      "The AMWAPOS WhatsApp sidecar (bundled in a later release)",
+      "A WhatsApp account to link from Linked Devices",
+      "Owner approval of message templates",
+    ]}
   />
 );
 
@@ -55,7 +69,10 @@ export const AiAssistantPage = () => (
     icon={Bot}
     title="AI Assistant"
     summary="Ask questions about sales, stock and margins, and preview proposed changes before approving them."
-    needs={["An AI provider API key stored in Windows Credential Manager", "Owner consent to send minimised business data to the provider"]}
+    needs={[
+      "An AI provider API key stored in Windows Credential Manager",
+      "Owner consent to send minimised business data to the provider",
+    ]}
   />
 );
 

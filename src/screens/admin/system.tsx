@@ -1,7 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, CircleAlert, Copy, HardDriveDownload, Info, Plus, RefreshCw, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleAlert,
+  Copy,
+  HardDriveDownload,
+  Info,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Server,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
 import { api } from "../../api";
-import type { AuditRow, BackupInspection, BackupRow, DeviceRow, DiagnosticItem, ImportPreview, TaxRuleRow } from "../../api/types";
+import type {
+  AuditRow,
+  BackupInspection,
+  BackupRow,
+  DeviceRow,
+  DiagnosticItem,
+  ImportPreview,
+  TaxRuleRow,
+} from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { isDesktop } from "../../api/transport";
@@ -23,7 +44,10 @@ export function DevicesPage() {
   const act = useAction();
   return (
     <div>
-      <PageHeader title="Devices" subtitle="Terminals registered to this store. Revoking a terminal blocks its hub access immediately." />
+      <PageHeader
+        title="Devices"
+        subtitle="Terminals registered to this store. Revoking a terminal blocks its hub access immediately."
+      />
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <DataTable<DeviceRow>
         rows={data}
@@ -31,14 +55,26 @@ export function DevicesPage() {
         rowKey={(r) => r.device_id}
         onRowClick={(r) => (setOpen(r), setName(r.name))}
         columns={[
-          { key: "n", label: "Terminal Name", render: (r) => <span>{r.name} {r.is_this_device ? <Chip tone="brand">This computer</Chip> : null}</span> },
+          {
+            key: "n",
+            label: "Terminal Name",
+            render: (r) => (
+              <span>
+                {r.name} {r.is_this_device ? <Chip tone="brand">This computer</Chip> : null}
+              </span>
+            ),
+          },
           { key: "c", label: "Code", render: (r) => <span className="mono">{r.device_code}</span> },
           { key: "id", label: "Device ID", render: (r) => <span className="mono">{r.device_id.slice(-8)}</span> },
           { key: "m", label: "Mode", render: (r) => r.mode },
           { key: "b", label: "Branch", render: (r) => r.branch_name ?? "—" },
           { key: "l", label: "Last Seen", render: (r) => (r.is_this_device ? "now" : relative(r.last_seen_at)) },
           { key: "v", label: "Version", render: (r) => r.app_version ?? "—" },
-          { key: "a", label: "Status", render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip tone="danger">Revoked</Chip>) },
+          {
+            key: "a",
+            label: "Status",
+            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip tone="danger">Revoked</Chip>),
+          },
         ]}
       />
       {open ? (
@@ -116,7 +152,8 @@ export function DevicesPage() {
             }
           }}
         >
-          {revoke.name} will no longer be able to synchronize with the hub. Its local records are kept and it can be re-activated later.
+          {revoke.name} will no longer be able to synchronize with the hub. Its local records are kept and it can be
+          re-activated later.
         </Confirm>
       ) : null}
     </div>
@@ -129,7 +166,10 @@ export function SyncPage() {
   const toast = useToast();
   const { has } = useSession();
   const st = useLoad(() => api.sync.status(), []);
-  const addr = useLoad(() => (st.data?.mode === "hub" ? api.sync.hubAddresses() : Promise.resolve(null)), [st.data?.mode]);
+  const addr = useLoad(
+    () => (st.data?.mode === "hub" ? api.sync.hubAddresses() : Promise.resolve(null)),
+    [st.data?.mode],
+  );
   const dead = useLoad(() => (has("sync.manage") ? api.sync.deadLetters() : Promise.resolve([])), []);
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
   const [enable, setEnable] = useState(false);
@@ -142,7 +182,16 @@ export function SyncPage() {
   if (!s) return st.error ? <Banner tone="danger">{st.error}</Banner> : <Skeleton />;
   const mode = String(s.mode);
   const devices = (s.devices as Record<string, unknown>[]) ?? [];
-  const tone: Record<string, "success" | "warning" | "danger" | "info" | "default"> = { healthy: "success", hub: "info", offline: "warning", behind: "warning", error: "danger", version_mismatch: "danger", revoked: "default", never_seen: "default" };
+  const tone: Record<string, "success" | "warning" | "danger" | "info" | "default"> = {
+    healthy: "success",
+    hub: "info",
+    offline: "warning",
+    behind: "warning",
+    error: "danger",
+    version_mismatch: "danger",
+    revoked: "default",
+    never_seen: "default",
+  };
   return (
     <div>
       <PageHeader
@@ -221,7 +270,8 @@ export function SyncPage() {
         <div className="card card-pad col gap-16">
           <h3>Use this computer as the store hub</h3>
           <div className="muted">
-            Other tills can then pair with this computer over the store network. This computer keeps working exactly as before; catalogue and settings are managed here.
+            Other tills can then pair with this computer over the store network. This computer keeps working exactly as
+            before; catalogue and settings are managed here.
           </div>
           <div>
             <Button variant="primary" icon={<Server size={16} />} onClick={() => setEnable(true)}>
@@ -268,13 +318,18 @@ export function SyncPage() {
             </table>
             {devices.some((d) => d.status === "version_mismatch") ? (
               <div className="card-body">
-                <Banner tone="danger">A terminal runs a different AMWAPOS version than the hub (hub {String(s.app_version)}). It will not synchronize until both run the same version.</Banner>
+                <Banner tone="danger">
+                  A terminal runs a different AMWAPOS version than the hub (hub {String(s.app_version)}). It will not
+                  synchronize until both run the same version.
+                </Banner>
               </div>
             ) : null}
           </div>
           <div className="card card-pad col gap-16">
             <h3>Pair a terminal</h3>
-            <div className="small muted">On the new till choose “Join an existing hub” and enter this address and code.</div>
+            <div className="small muted">
+              On the new till choose “Join an existing hub” and enter this address and code.
+            </div>
             <div>
               <div className="tiny">Hub address</div>
               {(addr.data?.addresses ?? []).map((a) => (
@@ -282,7 +337,11 @@ export function SyncPage() {
                   {a}
                 </div>
               ))}
-              {addr.data && !addr.data.running ? <Banner tone="warning">The hub service is not running. Restart AMWAPOS or check that port {addr.data.port} is free.</Banner> : null}
+              {addr.data && !addr.data.running ? (
+                <Banner tone="warning">
+                  The hub service is not running. Restart AMWAPOS or check that port {addr.data.port} is free.
+                </Banner>
+              ) : null}
             </div>
             {code ? (
               <div className="banner info col" style={{ alignItems: "flex-start" }}>
@@ -304,7 +363,9 @@ export function SyncPage() {
                 Generate pairing code
               </Button>
             ) : null}
-            <div className="tiny">Pair terminals on the store's trusted network. After pairing, every request is signed and revocable.</div>
+            <div className="tiny">
+              Pair terminals on the store's trusted network. After pairing, every request is signed and revocable.
+            </div>
           </div>
         </div>
       ) : null}
@@ -335,7 +396,14 @@ export function SyncPage() {
                   <td className="small">{String(d.error)}</td>
                   <td className="num">{String(d.attempts)}</td>
                   <td className="num">
-                    <Button size="sm" onClick={async () => (await act.run(() => api.sync.retryDeadLetter(String(d.dead_id))), void dead.reload(), void st.reload())}>
+                    <Button
+                      size="sm"
+                      onClick={async () => (
+                        await act.run(() => api.sync.retryDeadLetter(String(d.dead_id))),
+                        void dead.reload(),
+                        void st.reload()
+                      )}
+                    >
                       Retry
                     </Button>
                   </td>
@@ -361,7 +429,8 @@ export function SyncPage() {
             }
           }}
         >
-          This computer will accept connections from paired terminals on the store network (TCP port {String(s.port)}). Make sure the Windows firewall allows AMWAPOS on private networks.
+          This computer will accept connections from paired terminals on the store network (TCP port {String(s.port)}).
+          Make sure the Windows firewall allows AMWAPOS on private networks.
         </Confirm>
       ) : null}
     </div>
@@ -404,7 +473,10 @@ export function ImportPage() {
   const steps = ["Upload", "Column Mapping", "Validation", "Preview", "Results"];
   return (
     <div>
-      <PageHeader title="Import products" subtitle="CSV import with explicit review. Nothing is changed until you press Apply Import." />
+      <PageHeader
+        title="Import products"
+        subtitle="CSV import with explicit review. Nothing is changed until you press Apply Import."
+      />
       <div className="row" style={{ marginBottom: 16 }}>
         {steps.map((s, i) => (
           <Chip key={s} tone={step === i + 1 ? "brand" : step > i + 1 ? "success" : "default"}>
@@ -427,10 +499,18 @@ export function ImportPage() {
         >
           <Upload size={28} color="var(--brand)" />
           <h3 style={{ margin: "10px 0 4px" }}>Drop a CSV file or choose one</h3>
-          <div className="small muted">Columns such as Name, Barcode, Price, Cost, Category, SKU and Stock are detected automatically. Separate multiple barcodes with |.</div>
+          <div className="small muted">
+            Columns such as Name, Barcode, Price, Cost, Category, SKU and Stock are detected automatically. Separate
+            multiple barcodes with |.
+          </div>
           <label className="btn primary" style={{ marginTop: 16 }}>
             Choose file
-            <input type="file" accept=".csv,text/csv,.txt" hidden onChange={(e) => e.target.files?.[0] && void load(e.target.files[0])} />
+            <input
+              type="file"
+              accept=".csv,text/csv,.txt"
+              hidden
+              onChange={(e) => e.target.files?.[0] && void load(e.target.files[0])}
+            />
           </label>
           <div style={{ marginTop: 12 }}>
             <Checkbox label="Update existing products with the same SKU" checked={update} onChange={setUpdate} />
@@ -443,7 +523,11 @@ export function ImportPage() {
           <div className="form-grid">
             {preview.fields.map((f) => (
               <Field key={f.key} label={f.label} required={f.key === "name"}>
-                <select className="select" value={mapping[f.key] ?? ""} onChange={(e) => setMapping({ ...mapping, [f.key]: e.target.value })}>
+                <select
+                  className="select"
+                  value={mapping[f.key] ?? ""}
+                  onChange={(e) => setMapping({ ...mapping, [f.key]: e.target.value })}
+                >
                   <option value="">— not imported —</option>
                   {preview.columns.map((c) => (
                     <option key={c} value={c}>
@@ -494,7 +578,11 @@ export function ImportPage() {
             columns={[
               { key: "r", label: "Row", num: true, render: (r) => r.row },
               { key: "n", label: "Name", render: (r) => r.name || "—" },
-              { key: "b", label: "Barcodes", render: (r) => <span className="mono small">{r.barcodes.join(" | ")}</span> },
+              {
+                key: "b",
+                label: "Barcodes",
+                render: (r) => <span className="mono small">{r.barcodes.join(" | ")}</span>,
+              },
               {
                 key: "p",
                 label: "Problem",
@@ -517,8 +605,15 @@ export function ImportPage() {
           />
           <div className="row">
             <Button onClick={() => setStep(2)}>Back</Button>
-            {preview.errors > 0 ? <Checkbox label={`Skip the ${preview.errors} row(s) with errors`} checked={skip} onChange={setSkip} /> : null}
-            <Button variant="primary" className="right" disabled={preview.errors > 0 && !skip} onClick={() => setStep(4)}>
+            {preview.errors > 0 ? (
+              <Checkbox label={`Skip the ${preview.errors} row(s) with errors`} checked={skip} onChange={setSkip} />
+            ) : null}
+            <Button
+              variant="primary"
+              className="right"
+              disabled={preview.errors > 0 && !skip}
+              onClick={() => setStep(4)}
+            >
               Continue
             </Button>
           </div>
@@ -543,10 +638,18 @@ export function ImportPage() {
             rows={preview.rows.filter((r) => r.action !== "error").slice(0, 20)}
             rowKey={(r) => String(r.row)}
             columns={[
-              { key: "a", label: "Action", render: (r) => <Chip tone={r.action === "create" ? "success" : "info"}>{r.action}</Chip> },
+              {
+                key: "a",
+                label: "Action",
+                render: (r) => <Chip tone={r.action === "create" ? "success" : "info"}>{r.action}</Chip>,
+              },
               { key: "n", label: "Name", render: (r) => r.name },
               { key: "s", label: "SKU", render: (r) => r.sku ?? "auto" },
-              { key: "b", label: "Barcodes", render: (r) => <span className="mono small">{r.barcodes.join(" | ")}</span> },
+              {
+                key: "b",
+                label: "Barcodes",
+                render: (r) => <span className="mono small">{r.barcodes.join(" | ")}</span>,
+              },
               { key: "p", label: "Price", num: true, render: (r) => formatMoney(r.price_minor) },
             ]}
           />
@@ -557,7 +660,15 @@ export function ImportPage() {
               className="right"
               loading={act.busy}
               onClick={async () => {
-                const r = await act.run(() => api.products.importApply({ csv, mapping, update_existing: update, skip_errors: skip, operation_id: opId }));
+                const r = await act.run(() =>
+                  api.products.importApply({
+                    csv,
+                    mapping,
+                    update_existing: update,
+                    skip_errors: skip,
+                    operation_id: opId,
+                  }),
+                );
                 if (r) {
                   setResult(r);
                   setStep(5);
@@ -590,7 +701,9 @@ export function ImportPage() {
             <dd>{result.duration_ms} ms</dd>
           </dl>
           <div>
-            <Button onClick={() => (setStep(1), setCsv(""), setPreview(null), setOpId(newOperationId()))}>Import another file</Button>
+            <Button onClick={() => (setStep(1), setCsv(""), setPreview(null), setOpId(newOperationId()))}>
+              Import another file
+            </Button>
           </div>
         </div>
       ) : null}
@@ -635,7 +748,11 @@ export function BackupsPage() {
             onClick={async () => {
               const r = await act.run(() => api.backup.create());
               if (r) {
-                toast("success", "Backup created and verified", `${r.file_name} · ${((r.size_bytes ?? 0) / 1048576).toFixed(1)} MB in ${r.duration_ms} ms`);
+                toast(
+                  "success",
+                  "Backup created and verified",
+                  `${r.file_name} · ${((r.size_bytes ?? 0) / 1048576).toFixed(1)} MB in ${r.duration_ms} ms`,
+                );
                 void reload();
               }
             }}
@@ -655,7 +772,11 @@ export function BackupsPage() {
         <div className="card kpi">
           <div className="k-label">Next automatic backup</div>
           <div className="k-value" style={{ fontSize: 16 }}>
-            {data.next_due_at ? formatDateTime(String(data.next_due_at)) : (data.settings as { automatic: boolean }).automatic ? "Within the next minute" : "Disabled"}
+            {data.next_due_at
+              ? formatDateTime(String(data.next_due_at))
+              : (data.settings as { automatic: boolean }).automatic
+                ? "Within the next minute"
+                : "Disabled"}
           </div>
         </div>
         <div className="card kpi">
@@ -663,7 +784,9 @@ export function BackupsPage() {
           <div className="k-value mono" style={{ fontSize: 12.5, wordBreak: "break-all" }}>
             {String(data.directory)}
           </div>
-          <div className="k-delta muted">{data.free_bytes ? `${(Number(data.free_bytes) / 1073741824).toFixed(1)} GB free` : ""}</div>
+          <div className="k-delta muted">
+            {data.free_bytes ? `${(Number(data.free_bytes) / 1073741824).toFixed(1)} GB free` : ""}
+          </div>
         </div>
       </div>
       <DataTable<BackupRow>
@@ -673,8 +796,26 @@ export function BackupsPage() {
         columns={[
           { key: "d", label: "Date", render: (r) => formatDateTime(r.created_at), sort: (r) => r.created_at },
           { key: "k", label: "Type", render: (r) => r.kind },
-          { key: "s", label: "Size", num: true, render: (r) => (r.size_bytes ? `${(r.size_bytes / 1048576).toFixed(1)} MB` : "—") },
-          { key: "st", label: "Status", render: (r) => (r.status === "completed" ? (r.exists ? <Chip tone="success">Verified</Chip> : <Chip tone="warning">File missing</Chip>) : <Chip tone="danger" >Failed</Chip>) },
+          {
+            key: "s",
+            label: "Size",
+            num: true,
+            render: (r) => (r.size_bytes ? `${(r.size_bytes / 1048576).toFixed(1)} MB` : "—"),
+          },
+          {
+            key: "st",
+            label: "Status",
+            render: (r) =>
+              r.status === "completed" ? (
+                r.exists ? (
+                  <Chip tone="success">Verified</Chip>
+                ) : (
+                  <Chip tone="warning">File missing</Chip>
+                )
+              ) : (
+                <Chip tone="danger">Failed</Chip>
+              ),
+          },
           { key: "f", label: "File", render: (r) => <span className="mono small">{r.file_name || r.error}</span> },
           {
             key: "a",
@@ -691,7 +832,13 @@ export function BackupsPage() {
       />
       {has("backup.restore") ? (
         <div className="card card-pad row" style={{ marginTop: 16, alignItems: "flex-end" }}>
-          <TextInput label="Restore from another file (full path)" value={custom} onChange={(e) => setCustom(e.target.value)} fieldClass="grow" placeholder="E:\\AMWAPOS backups\\AMWAPOS-MAIN-manual-20260924-190000.amwbak" />
+          <TextInput
+            label="Restore from another file (full path)"
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            fieldClass="grow"
+            placeholder="E:\\AMWAPOS backups\\AMWAPOS-MAIN-manual-20260924-190000.amwbak"
+          />
           <Button disabled={!custom.trim()} onClick={() => void inspect(custom.trim())}>
             Inspect
           </Button>
@@ -729,17 +876,24 @@ export function BackupsPage() {
           {restored ? (
             <div className="col gap-16">
               <Banner tone="success" title="Restore completed">
-                Restored in {String(restored.duration_ms)} ms. Record counts {restored.counts_verified ? "match the backup" : "differ (the backup was upgraded to this version)"}. A safety backup of the replaced data was saved to{" "}
+                Restored in {String(restored.duration_ms)} ms. Record counts{" "}
+                {restored.counts_verified ? "match the backup" : "differ (the backup was upgraded to this version)"}. A
+                safety backup of the replaced data was saved to{" "}
                 <span className="mono">{String(restored.safety_backup)}</span>.
               </Banner>
               <div className="small">Everyone must sign in again.</div>
             </div>
           ) : !insp ? (
-            act.error ? <Banner tone="danger">{act.error}</Banner> : <Skeleton />
+            act.error ? (
+              <Banner tone="danger">{act.error}</Banner>
+            ) : (
+              <Skeleton />
+            )
           ) : (
             <div className="col gap-16">
               <Banner tone="warning" title="This replaces all current data on this computer">
-                Every sale, product and setting recorded after this backup was made will be replaced. A safety backup of the current data is taken automatically first.
+                Every sale, product and setting recorded after this backup was made will be replaced. A safety backup of
+                the current data is taken automatically first.
               </Banner>
               <dl className="kv">
                 <dt>File</dt>
@@ -749,9 +903,23 @@ export function BackupsPage() {
                 <dt>Created</dt>
                 <dd>{formatDateTime(insp.created_at)}</dd>
                 <dt>Integrity</dt>
-                <dd>{insp.integrity === "ok" ? <Chip tone="success">OK</Chip> : <Chip tone="danger">{insp.integrity}</Chip>}</dd>
+                <dd>
+                  {insp.integrity === "ok" ? (
+                    <Chip tone="success">OK</Chip>
+                  ) : (
+                    <Chip tone="danger">{insp.integrity}</Chip>
+                  )}
+                </dd>
                 <dt>Checksum</dt>
-                <dd>{insp.checksum_matches === null ? "No manifest" : insp.checksum_matches ? <Chip tone="success">Matches</Chip> : <Chip tone="danger">Mismatch</Chip>}</dd>
+                <dd>
+                  {insp.checksum_matches === null ? (
+                    "No manifest"
+                  ) : insp.checksum_matches ? (
+                    <Chip tone="success">Matches</Chip>
+                  ) : (
+                    <Chip tone="danger">Mismatch</Chip>
+                  )}
+                </dd>
                 <dt>Schema</dt>
                 <dd>
                   {insp.schema_version} (this version: {insp.current_schema_version})
@@ -770,7 +938,11 @@ export function BackupsPage() {
                 </Banner>
               ))}
               {!insp.same_business ? (
-                <Checkbox label={`I understand this backup belongs to a different business (${insp.business_name}).`} checked={ack} onChange={setAck} />
+                <Checkbox
+                  label={`I understand this backup belongs to a different business (${insp.business_name}).`}
+                  checked={ack}
+                  onChange={setAck}
+                />
               ) : null}
               <TextInput label='Type "RESTORE" to confirm' value={typed} onChange={(e) => setTyped(e.target.value)} />
               {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -791,22 +963,66 @@ export function AuditPage() {
   const [entity, setEntity] = useState("");
   const [offset, setOffset] = useState(0);
   const [open, setOpen] = useState<AuditRow | null>(null);
-  const { data, loading, error } = useLoad(() => api.audit.list({ from, to, event_type: event || undefined, entity_type: entity || undefined, limit: 100, offset }), [from, to, event, entity, offset]);
+  const { data, loading, error } = useLoad(
+    () =>
+      api.audit.list({
+        from,
+        to,
+        event_type: event || undefined,
+        entity_type: entity || undefined,
+        limit: 100,
+        offset,
+      }),
+    [from, to, event, entity, offset],
+  );
   const verify = useLoad(() => api.audit.verify(), []);
   return (
     <div>
-      <PageHeader title="Audit" subtitle="Tamper-evident log of every sensitive action. Entries cannot be edited or deleted." />
+      <PageHeader
+        title="Audit"
+        subtitle="Tamper-evident log of every sensitive action. Entries cannot be edited or deleted."
+      />
       {verify.data ? (
-        <Banner tone={verify.data.valid ? "success" : "danger"} title={verify.data.valid ? "Audit chain verified" : "Audit chain broken"}>
+        <Banner
+          tone={verify.data.valid ? "success" : "danger"}
+          title={verify.data.valid ? "Audit chain verified" : "Audit chain broken"}
+        >
           {verify.data.message}
         </Banner>
       ) : null}
       <div className="filters" style={{ marginTop: 12 }}>
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b), setOffset(0))} />
-        <input className="input" style={{ width: 180 }} placeholder="Action (e.g. price)" value={event} onChange={(e) => (setEvent(e.target.value), setOffset(0))} />
-        <select className="select" style={{ width: 160 }} value={entity} onChange={(e) => (setEntity(e.target.value), setOffset(0))} aria-label="Entity">
+        <input
+          className="input"
+          style={{ width: 180 }}
+          placeholder="Action (e.g. price)"
+          value={event}
+          onChange={(e) => (setEvent(e.target.value), setOffset(0))}
+        />
+        <select
+          className="select"
+          style={{ width: 160 }}
+          value={entity}
+          onChange={(e) => (setEntity(e.target.value), setOffset(0))}
+          aria-label="Entity"
+        >
           <option value="">All entities</option>
-          {["sale", "refund", "product", "cart", "shift", "cash_event", "user", "role", "settings", "device", "backup", "stocktake", "purchase_order", "customer"].map((x) => (
+          {[
+            "sale",
+            "refund",
+            "product",
+            "cart",
+            "shift",
+            "cash_event",
+            "user",
+            "role",
+            "settings",
+            "device",
+            "backup",
+            "stocktake",
+            "purchase_order",
+            "customer",
+          ].map((x) => (
             <option key={x} value={x}>
               {x}
             </option>
@@ -849,7 +1065,18 @@ export function AuditPage() {
             <AuditDiff before={open.before} after={open.after} />
             <details className="tech">
               <summary>Technical details</summary>
-              <pre>{JSON.stringify({ seq: open.seq, audit_id: open.audit_id, previous_hash: open.previous_hash, audit_hash: open.audit_hash }, null, 2)}</pre>
+              <pre>
+                {JSON.stringify(
+                  {
+                    seq: open.seq,
+                    audit_id: open.audit_id,
+                    previous_hash: open.previous_hash,
+                    audit_hash: open.audit_hash,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
             </details>
           </div>
         </Drawer>
@@ -892,7 +1119,19 @@ function AuditDiff({ before, after }: { before: unknown; after: unknown }) {
 
 // ---------------- Settings ----------------
 
-type Section = "business" | "tax" | "pos" | "shift" | "payments" | "receipt" | "printer" | "inventory" | "security" | "backup" | "appearance" | "about";
+type Section =
+  | "business"
+  | "tax"
+  | "pos"
+  | "shift"
+  | "payments"
+  | "receipt"
+  | "printer"
+  | "inventory"
+  | "security"
+  | "backup"
+  | "appearance"
+  | "about";
 
 export function SettingsPage() {
   const [section, setSection] = useState<Section>("business");
@@ -963,14 +1202,46 @@ function BusinessSettings() {
   return (
     <div className="card card-pad">
       <div className="form-grid">
-        <TextInput label="Business name" required value={String(data.name ?? "")} onChange={(e) => set("name", e.target.value)} />
-        <TextInput label="Arabic name" dir="rtl" value={String(data.name_ar ?? "")} onChange={(e) => set("name_ar", e.target.value)} />
-        <TextInput label="CR number" value={String(data.cr_number ?? "")} onChange={(e) => set("cr_number", e.target.value)} />
-        <TextInput label="VAT number" value={String(data.vat_number ?? "")} onChange={(e) => set("vat_number", e.target.value)} />
+        <TextInput
+          label="Business name"
+          required
+          value={String(data.name ?? "")}
+          onChange={(e) => set("name", e.target.value)}
+        />
+        <TextInput
+          label="Arabic name"
+          dir="rtl"
+          value={String(data.name_ar ?? "")}
+          onChange={(e) => set("name_ar", e.target.value)}
+        />
+        <TextInput
+          label="CR number"
+          value={String(data.cr_number ?? "")}
+          onChange={(e) => set("cr_number", e.target.value)}
+        />
+        <TextInput
+          label="VAT number"
+          value={String(data.vat_number ?? "")}
+          onChange={(e) => set("vat_number", e.target.value)}
+        />
         <TextInput label="Phone" value={String(data.phone ?? "")} onChange={(e) => set("phone", e.target.value)} />
-        <TextInput label="Timezone" value={String(data.timezone ?? "")} onChange={(e) => set("timezone", e.target.value)} />
-        <TextInput label="Address" value={String(data.address ?? "")} onChange={(e) => set("address", e.target.value)} fieldClass="span-2" />
-        <TextInput label="Currency" value={String(data.currency ?? "")} disabled hint="The currency is locked after the first sale." />
+        <TextInput
+          label="Timezone"
+          value={String(data.timezone ?? "")}
+          onChange={(e) => set("timezone", e.target.value)}
+        />
+        <TextInput
+          label="Address"
+          value={String(data.address ?? "")}
+          onChange={(e) => set("address", e.target.value)}
+          fieldClass="span-2"
+        />
+        <TextInput
+          label="Currency"
+          value={String(data.currency ?? "")}
+          disabled
+          hint="The currency is locked after the first sale."
+        />
       </div>
       <SaveBar
         busy={act.busy}
@@ -997,7 +1268,10 @@ function TaxSettings() {
   const act = useAction();
   return (
     <div className="col gap-16">
-      <Banner tone="info">Tax rules are versioned. To change a rate, create a new rule and move products to it; past sales keep the rate they were sold with.</Banner>
+      <Banner tone="info">
+        Tax rules are versioned. To change a rate, create a new rule and move products to it; past sales keep the rate
+        they were sold with.
+      </Banner>
       <DataTable<TaxRuleRow>
         rows={data}
         rowKey={(r) => r.tax_rule_id}
@@ -1007,13 +1281,20 @@ function TaxSettings() {
           { key: "i", label: "Prices", render: (r) => (r.inclusive ? "Include VAT" : "Exclude VAT") },
           { key: "p", label: "Products", num: true, render: (r) => r.product_count },
           { key: "f", label: "Since", render: (r) => formatShort(r.effective_from) },
-          { key: "s", label: "Status", render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>) },
+          {
+            key: "s",
+            label: "Status",
+            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>),
+          },
           {
             key: "a",
             label: "",
             num: true,
             render: (r) => (
-              <Button size="sm" onClick={async () => (await act.run(() => api.tax.setActive(r.tax_rule_id, !r.active)), void reload())}>
+              <Button
+                size="sm"
+                onClick={async () => (await act.run(() => api.tax.setActive(r.tax_rule_id, !r.active)), void reload())}
+              >
                 {r.active ? "Deactivate" : "Activate"}
               </Button>
             ),
@@ -1109,12 +1390,25 @@ function JsonSettings({ k }: { k: string }) {
     <div className="card card-pad col gap-16">
       {Object.entries(data).map(([key, v]) => {
         const help = DESCRIPTIONS[k]?.[key];
-        const label = key.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()).replace(" bp", " (bp)").replace(" minor", "");
+        const label = key
+          .replace(/_/g, " ")
+          .replace(/^\w/, (c) => c.toUpperCase())
+          .replace(" bp", " (bp)")
+          .replace(" minor", "");
         if (typeof v === "boolean") {
           return (
             <div key={key}>
-              <Checkbox label={label} checked={v} onChange={(x) => setData({ ...data, [key]: x })} disabled={key === "costing_method"} />
-              {help ? <div className="tiny" style={{ marginLeft: 24 }}>{help}</div> : null}
+              <Checkbox
+                label={label}
+                checked={v}
+                onChange={(x) => setData({ ...data, [key]: x })}
+                disabled={key === "costing_method"}
+              />
+              {help ? (
+                <div className="tiny" style={{ marginLeft: 24 }}>
+                  {help}
+                </div>
+              ) : null}
             </div>
           );
         }
@@ -1134,7 +1428,16 @@ function JsonSettings({ k }: { k: string }) {
             />
           );
         }
-        return <TextInput key={key} label={label} value={String(v ?? "")} hint={help} disabled={key === "costing_method"} onChange={(e) => setData({ ...data, [key]: e.target.value })} />;
+        return (
+          <TextInput
+            key={key}
+            label={label}
+            value={String(v ?? "")}
+            hint={help}
+            disabled={key === "costing_method"}
+            onChange={(e) => setData({ ...data, [key]: e.target.value })}
+          />
+        );
       })}
       <SaveBar
         busy={act.busy}
@@ -1155,12 +1458,27 @@ function JsonSettings({ k }: { k: string }) {
 function PaymentSettings() {
   const toast = useToast();
   const { reloadConfig } = useSession();
-  const { data, setData } = useLoad(() => api.settings.get<{ tenders: { method: string; label: string; enabled: boolean; requires_reference: boolean; allows_change: boolean }[] }>("payments"), []);
+  const { data, setData } = useLoad(
+    () =>
+      api.settings.get<{
+        tenders: {
+          method: string;
+          label: string;
+          enabled: boolean;
+          requires_reference: boolean;
+          allows_change: boolean;
+        }[];
+      }>("payments"),
+    [],
+  );
   const act = useAction();
   if (!data) return <Skeleton />;
   return (
     <div className="card card-pad col gap-16">
-      <Banner tone="info">Card, BenefitPay and bank transfers are recorded as tenders. AMWAPOS does not verify settlement until an authorised payment-provider integration is added.</Banner>
+      <Banner tone="info">
+        Card, BenefitPay and bank transfers are recorded as tenders. AMWAPOS does not verify settlement until an
+        authorised payment-provider integration is added.
+      </Banner>
       <table className="table">
         <thead>
           <tr>
@@ -1175,13 +1493,32 @@ function PaymentSettings() {
             <tr key={t.method}>
               <td className="mono">{t.method}</td>
               <td>
-                <input className="input" value={t.label} onChange={(e) => setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} aria-label={`${t.method} label`} />
+                <input
+                  className="input"
+                  value={t.label}
+                  onChange={(e) =>
+                    setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })
+                  }
+                  aria-label={`${t.method} label`}
+                />
               </td>
               <td>
-                <Checkbox label="" checked={t.enabled} onChange={(v) => setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, enabled: v } : x)) })} />
+                <Checkbox
+                  label=""
+                  checked={t.enabled}
+                  onChange={(v) =>
+                    setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, enabled: v } : x)) })
+                  }
+                />
               </td>
               <td>
-                <Checkbox label="" checked={t.requires_reference} onChange={(v) => setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, requires_reference: v } : x)) })} />
+                <Checkbox
+                  label=""
+                  checked={t.requires_reference}
+                  onChange={(v) =>
+                    setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, requires_reference: v } : x)) })
+                  }
+                />
               </td>
             </tr>
           ))}
@@ -1202,7 +1539,16 @@ function PaymentSettings() {
   );
 }
 
-type ReceiptCfg = { header_lines: string[]; footer_lines: string[]; show_vat_number: boolean; show_cr_number: boolean; show_cashier: boolean; show_barcode: boolean; paper_width_mm: number; title: string };
+type ReceiptCfg = {
+  header_lines: string[];
+  footer_lines: string[];
+  show_vat_number: boolean;
+  show_cr_number: boolean;
+  show_cashier: boolean;
+  show_barcode: boolean;
+  paper_width_mm: number;
+  title: string;
+};
 
 function ReceiptSettings() {
   const toast = useToast();
@@ -1246,17 +1592,49 @@ function ReceiptSettings() {
       <div className="card card-pad col gap-16">
         <TextInput label="Title" value={data.title} onChange={(e) => setData({ ...data, title: e.target.value })} />
         <Field label="Header lines">
-          <textarea className="textarea" value={data.header_lines.join("\n")} onChange={(e) => setData({ ...data, header_lines: e.target.value.split("\n").filter((x, i, a) => x || i < a.length - 1) })} />
+          <textarea
+            className="textarea"
+            value={data.header_lines.join("\n")}
+            onChange={(e) =>
+              setData({ ...data, header_lines: e.target.value.split("\n").filter((x, i, a) => x || i < a.length - 1) })
+            }
+          />
         </Field>
         <Field label="Footer lines">
-          <textarea className="textarea" value={data.footer_lines.join("\n")} onChange={(e) => setData({ ...data, footer_lines: e.target.value.split("\n").filter((x, i, a) => x || i < a.length - 1) })} />
+          <textarea
+            className="textarea"
+            value={data.footer_lines.join("\n")}
+            onChange={(e) =>
+              setData({ ...data, footer_lines: e.target.value.split("\n").filter((x, i, a) => x || i < a.length - 1) })
+            }
+          />
         </Field>
-        <Checkbox label="Show VAT number" checked={data.show_vat_number} onChange={(v) => setData({ ...data, show_vat_number: v })} />
-        <Checkbox label="Show CR number" checked={data.show_cr_number} onChange={(v) => setData({ ...data, show_cr_number: v })} />
-        <Checkbox label="Show cashier" checked={data.show_cashier} onChange={(v) => setData({ ...data, show_cashier: v })} />
-        <Checkbox label="Show barcodes" checked={data.show_barcode} onChange={(v) => setData({ ...data, show_barcode: v })} />
+        <Checkbox
+          label="Show VAT number"
+          checked={data.show_vat_number}
+          onChange={(v) => setData({ ...data, show_vat_number: v })}
+        />
+        <Checkbox
+          label="Show CR number"
+          checked={data.show_cr_number}
+          onChange={(v) => setData({ ...data, show_cr_number: v })}
+        />
+        <Checkbox
+          label="Show cashier"
+          checked={data.show_cashier}
+          onChange={(v) => setData({ ...data, show_cashier: v })}
+        />
+        <Checkbox
+          label="Show barcodes"
+          checked={data.show_barcode}
+          onChange={(v) => setData({ ...data, show_barcode: v })}
+        />
         <Field label="Paper width">
-          <select className="select" value={data.paper_width_mm} onChange={(e) => setData({ ...data, paper_width_mm: Number(e.target.value) })}>
+          <select
+            className="select"
+            value={data.paper_width_mm}
+            onChange={(e) => setData({ ...data, paper_width_mm: Number(e.target.value) })}
+          >
             <option value={80}>80 mm</option>
             <option value={58}>58 mm</option>
           </select>
@@ -1284,7 +1662,14 @@ function ReceiptSettings() {
   );
 }
 
-type PrinterCfg = { mode: string; target: string; paper_width_mm: number; cut: boolean; drawer_pulse: boolean; code_page: string };
+type PrinterCfg = {
+  mode: string;
+  target: string;
+  paper_width_mm: number;
+  cut: boolean;
+  drawer_pulse: boolean;
+  code_page: string;
+};
 
 function PrinterSettings() {
   const toast = useToast();
@@ -1306,8 +1691,15 @@ function PrinterSettings() {
           </select>
         </Field>
         {data.mode === "windows" ? (
-          <Field label="Windows printer" hint={isDesktop() ? undefined : "Printer list is available in the desktop app."}>
-            <select className="select" value={data.target} onChange={(e) => setData({ ...data, target: e.target.value })}>
+          <Field
+            label="Windows printer"
+            hint={isDesktop() ? undefined : "Printer list is available in the desktop app."}
+          >
+            <select
+              className="select"
+              value={data.target}
+              onChange={(e) => setData({ ...data, target: e.target.value })}
+            >
               <option value="">Choose…</option>
               {(printers.data ?? []).map((p) => (
                 <option key={p}>{p}</option>
@@ -1316,29 +1708,54 @@ function PrinterSettings() {
             </select>
           </Field>
         ) : data.mode !== "none" ? (
-          <TextInput label={data.mode === "network" ? "Printer address" : "Output file"} value={data.target} onChange={(e) => setData({ ...data, target: e.target.value })} placeholder={data.mode === "network" ? "192.168.1.50:9100" : "C:\\AMWAPOS\\printer.txt"} />
+          <TextInput
+            label={data.mode === "network" ? "Printer address" : "Output file"}
+            value={data.target}
+            onChange={(e) => setData({ ...data, target: e.target.value })}
+            placeholder={data.mode === "network" ? "192.168.1.50:9100" : "C:\\AMWAPOS\\printer.txt"}
+          />
         ) : (
           <div />
         )}
         <Field label="Paper size">
-          <select className="select" value={data.paper_width_mm} onChange={(e) => setData({ ...data, paper_width_mm: Number(e.target.value) })}>
+          <select
+            className="select"
+            value={data.paper_width_mm}
+            onChange={(e) => setData({ ...data, paper_width_mm: Number(e.target.value) })}
+          >
             <option value={80}>80 mm</option>
             <option value={58}>58 mm</option>
           </select>
         </Field>
         <div className="col">
-          <Checkbox label="Cut paper after each receipt" checked={data.cut} onChange={(v) => setData({ ...data, cut: v })} />
-          <Checkbox label="Open cash drawer (printer kick) on cash sales" checked={data.drawer_pulse} onChange={(v) => setData({ ...data, drawer_pulse: v })} />
+          <Checkbox
+            label="Cut paper after each receipt"
+            checked={data.cut}
+            onChange={(v) => setData({ ...data, cut: v })}
+          />
+          <Checkbox
+            label="Open cash drawer (printer kick) on cash sales"
+            checked={data.drawer_pulse}
+            onChange={(v) => setData({ ...data, drawer_pulse: v })}
+          />
         </div>
       </div>
       {status ? <Banner tone={status.tone}>{status.text}</Banner> : null}
-      <Banner tone="info">Arabic text is not yet rasterized for thermal printers; receipts print product names from the English name field.</Banner>
+      <Banner tone="info">
+        Arabic text is not yet rasterized for thermal printers; receipts print product names from the English name
+        field.
+      </Banner>
       <div className="row">
         <Button
           onClick={async () => {
             await act.run(() => api.settings.save("local.printer", data));
             const r = await act.run(() => api.print.test());
-            if (r) setStatus(r.status === "printed" ? { tone: "success", text: "Test page sent to the printer." } : { tone: "danger", text: r.message ?? "Printer not verified." });
+            if (r)
+              setStatus(
+                r.status === "printed"
+                  ? { tone: "success", text: "Test page sent to the printer." }
+                  : { tone: "danger", text: r.message ?? "Printer not verified." },
+              );
           }}
         >
           Test Print
@@ -1347,7 +1764,12 @@ function PrinterSettings() {
           onClick={async () => {
             await act.run(() => api.settings.save("local.printer", data));
             const r = await act.run(() => api.print.drawerTest());
-            if (r) setStatus(r.status === "printed" ? { tone: "success", text: "Drawer pulse sent." } : { tone: "danger", text: r.message ?? "Drawer not verified." });
+            if (r)
+              setStatus(
+                r.status === "printed"
+                  ? { tone: "success", text: "Drawer pulse sent." }
+                  : { tone: "danger", text: r.message ?? "Drawer not verified." },
+              );
           }}
         >
           Test cash drawer
@@ -1375,27 +1797,42 @@ function PrinterSettings() {
 function AppearanceSettings() {
   const toast = useToast();
   const { reloadConfig } = useSession();
-  const { data, setData } = useLoad(() => api.settings.get<{ theme: string; density: string; cashier_font: string }>("local.appearance"), []);
+  const { data, setData } = useLoad(
+    () => api.settings.get<{ theme: string; density: string; cashier_font: string }>("local.appearance"),
+    [],
+  );
   const act = useAction();
   if (!data) return <Skeleton />;
   return (
     <div className="card card-pad col gap-16">
       <div className="form-grid">
         <Field label="Theme">
-          <select className="select" value={data.theme || "light"} onChange={(e) => setData({ ...data, theme: e.target.value })}>
+          <select
+            className="select"
+            value={data.theme || "light"}
+            onChange={(e) => setData({ ...data, theme: e.target.value })}
+          >
             <option value="light">Light</option>
             <option value="dark">Dark</option>
             <option value="system">System</option>
           </select>
         </Field>
         <Field label="Density">
-          <select className="select" value={data.density || "comfortable"} onChange={(e) => setData({ ...data, density: e.target.value })}>
+          <select
+            className="select"
+            value={data.density || "comfortable"}
+            onChange={(e) => setData({ ...data, density: e.target.value })}
+          >
             <option value="comfortable">Comfortable</option>
             <option value="compact">Compact</option>
           </select>
         </Field>
         <Field label="Cashier font size">
-          <select className="select" value={data.cashier_font || "normal"} onChange={(e) => setData({ ...data, cashier_font: e.target.value })}>
+          <select
+            className="select"
+            value={data.cashier_font || "normal"}
+            onChange={(e) => setData({ ...data, cashier_font: e.target.value })}
+          >
             <option value="normal">Normal</option>
             <option value="large">Large</option>
           </select>
@@ -1460,7 +1897,11 @@ export function DiagnosticsPage() {
               onClick={async () => {
                 const r = await act.run(() => api.diagnostics.export());
                 if (r) {
-                  download(`amwapos-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, JSON.stringify(r, null, 2), "application/json");
+                  download(
+                    `amwapos-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+                    JSON.stringify(r, null, 2),
+                    "application/json",
+                  );
                   toast("success", "Diagnostics exported", "Secrets and customer details are not included.");
                 }
               }}
@@ -1510,10 +1951,13 @@ export function UpdatesPage() {
           <dd>{status.schema_version}</dd>
         </dl>
         <Banner tone="info" title="Updates are installed from signed installers">
-          Automatic update checks require the publisher's update-signing key, which has not been configured for this build. Install new versions with the signed AMWAPOS installer; your data
-          is kept, a safety backup is taken before any database upgrade, and unsigned updates are never installed.
+          Automatic update checks require the publisher's update-signing key, which has not been configured for this
+          build. Install new versions with the signed AMWAPOS installer; your data is kept, a safety backup is taken
+          before any database upgrade, and unsigned updates are never installed.
         </Banner>
-        <div className="small muted">Do not update while a sale is in progress. Update the hub and all terminals to the same version.</div>
+        <div className="small muted">
+          Do not update while a sale is in progress. Update the hub and all terminals to the same version.
+        </div>
       </div>
     </div>
   );

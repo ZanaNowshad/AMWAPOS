@@ -35,10 +35,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
 }
 
 fn arg(args: &Value, k: &str) -> AppResult<String> {
-    args.get(k)
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| AppError::validation(format!("Missing argument '{k}'.")))
+    args.get(k).and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or_else(|| AppError::validation(format!("Missing argument '{k}'.")))
 }
 
 impl Runtime {
@@ -54,7 +51,14 @@ impl Runtime {
     }
 
     pub fn with_bind(core: Arc<AppCore>, ip: Ipv4Addr, sync_interval: Duration) -> Arc<Self> {
-        Arc::new(Self { core, hub: Mutex::new(None), sync_loop: Mutex::new(None), maintenance: Mutex::new(None), bind_ip: ip, sync_interval })
+        Arc::new(Self {
+            core,
+            hub: Mutex::new(None),
+            sync_loop: Mutex::new(None),
+            maintenance: Mutex::new(None),
+            bind_ip: ip,
+            sync_interval,
+        })
     }
 
     fn hub_port(&self) -> u16 {
@@ -126,7 +130,9 @@ impl Runtime {
     pub async fn dispatch(self: &Arc<Self>, cmd: &str, token: Option<String>, args: Value) -> AppResult<Value> {
         match cmd {
             "sync.discover" => {
-                let found = discovery::discover(Duration::from_millis(1500)).await.map_err(|e| AppError::new(amwapos_core::ErrorCode::Sync, e.to_string()))?;
+                let found = discovery::discover(Duration::from_millis(1500))
+                    .await
+                    .map_err(|e| AppError::new(amwapos_core::ErrorCode::Sync, e.to_string()))?;
                 Ok(serde_json::to_value(found).unwrap_or(Value::Null))
             }
             "sync.probe" => {
@@ -172,18 +178,22 @@ impl Runtime {
                 blocking(move || c.session(&t).map(|_| ())).await?;
                 let port = self.hub_port();
                 let running = self.hub.lock().map(|g| g.as_ref().map(|t| !t.server.is_finished()).unwrap_or(false)).unwrap_or(false);
-                Ok(json!({ "addresses": discovery::local_addresses().into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port, "running": running }))
+                Ok(
+                    json!({ "addresses": discovery::local_addresses().into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port, "running": running }),
+                )
             }
             _ => {
                 let core = self.core.clone();
                 let c = cmd.to_string();
                 let res = blocking(move || match c.as_str() {
                     "sync.enable_hub" => {
-                        let t = token.as_deref().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                        let t =
+                            token.as_deref().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                         core.sync_enable_hub(t)
                     }
                     "sync.unblock" => {
-                        let t = token.as_deref().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                        let t =
+                            token.as_deref().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                         core.sync_unblock(t, args.get("accept_new_hub").and_then(|v| v.as_bool()).unwrap_or(false))
                     }
                     _ => commands::dispatch(&core, &c, token.as_deref(), args),

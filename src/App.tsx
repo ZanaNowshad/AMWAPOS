@@ -12,7 +12,8 @@ import { CashierMode } from "./screens/pos/CashierMode";
 import { AdminShell } from "./screens/admin/AdminShell";
 import { DeliveryDesk } from "./screens/pos/DeliveryDesk";
 
-type Boot = { phase: "loading"; stage: string } | { phase: "failed"; error: unknown } | { phase: "ready"; status: SetupStatus };
+type Boot =
+  { phase: "loading"; stage: string } | { phase: "failed"; error: unknown } | { phase: "ready"; status: SetupStatus };
 
 export default function App() {
   const [boot, setBoot] = useState<Boot>({ phase: "loading", stage: "Opening database" });

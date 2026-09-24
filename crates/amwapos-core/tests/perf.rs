@@ -26,10 +26,41 @@ impl Rng {
 }
 
 const WORDS: &[&str] = &[
-    "Almarai", "Nadec", "Coca-Cola", "Pepsi", "Lays", "Pringles", "Nestle", "Kinder", "Galaxy", "Tiffany", "Americana", "Sadia", "Puck", "Kraft", "Heinz",
-    "Lipton", "Nescafe", "Tang", "Vimto", "Rani", "Aquafina", "Masafi", "Barakat", "Oman", "Bayara", "Tilda", "Abu", "Kas", "Fine", "Dettol",
+    "Almarai",
+    "Nadec",
+    "Coca-Cola",
+    "Pepsi",
+    "Lays",
+    "Pringles",
+    "Nestle",
+    "Kinder",
+    "Galaxy",
+    "Tiffany",
+    "Americana",
+    "Sadia",
+    "Puck",
+    "Kraft",
+    "Heinz",
+    "Lipton",
+    "Nescafe",
+    "Tang",
+    "Vimto",
+    "Rani",
+    "Aquafina",
+    "Masafi",
+    "Barakat",
+    "Oman",
+    "Bayara",
+    "Tilda",
+    "Abu",
+    "Kas",
+    "Fine",
+    "Dettol",
 ];
-const KINDS: &[&str] = &["Milk", "Juice", "Water", "Chips", "Biscuits", "Rice", "Tea", "Coffee", "Cheese", "Yoghurt", "Chicken", "Tissue", "Soap", "Shampoo", "Bread"];
+const KINDS: &[&str] = &[
+    "Milk", "Juice", "Water", "Chips", "Biscuits", "Rice", "Tea", "Coffee", "Cheese", "Yoghurt", "Chicken", "Tissue", "Soap", "Shampoo",
+    "Bread",
+];
 
 #[test]
 #[ignore]
@@ -40,15 +71,31 @@ fn perf_100k_products() {
     let mut rng = Rng(7);
     let mut csv = String::from("sku,name,barcode,price,cost,category,stock\n");
     for i in 0..n {
-        let name = format!("{} {} {}g #{i}", WORDS[rng.next(WORDS.len() as u64) as usize], KINDS[rng.next(KINDS.len() as u64) as usize], 50 + rng.next(950));
+        let name = format!(
+            "{} {} {}g #{i}",
+            WORDS[rng.next(WORDS.len() as u64) as usize],
+            KINDS[rng.next(KINDS.len() as u64) as usize],
+            50 + rng.next(950)
+        );
         let bc = format!("{:013}", 6_290_000_000_000u64 + i as u64);
         let price = 100 + rng.next(20_000);
-        csv.push_str(&format!("S{i:06},{name},{bc},{}.{:03},{}.{:03},{},{}\n", price / 1000, price % 1000, price * 6 / 10000, (price * 6 / 10) % 1000, KINDS[i % KINDS.len()], 100));
+        csv.push_str(&format!(
+            "S{i:06},{name},{bc},{}.{:03},{}.{:03},{},{}\n",
+            price / 1000,
+            price % 1000,
+            price * 6 / 10000,
+            (price * 6 / 10) % 1000,
+            KINDS[i % KINDS.len()],
+            100
+        ));
     }
     let started = Instant::now();
     let r = e
         .core
-        .products_import_apply(t, ImportRequest { csv, mapping: None, update_existing: false, skip_errors: false, operation_id: Some(op()) })
+        .products_import_apply(
+            t,
+            ImportRequest { csv, mapping: None, update_existing: false, skip_errors: false, operation_id: Some(op()) },
+        )
         .unwrap();
     let import = started.elapsed();
     assert_eq!(r["created"], n as i64);
@@ -102,13 +149,16 @@ fn perf_100k_products() {
         let c = cart.unwrap();
         let s = Instant::now();
         e.core
-            .pos_finalize(t, FinalizeRequest {
-                cart_id: c.cart_id.unwrap(),
-                operation_id: op(),
-                tenders: vec![TenderInput { method: "cash".into(), amount_minor: c.totals.total_minor, reference: None }],
-                approval_token: None,
-                expected_total_minor: None,
-            })
+            .pos_finalize(
+                t,
+                FinalizeRequest {
+                    cart_id: c.cart_id.unwrap(),
+                    operation_id: op(),
+                    tenders: vec![TenderInput { method: "cash".into(), amount_minor: c.totals.total_minor, reference: None }],
+                    approval_token: None,
+                    expected_total_minor: None,
+                },
+            )
             .unwrap();
         commits.push(s.elapsed());
     }

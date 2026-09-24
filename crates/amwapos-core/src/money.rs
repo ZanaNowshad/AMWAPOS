@@ -31,10 +31,7 @@ fn to_i64(v: i128) -> AppResult<i64> {
 
 /// `unit_price * qty` where qty is in milli-units. Rounded to minor units.
 pub fn extend(unit_price_minor: i64, qty_milli: i64) -> AppResult<i64> {
-    to_i64(div_round(
-        unit_price_minor as i128 * qty_milli as i128,
-        QTY_SCALE as i128,
-    ))
+    to_i64(div_round(unit_price_minor as i128 * qty_milli as i128, QTY_SCALE as i128))
 }
 
 /// Tax contained in a tax-inclusive amount: `amount * r / (1 + r)`.
@@ -42,18 +39,12 @@ pub fn tax_from_inclusive(amount_minor: i64, rate_bp: i64) -> AppResult<i64> {
     if rate_bp == 0 {
         return Ok(0);
     }
-    to_i64(div_round(
-        amount_minor as i128 * rate_bp as i128,
-        (BP_SCALE + rate_bp) as i128,
-    ))
+    to_i64(div_round(amount_minor as i128 * rate_bp as i128, (BP_SCALE + rate_bp) as i128))
 }
 
 /// Tax to add on top of a tax-exclusive amount: `amount * r`.
 pub fn tax_on_exclusive(amount_minor: i64, rate_bp: i64) -> AppResult<i64> {
-    to_i64(div_round(
-        amount_minor as i128 * rate_bp as i128,
-        BP_SCALE as i128,
-    ))
+    to_i64(div_round(amount_minor as i128 * rate_bp as i128, BP_SCALE as i128))
 }
 
 /// `amount * bp / 10000`, rounded. Used for percentage discounts.
@@ -121,27 +112,20 @@ pub fn parse_decimal(s: &str, digits: u32) -> AppResult<i64> {
         return Err(AppError::validation(format!("'{s}' is not a valid number.")));
     }
     if frac_part.len() as u32 > digits {
-        return Err(AppError::validation(format!(
-            "'{s}' has more than {digits} decimal places."
-        )));
+        return Err(AppError::validation(format!("'{s}' has more than {digits} decimal places.")));
     }
     let scale = 10i128.pow(digits);
     let ip: i128 = if int_part.is_empty() {
         0
     } else {
-        int_part
-            .parse::<i128>()
-            .map_err(|_| AppError::validation(format!("'{s}' is out of range.")))?
+        int_part.parse::<i128>().map_err(|_| AppError::validation(format!("'{s}' is out of range.")))?
     };
     let mut frac = frac_part.to_string();
     while (frac.len() as u32) < digits {
         frac.push('0');
     }
     let fp: i128 = if frac.is_empty() { 0 } else { frac.parse().unwrap_or(0) };
-    let v = ip
-        .checked_mul(scale)
-        .and_then(|x| x.checked_add(fp))
-        .ok_or_else(|| AppError::validation(format!("'{s}' is out of range.")))?;
+    let v = ip.checked_mul(scale).and_then(|x| x.checked_add(fp)).ok_or_else(|| AppError::validation(format!("'{s}' is out of range.")))?;
     let v = if neg { -v } else { v };
     to_i64(v)
 }
@@ -153,12 +137,7 @@ pub fn format_decimal(v: i64, digits: u32) -> String {
     }
     let scale = 10i128.pow(digits);
     let a = (v as i128).abs();
-    let s = format!(
-        "{}.{:0width$}",
-        a / scale,
-        a % scale,
-        width = digits as usize
-    );
+    let s = format!("{}.{:0width$}", a / scale, a % scale, width = digits as usize);
     if v < 0 {
         format!("-{s}")
     } else {

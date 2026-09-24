@@ -48,11 +48,7 @@ pub struct ShiftSettings {
 }
 impl Default for ShiftSettings {
     fn default() -> Self {
-        Self {
-            blind_close: true,
-            variance_approval_minor: 1000,
-            paid_out_approval_minor: 0,
-        }
+        Self { blind_close: true, variance_approval_minor: 1000, paid_out_approval_minor: 0 }
     }
 }
 
@@ -68,13 +64,7 @@ pub struct TenderConfig {
 }
 impl Default for TenderConfig {
     fn default() -> Self {
-        Self {
-            method: String::new(),
-            label: String::new(),
-            enabled: true,
-            requires_reference: false,
-            allows_change: false,
-        }
+        Self { method: String::new(), label: String::new(), enabled: true, requires_reference: false, allows_change: false }
     }
 }
 
@@ -145,12 +135,7 @@ pub struct SecuritySettings {
 }
 impl Default for SecuritySettings {
     fn default() -> Self {
-        Self {
-            pin_min_length: 4,
-            pin_max_length: 8,
-            max_failed_attempts: 5,
-            lockout_minutes: 15,
-        }
+        Self { pin_min_length: 4, pin_max_length: 8, max_failed_attempts: 5, lockout_minutes: 15 }
     }
 }
 
@@ -164,11 +149,7 @@ pub struct InventorySettings {
 }
 impl Default for InventorySettings {
     fn default() -> Self {
-        Self {
-            costing_method: "weighted_average".into(),
-            require_adjust_reason: true,
-            stocktake_blind_default: true,
-        }
+        Self { costing_method: "weighted_average".into(), require_adjust_reason: true, stocktake_blind_default: true }
     }
 }
 
@@ -186,14 +167,7 @@ pub struct PrinterSettings {
 }
 impl Default for PrinterSettings {
     fn default() -> Self {
-        Self {
-            mode: "none".into(),
-            target: String::new(),
-            paper_width_mm: 80,
-            cut: true,
-            drawer_pulse: true,
-            code_page: "cp437".into(),
-        }
+        Self { mode: "none".into(), target: String::new(), paper_width_mm: 80, cut: true, drawer_pulse: true, code_page: "cp437".into() }
     }
 }
 
@@ -207,12 +181,7 @@ pub struct BackupSettings {
 }
 impl Default for BackupSettings {
     fn default() -> Self {
-        Self {
-            directory: String::new(),
-            automatic: true,
-            interval_hours: 24,
-            keep: 14,
-        }
+        Self { directory: String::new(), automatic: true, interval_hours: 24, keep: 14 }
     }
 }
 
@@ -236,33 +205,19 @@ pub const KEY_APPEARANCE: &str = "local.appearance";
 pub const KEY_DEVICE: &str = "local.device";
 pub const KEY_SETUP_COMPLETE: &str = "local.setup_complete";
 
-pub const EDITABLE_KEYS: &[&str] = &[
-    KEY_POS,
-    KEY_SHIFT,
-    KEY_PAYMENTS,
-    KEY_RECEIPT,
-    KEY_SECURITY,
-    KEY_INVENTORY,
-    KEY_PRINTER,
-    KEY_BACKUP,
-    KEY_APPEARANCE,
-];
+pub const EDITABLE_KEYS: &[&str] =
+    &[KEY_POS, KEY_SHIFT, KEY_PAYMENTS, KEY_RECEIPT, KEY_SECURITY, KEY_INVENTORY, KEY_PRINTER, KEY_BACKUP, KEY_APPEARANCE];
 
 pub fn get<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> AppResult<T> {
-    let v: Option<String> = conn
-        .query_row("SELECT value_json FROM settings WHERE key = ?1", [key], |r| r.get(0))
-        .optional()?;
+    let v: Option<String> = conn.query_row("SELECT value_json FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?;
     match v {
-        Some(s) => serde_json::from_str(&s)
-            .map_err(|e| AppError::internal(format!("Setting '{key}' is unreadable: {e}"))),
+        Some(s) => serde_json::from_str(&s).map_err(|e| AppError::internal(format!("Setting '{key}' is unreadable: {e}"))),
         None => Ok(T::default()),
     }
 }
 
 pub fn get_raw(conn: &Connection, key: &str) -> AppResult<Option<serde_json::Value>> {
-    let v: Option<String> = conn
-        .query_row("SELECT value_json FROM settings WHERE key = ?1", [key], |r| r.get(0))
-        .optional()?;
+    let v: Option<String> = conn.query_row("SELECT value_json FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?;
     Ok(match v {
         Some(s) => Some(serde_json::from_str(&s)?),
         None => None,

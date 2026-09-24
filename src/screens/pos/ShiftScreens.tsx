@@ -95,7 +95,15 @@ export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void })
   );
 }
 
-export function ShiftClose({ shiftId, onClose, onClosed }: { shiftId: string; onClose: () => void; onClosed: () => void }) {
+export function ShiftClose({
+  shiftId,
+  onClose,
+  onClosed,
+}: {
+  shiftId: string;
+  onClose: () => void;
+  onClosed: () => void;
+}) {
   const { has } = useSession();
   const approve = useApproval();
   const [sum, setSum] = useState<ShiftSummary | null>(null);
@@ -106,7 +114,10 @@ export function ShiftClose({ shiftId, onClose, onClosed }: { shiftId: string; on
   const [done, setDone] = useState<{ summary: ShiftSummary; print: PrintOutcome } | null>(null);
   const [opId] = useState(newOperationId);
   useEffect(() => {
-    api.shift.get(shiftId).then(setSum).catch((e) => setError(explain(e).message));
+    api.shift
+      .get(shiftId)
+      .then(setSum)
+      .catch((e) => setError(explain(e).message));
   }, [shiftId]);
   const minor = parseMoney(counted);
   const variance = sum && sum.expected_visible && minor !== null ? minor - sum.expected_cash_minor : null;
@@ -118,7 +129,15 @@ export function ShiftClose({ shiftId, onClose, onClosed }: { shiftId: string; on
     setBusy(true);
     setError(null);
     try {
-      const r = await approve((tok) => api.shift.close({ shift_id: shiftId, counted_cash_minor: minor, note: note || null, operation_id: opId, approval_token: tok }));
+      const r = await approve((tok) =>
+        api.shift.close({
+          shift_id: shiftId,
+          counted_cash_minor: minor,
+          note: note || null,
+          operation_id: opId,
+          approval_token: tok,
+        }),
+      );
       setDone(r);
     } catch (e) {
       if (!(e instanceof ApprovalCancelled)) setError(explain(e).message);
@@ -187,7 +206,11 @@ export function ShiftClose({ shiftId, onClose, onClosed }: { shiftId: string; on
       }
     >
       {!sum ? (
-        error ? <Banner tone="danger">{error}</Banner> : <div className="spinner" />
+        error ? (
+          <Banner tone="danger">{error}</Banner>
+        ) : (
+          <div className="spinner" />
+        )
       ) : (
         <div className="grid-2">
           <div>
@@ -213,7 +236,11 @@ export function ShiftClose({ shiftId, onClose, onClosed }: { shiftId: string; on
                 ) : null}
               </tbody>
             </table>
-            {!sum.expected_visible ? <div className="tiny" style={{ marginTop: 8 }}>Blind count: the expected amount is shown after you close.</div> : null}
+            {!sum.expected_visible ? (
+              <div className="tiny" style={{ marginTop: 8 }}>
+                Blind count: the expected amount is shown after you close.
+              </div>
+            ) : null}
           </div>
           <div className="col gap-16">
             <label className="field-label" htmlFor="counted">
@@ -230,12 +257,22 @@ export function ShiftClose({ shiftId, onClose, onClosed }: { shiftId: string; on
               onKeyDown={(e) => e.key === "Enter" && submit()}
             />
             {variance !== null ? (
-              <Banner tone={variance === 0 ? "success" : Math.abs(variance) <= 1000 ? "warning" : "danger"} title="Variance">
+              <Banner
+                tone={variance === 0 ? "success" : Math.abs(variance) <= 1000 ? "warning" : "danger"}
+                title="Variance"
+              >
                 {formatMoney(variance)}
               </Banner>
             ) : null}
-            <textarea className="textarea" placeholder="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
-            {!has("shift.approve_variance") ? <div className="tiny">A manager must acknowledge large differences.</div> : null}
+            <textarea
+              className="textarea"
+              placeholder="Note (optional)"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+            {!has("shift.approve_variance") ? (
+              <div className="tiny">A manager must acknowledge large differences.</div>
+            ) : null}
             {error ? <Banner tone="danger">{error}</Banner> : null}
             <div className="tiny row">
               <Printer size={14} /> A shift report prints on close.

@@ -103,7 +103,12 @@ pub fn render_job(c: &Connection, kind: &str, ref_id: &str, copy: Option<&str>) 
         "shift_report" => Some(receipt::shift_report(c, ref_id)?),
         "test" => {
             let mut d = ReceiptDoc { width_chars: 48, blocks: vec![] };
-            d.blocks.push(receipt::Block::Text { text: "AMWAPOS TEST PRINT".into(), align: receipt::Align::Center, bold: true, large: true });
+            d.blocks.push(receipt::Block::Text {
+                text: "AMWAPOS TEST PRINT".into(),
+                align: receipt::Align::Center,
+                bold: true,
+                large: true,
+            });
             d.blocks.push(receipt::Block::Text { text: time::now_str(), align: receipt::Align::Center, bold: false, large: false });
             d.blocks.push(receipt::Block::Rule);
             d.blocks.push(receipt::Block::Pair { left: "Printer".into(), right: "OK".into(), bold: false, large: false });
@@ -124,7 +129,8 @@ pub fn send(p: &PrinterSettings, bytes: &[u8], text: &str) -> Result<(), String>
                 .map_err(|e| format!("Printer address {target} is invalid: {e}"))?
                 .next()
                 .ok_or_else(|| format!("Printer address {target} could not be resolved."))?;
-            let mut s = TcpStream::connect_timeout(&addr, Duration::from_secs(3)).map_err(|e| format!("Printer at {target} is not reachable: {e}"))?;
+            let mut s = TcpStream::connect_timeout(&addr, Duration::from_secs(3))
+                .map_err(|e| format!("Printer at {target} is not reachable: {e}"))?;
             s.set_write_timeout(Some(Duration::from_secs(5))).ok();
             s.write_all(bytes).map_err(|e| format!("Sending to the printer failed: {e}"))?;
             s.flush().map_err(|e| format!("Sending to the printer failed: {e}"))?;

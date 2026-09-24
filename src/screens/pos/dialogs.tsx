@@ -6,7 +6,15 @@ import { useApproval, ApprovalCancelled } from "../../components/approval";
 import { useToast } from "../../components/toast";
 import { explain } from "../../lib/errors";
 import { newOperationId } from "../../lib/ids";
-import { formatAmount, formatMoney, formatPercent, formatQty, parseMoney, parsePercent, parseQty } from "../../lib/money";
+import {
+  formatAmount,
+  formatMoney,
+  formatPercent,
+  formatQty,
+  parseMoney,
+  parsePercent,
+  parseQty,
+} from "../../lib/money";
 import { formatShort } from "../../lib/time";
 import { Banner, Button, Chip, Keypad, Modal, TextInput } from "../../components/ui";
 import { methodLabel } from "./labels";
@@ -21,7 +29,19 @@ function useErr() {
   return { error, setError, handle };
 }
 
-export function UnknownBarcodeDialog({ barcode, canCustom, onClose, onSearch, onCustom }: { barcode: string; canCustom: boolean; onClose: () => void; onSearch: () => void; onCustom: () => void }) {
+export function UnknownBarcodeDialog({
+  barcode,
+  canCustom,
+  onClose,
+  onSearch,
+  onCustom,
+}: {
+  barcode: string;
+  canCustom: boolean;
+  onClose: () => void;
+  onSearch: () => void;
+  onCustom: () => void;
+}) {
   return (
     <Modal
       title="Barcode not found"
@@ -44,7 +64,9 @@ export function UnknownBarcodeDialog({ barcode, canCustom, onClose, onSearch, on
             {barcode}
           </div>
         </div>
-        <div className="small muted">This barcode was recorded for review by management. Search by name to sell the item now.</div>
+        <div className="small muted">
+          This barcode was recorded for review by management. Search by name to sell the item now.
+        </div>
       </div>
     </Modal>
   );
@@ -81,16 +103,31 @@ export function HoldDialog({ cart, onClose, onHeld }: { cart: Cart; onClose: () 
     >
       <div className="col gap-16">
         <div className="banner">
-          {cart.lines.length} lines · {formatQty(cart.totals.item_count_milli)} items · <strong>{formatMoney(cart.totals.total_minor)}</strong>
+          {cart.lines.length} lines · {formatQty(cart.totals.item_count_milli)} items ·{" "}
+          <strong>{formatMoney(cart.totals.total_minor)}</strong>
         </div>
-        <TextInput label="Note (customer / reason)" value={note} onChange={(e) => setNote(e.target.value)} autoFocus onKeyDown={(e) => e.key === "Enter" && hold()} />
+        <TextInput
+          label="Note (customer / reason)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          autoFocus
+          onKeyDown={(e) => e.key === "Enter" && hold()}
+        />
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>
   );
 }
 
-export function HeldCartsDialog({ onClose, onRestored, currentHasLines }: { onClose: () => void; onRestored: (c: Cart) => void; currentHasLines: boolean }) {
+export function HeldCartsDialog({
+  onClose,
+  onRestored,
+  currentHasLines,
+}: {
+  onClose: () => void;
+  onRestored: (c: Cart) => void;
+  currentHasLines: boolean;
+}) {
   const approve = useApproval();
   const [rows, setRows] = useState<HeldCart[] | null>(null);
   const { error, handle } = useErr();
@@ -103,7 +140,11 @@ export function HeldCartsDialog({ onClose, onRestored, currentHasLines }: { onCl
     <Modal title="Held sales" size="lg" onClose={onClose}>
       {currentHasLines ? <Banner tone="info">Hold or finish the current sale before resuming another.</Banner> : null}
       {error ? <Banner tone="danger">{error}</Banner> : null}
-      {rows && rows.length === 0 ? <div className="empty"><h3>No held sales</h3></div> : null}
+      {rows && rows.length === 0 ? (
+        <div className="empty">
+          <h3>No held sales</h3>
+        </div>
+      ) : null}
       {rows && rows.length ? (
         <table className="table">
           <thead>
@@ -168,7 +209,15 @@ export function HeldCartsDialog({ onClose, onRestored, currentHasLines }: { onCl
   );
 }
 
-export function CustomerPicker({ current, onClose, onPicked }: { current: CustomerRef | null; onClose: () => void; onPicked: (c: Cart) => void }) {
+export function CustomerPicker({
+  current,
+  onClose,
+  onPicked,
+}: {
+  current: CustomerRef | null;
+  onClose: () => void;
+  onPicked: (c: Cart) => void;
+}) {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [creating, setCreating] = useState(false);
@@ -178,10 +227,7 @@ export function CustomerPicker({ current, onClose, onPicked }: { current: Custom
   const { error, handle, setError } = useErr();
   useEffect(() => {
     const t = setTimeout(() => {
-      api.customers
-        .search(q, false, 30)
-        .then(setRows)
-        .catch(handle);
+      api.customers.search(q, false, 30).then(setRows).catch(handle);
     }, 150);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,9 +255,22 @@ export function CustomerPicker({ current, onClose, onPicked }: { current: Custom
           <div className="row">
             <div className="scan-box grow">
               <Search size={18} className="scan-icon" />
-              <input className="input" placeholder="Search by phone or name…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+              <input
+                className="input"
+                placeholder="Search by phone or name…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                autoFocus
+              />
             </div>
-            <Button icon={<UserPlus size={16} />} onClick={() => (setCreating(true), setPhone(/^\+?\d[\d\s]*$/.test(q) ? q : ""), setName(/^\+?\d/.test(q) ? "" : q))}>
+            <Button
+              icon={<UserPlus size={16} />}
+              onClick={() => (
+                setCreating(true),
+                setPhone(/^\+?\d[\d\s]*$/.test(q) ? q : ""),
+                setName(/^\+?\d/.test(q) ? "" : q)
+              )}
+            >
               New Customer
             </Button>
           </div>
@@ -244,7 +303,13 @@ export function CustomerPicker({ current, onClose, onPicked }: { current: Custom
       ) : (
         <div className="col gap-16">
           <TextInput label="Name" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          <TextInput label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" hint="8-digit Bahrain numbers get +973 automatically." />
+          <TextInput
+            label="Phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            inputMode="tel"
+            hint="8-digit Bahrain numbers get +973 automatically."
+          />
           <TextInput label="Area" value={area} onChange={(e) => setArea(e.target.value)} />
           {error ? <Banner tone="danger">{error}</Banner> : null}
           <div className="row">
@@ -259,7 +324,15 @@ export function CustomerPicker({ current, onClose, onPicked }: { current: Custom
   );
 }
 
-export function QtyDialog({ line, onClose, onApply }: { line: CartLine; onClose: () => void; onApply: (q: number) => void }) {
+export function QtyDialog({
+  line,
+  onClose,
+  onApply,
+}: {
+  line: CartLine;
+  onClose: () => void;
+  onApply: (q: number) => void;
+}) {
   const [v, setV] = useState(formatQty(line.qty_milli));
   const q = parseQty(v);
   const valid = q !== null && q > 0 && (line.allow_decimal_quantity || q % 1000 === 0);
@@ -289,19 +362,34 @@ export function QtyDialog({ line, onClose, onApply }: { line: CartLine; onClose:
           onKeyDown={(e) => e.key === "Enter" && valid && onApply(q!)}
           aria-label="Quantity"
         />
-        <div className="tiny">{line.allow_decimal_quantity ? `Up to 3 decimals (${line.unit}).` : "Whole units only."}</div>
+        <div className="tiny">
+          {line.allow_decimal_quantity ? `Up to 3 decimals (${line.unit}).` : "Whole units only."}
+        </div>
         <Keypad onKey={key} extra={line.allow_decimal_quantity ? "." : ""} />
       </div>
     </Modal>
   );
 }
 
-export function DiscountDialog({ line, cart, maxBp, onClose, onApply }: { line: CartLine | null; cart: Cart; maxBp: number; onClose: () => void; onApply: (minor: number, bp: number) => void }) {
+export function DiscountDialog({
+  line,
+  cart,
+  maxBp,
+  onClose,
+  onApply,
+}: {
+  line: CartLine | null;
+  cart: Cart;
+  maxBp: number;
+  onClose: () => void;
+  onApply: (minor: number, bp: number) => void;
+}) {
   const [mode, setMode] = useState<"percent" | "amount">("percent");
   const [v, setV] = useState("");
   const base = line ? line.gross_minor : cart.totals.subtotal_minor;
   const parsed = mode === "percent" ? parsePercent(v) : parseMoney(v);
-  const valid = v.trim() === "" || (parsed !== null && parsed >= 0 && (mode === "percent" ? parsed <= 10000 : parsed <= base));
+  const valid =
+    v.trim() === "" || (parsed !== null && parsed >= 0 && (mode === "percent" ? parsed <= 10000 : parsed <= base));
   const apply = () => {
     if (!valid) return;
     if (v.trim() === "") return onApply(0, 0);
@@ -330,7 +418,16 @@ export function DiscountDialog({ line, cart, maxBp, onClose, onApply }: { line: 
             Amount
           </button>
         </div>
-        <input className="input lg num" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} autoFocus placeholder={mode === "percent" ? "10" : formatAmount(0)} onKeyDown={(e) => e.key === "Enter" && apply()} aria-label="Discount" />
+        <input
+          className="input lg num"
+          inputMode="decimal"
+          value={v}
+          onChange={(e) => setV(e.target.value)}
+          autoFocus
+          placeholder={mode === "percent" ? "10" : formatAmount(0)}
+          onKeyDown={(e) => e.key === "Enter" && apply()}
+          aria-label="Discount"
+        />
         <div className="tiny">
           Applies to {formatMoney(base)}. Discounts above {formatPercent(maxBp)} need manager approval.
         </div>
@@ -340,7 +437,15 @@ export function DiscountDialog({ line, cart, maxBp, onClose, onApply }: { line: 
   );
 }
 
-export function PriceDialog({ line, onClose, onApply }: { line: CartLine; onClose: () => void; onApply: (price: number, reason: string | null) => void }) {
+export function PriceDialog({
+  line,
+  onClose,
+  onApply,
+}: {
+  line: CartLine;
+  onClose: () => void;
+  onApply: (price: number, reason: string | null) => void;
+}) {
   const [v, setV] = useState(formatAmount(line.unit_price_minor));
   const [reason, setReason] = useState("");
   const p = parseMoney(v);
@@ -360,8 +465,19 @@ export function PriceDialog({ line, onClose, onApply }: { line: CartLine; onClos
       }
     >
       <div className="col gap-16">
-        <div className="tiny">Catalogue price {formatMoney(line.catalog_unit_price_minor)}. Price overrides require permission and are audited.</div>
-        <input className="input lg num" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} autoFocus onFocus={(e) => e.target.select()} aria-label="New unit price" />
+        <div className="tiny">
+          Catalogue price {formatMoney(line.catalog_unit_price_minor)}. Price overrides require permission and are
+          audited.
+        </div>
+        <input
+          className="input lg num"
+          inputMode="decimal"
+          value={v}
+          onChange={(e) => setV(e.target.value)}
+          autoFocus
+          onFocus={(e) => e.target.select()}
+          aria-label="New unit price"
+        />
         <TextInput label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
     </Modal>
@@ -380,7 +496,9 @@ export function CustomItemDialog({ onClose, onAdded }: { onClose: () => void; on
   const add = async () => {
     if (!valid) return;
     try {
-      onAdded(await approve((tok) => api.pos.addCustom({ name, unit_price_minor: p!, qty_milli: q!, approval_token: tok })));
+      onAdded(
+        await approve((tok) => api.pos.addCustom({ name, unit_price_minor: p!, qty_milli: q!, approval_token: tok })),
+      );
     } catch (e) {
       handle(e);
     }
@@ -402,8 +520,21 @@ export function CustomItemDialog({ onClose, onAdded }: { onClose: () => void; on
       <div className="col gap-16">
         <TextInput label="Description" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         <div className="form-grid">
-          <TextInput label="Unit price" required className="num" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
-          <TextInput label="Quantity" className="num" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} />
+          <TextInput
+            label="Unit price"
+            required
+            className="num"
+            inputMode="decimal"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+          <TextInput
+            label="Quantity"
+            className="num"
+            inputMode="decimal"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+          />
         </div>
         <div className="tiny">Custom items are not tracked in inventory and are listed for management review.</div>
         {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -412,9 +543,22 @@ export function CustomItemDialog({ onClose, onAdded }: { onClose: () => void; on
   );
 }
 
-const CASH_TITLES = { paid_in: "Paid in", paid_out: "Paid out", safe_drop: "Safe drop", no_sale: "Open drawer (no sale)" };
+const CASH_TITLES = {
+  paid_in: "Paid in",
+  paid_out: "Paid out",
+  safe_drop: "Safe drop",
+  no_sale: "Open drawer (no sale)",
+};
 
-export function CashEventDialog({ kind, onClose, onDone }: { kind: "paid_in" | "paid_out" | "safe_drop" | "no_sale"; onClose: () => void; onDone: () => void }) {
+export function CashEventDialog({
+  kind,
+  onClose,
+  onDone,
+}: {
+  kind: "paid_in" | "paid_out" | "safe_drop" | "no_sale";
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const approve = useApproval();
   const toast = useToast();
   const [amount, setAmount] = useState("");
@@ -428,7 +572,9 @@ export function CashEventDialog({ kind, onClose, onDone }: { kind: "paid_in" | "
     if (!valid) return;
     setBusy(true);
     try {
-      await approve((tok) => api.cash.event({ kind, amount_minor: minor!, reason, operation_id: opId, approval_token: tok }));
+      await approve((tok) =>
+        api.cash.event({ kind, amount_minor: minor!, reason, operation_id: opId, approval_token: tok }),
+      );
       toast("success", `${CASH_TITLES[kind]} recorded`);
       onDone();
     } catch (e) {
@@ -452,8 +598,25 @@ export function CashEventDialog({ kind, onClose, onDone }: { kind: "paid_in" | "
       }
     >
       <div className="col gap-16">
-        {kind !== "no_sale" ? <TextInput label="Amount" required className="num" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus /> : null}
-        <TextInput label="Reason" required value={reason} onChange={(e) => setReason(e.target.value)} autoFocus={kind === "no_sale"} onKeyDown={(e) => e.key === "Enter" && submit()} />
+        {kind !== "no_sale" ? (
+          <TextInput
+            label="Amount"
+            required
+            className="num"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            autoFocus
+          />
+        ) : null}
+        <TextInput
+          label="Reason"
+          required
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          autoFocus={kind === "no_sale"}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
         <div className="tiny">This cash event is recorded against your shift and cannot be edited later.</div>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
@@ -478,7 +641,13 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
     <Modal title="Recent sales" size="xl" onClose={onClose}>
       <div className="grid-2">
         <div className="col">
-          <input className="input" placeholder="Receipt number…" value={receipt} onChange={(e) => setReceipt(e.target.value)} autoFocus />
+          <input
+            className="input"
+            placeholder="Receipt number…"
+            value={receipt}
+            onChange={(e) => setReceipt(e.target.value)}
+            autoFocus
+          />
           <div style={{ maxHeight: 440, overflow: "auto" }}>
             <table className="table">
               <tbody>
@@ -499,7 +668,9 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
                     <td>{formatShort(s.completed_at)}</td>
                     <td>{s.methods.split(",").map(methodLabel).join(", ")}</td>
                     <td className="num">{formatMoney(s.total_minor)}</td>
-                    <td>{s.status !== "completed" ? <Chip tone="warning">{s.status.replace("_", " ")}</Chip> : null}</td>
+                    <td>
+                      {s.status !== "completed" ? <Chip tone="warning">{s.status.replace("_", " ")}</Chip> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -520,7 +691,11 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
                 onClick={async () => {
                   try {
                     const r = await api.sales.reprint(preview.id);
-                    toast(r.status === "printed" ? "success" : "warning", r.status === "printed" ? "Reprinted (marked COPY)" : "Not printed", r.message ?? undefined);
+                    toast(
+                      r.status === "printed" ? "success" : "warning",
+                      r.status === "printed" ? "Reprinted (marked COPY)" : "Not printed",
+                      r.message ?? undefined,
+                    );
                   } catch (e) {
                     handle(e);
                   }
@@ -549,7 +724,11 @@ export function PrintQueueDialog({ onClose }: { onClose: () => void }) {
   }, []);
   return (
     <Modal title="Print queue" size="lg" onClose={onClose}>
-      {rows.length === 0 ? <div className="empty"><h3>Nothing waiting to print</h3></div> : null}
+      {rows.length === 0 ? (
+        <div className="empty">
+          <h3>Nothing waiting to print</h3>
+        </div>
+      ) : null}
       {rows.length ? (
         <table className="table">
           <thead>
@@ -583,7 +762,15 @@ export function PrintQueueDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function DeliveryQuickDialog({ saleId, customer, onClose }: { saleId: string | null; customer: CustomerRef | null; onClose: () => void }) {
+export function DeliveryQuickDialog({
+  saleId,
+  customer,
+  onClose,
+}: {
+  saleId: string | null;
+  customer: CustomerRef | null;
+  onClose: () => void;
+}) {
   const toast = useToast();
   const [address, setAddress] = useState("");
   const [area, setArea] = useState("");
@@ -593,7 +780,15 @@ export function DeliveryQuickDialog({ saleId, customer, onClose }: { saleId: str
   const { error, handle } = useErr();
   const create = async () => {
     try {
-      const d = await api.deliveries.create({ sale_id: saleId, customer_id: customer?.customer_id ?? null, address: address || null, area: area || null, phone: phone || null, payment_status: pay, notes: notes || null });
+      const d = await api.deliveries.create({
+        sale_id: saleId,
+        customer_id: customer?.customer_id ?? null,
+        address: address || null,
+        area: area || null,
+        phone: phone || null,
+        payment_status: pay,
+        notes: notes || null,
+      });
       toast("success", `Delivery ${d.delivery_number} created`);
       onClose();
     } catch (e) {
@@ -617,7 +812,13 @@ export function DeliveryQuickDialog({ saleId, customer, onClose }: { saleId: str
       <div className="form-grid">
         <TextInput label="Area" value={area} onChange={(e) => setArea(e.target.value)} autoFocus />
         <TextInput label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <TextInput label="Address" value={address} onChange={(e) => setAddress(e.target.value)} fieldClass="span-2" hint={customer ? "Leave empty to use the customer's saved address." : undefined} />
+        <TextInput
+          label="Address"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+          fieldClass="span-2"
+          hint={customer ? "Leave empty to use the customer's saved address." : undefined}
+        />
         <div className="field">
           <label>Payment</label>
           <select className="select" value={pay} onChange={(e) => setPay(e.target.value)}>

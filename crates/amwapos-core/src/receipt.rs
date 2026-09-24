@@ -102,7 +102,15 @@ impl ReceiptDoc {
         for blk in &self.blocks {
             match blk {
                 Block::Text { text, align, bold, large } => {
-                    b.extend_from_slice(&[0x1B, 0x61, match align { Align::Left => 0, Align::Center => 1, Align::Right => 2 }]);
+                    b.extend_from_slice(&[
+                        0x1B,
+                        0x61,
+                        match align {
+                            Align::Left => 0,
+                            Align::Center => 1,
+                            Align::Right => 2,
+                        },
+                    ]);
                     b.extend_from_slice(&[0x1B, 0x45, *bold as u8]);
                     b.extend_from_slice(&[0x1D, 0x21, if *large { 0x11 } else { 0x00 }]);
                     let cw = if *large { w / 2 } else { w };
@@ -212,8 +220,8 @@ struct StoreInfo {
 }
 
 fn store_info(c: &Connection, branch_id: &str) -> AppResult<StoreInfo> {
-    let (name, cr, vat, currency, digits, tz): (String, Option<String>, Option<String>, String, i64, String) = c
-        .query_row("SELECT name, cr_number, vat_number, currency, currency_digits, timezone FROM business LIMIT 1", [], |r| {
+    let (name, cr, vat, currency, digits, tz): (String, Option<String>, Option<String>, String, i64, String) =
+        c.query_row("SELECT name, cr_number, vat_number, currency, currency_digits, timezone FROM business LIMIT 1", [], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
         })?;
     let (branch, address, phone, bcr, bvat): (String, Option<String>, Option<String>, Option<String>, Option<String>) = c
@@ -222,17 +230,7 @@ fn store_info(c: &Connection, branch_id: &str) -> AppResult<StoreInfo> {
         })
         .optional()?
         .unwrap_or_default();
-    Ok(StoreInfo {
-        name,
-        branch,
-        address,
-        phone,
-        cr: bcr.or(cr),
-        vat: bvat.or(vat),
-        currency,
-        digits: digits as u32,
-        tz,
-    })
+    Ok(StoreInfo { name, branch, address, phone, cr: bcr.or(cr), vat: bvat.or(vat), currency, digits: digits as u32, tz })
 }
 
 fn local_time(ts: &str, tz: &str) -> String {
@@ -322,11 +320,8 @@ pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> 
         *rates.entry((it.tax_rate_bp, it.tax_inclusive)).or_insert(0) += it.tax_minor;
     }
     for ((rate, incl), tax) in &rates {
-        let label = format!(
-            "VAT {}%{}",
-            format_decimal(*rate, 2).trim_end_matches('0').trim_end_matches('.'),
-            if *incl { " (incl.)" } else { "" }
-        );
+        let label =
+            format!("VAT {}%{}", format_decimal(*rate, 2).trim_end_matches('0').trim_end_matches('.'), if *incl { " (incl.)" } else { "" });
         doc.pair(label, m(*tax));
     }
     doc.pair_b("TOTAL", format!("{} {}", info.currency, m(d.total_minor)), true);
@@ -364,7 +359,17 @@ pub fn method_label(m: &str) -> String {
 pub fn refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
     let cfg: ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
     let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
-    let (rn, orig, branch, user, approver, reason, total, tax, at): (String, String, String, String, Option<String>, String, i64, i64, String) = c
+    let (rn, orig, branch, user, approver, reason, total, tax, at): (
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        i64,
+        i64,
+        String,
+    ) = c
         .query_row(
             "SELECT r.refund_receipt_number, s.receipt_number, r.branch_id, COALESCE(u.display_name,''), a.display_name, r.reason,
                     r.total_minor, r.tax_minor, r.created_at

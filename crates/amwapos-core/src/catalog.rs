@@ -297,10 +297,7 @@ fn validate_product_input(c: &Connection, p: &ProductInput) -> AppResult<Product
     let category_id = match &p.category_id {
         Some(cid) if !cid.trim().is_empty() => {
             let cid = validate::id(cid, "Category")?;
-            let ok: bool = c
-                .query_row("SELECT 1 FROM categories WHERE category_id=?1", [&cid], |_| Ok(true))
-                .optional()?
-                .unwrap_or(false);
+            let ok: bool = c.query_row("SELECT 1 FROM categories WHERE category_id=?1", [&cid], |_| Ok(true)).optional()?.unwrap_or(false);
             if !ok {
                 return Err(AppError::validation("The selected category does not exist."));
             }
@@ -338,12 +335,8 @@ fn validate_sku(s: &str) -> AppResult<String> {
 }
 
 fn sku_taken(c: &Connection, sku: &str, except: Option<&str>) -> AppResult<Option<String>> {
-    Ok(c.query_row(
-        "SELECT name FROM products WHERE sku = ?1 COLLATE NOCASE AND product_id IS NOT ?2",
-        params![sku, except],
-        |r| r.get(0),
-    )
-    .optional()?)
+    Ok(c.query_row("SELECT name FROM products WHERE sku = ?1 COLLATE NOCASE AND product_id IS NOT ?2", params![sku, except], |r| r.get(0))
+        .optional()?)
 }
 
 pub(crate) fn generate_sku(c: &Connection) -> AppResult<String> {
@@ -358,12 +351,7 @@ pub(crate) fn generate_sku(c: &Connection) -> AppResult<String> {
 
 /// Insert a product with its first price, cost, barcodes and opening stock.
 /// Shared by the product editor and the importer.
-pub(crate) fn insert_product(
-    c: &Connection,
-    s: &Session,
-    req: &ProductCreate,
-    barcode_source: &str,
-) -> AppResult<String> {
+pub(crate) fn insert_product(c: &Connection, s: &Session, req: &ProductCreate, barcode_source: &str) -> AppResult<String> {
     let p = validate_product_input(c, &req.product)?;
     validate::money_non_negative(req.price_minor, "Price")?;
     let sku = match &p.sku {
@@ -395,8 +383,19 @@ pub(crate) fn insert_product(
              allow_decimal_quantity, reorder_point_milli, active, is_favorite, created_at, updated_at, version)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,1,?12,?13,?13,1)",
         params![
-            pid, sku, p.name, p.name_ar, p.description, p.category_id, p.tax_rule_id, p.unit,
-            p.track_inventory as i64, p.allow_decimal_quantity as i64, p.reorder_point_milli, p.is_favorite as i64, now
+            pid,
+            sku,
+            p.name,
+            p.name_ar,
+            p.description,
+            p.category_id,
+            p.tax_rule_id,
+            p.unit,
+            p.track_inventory as i64,
+            p.allow_decimal_quantity as i64,
+            p.reorder_point_milli,
+            p.is_favorite as i64,
+            now
         ],
     )?;
     for (i, b) in barcodes.iter().enumerate() {
@@ -528,7 +527,7 @@ impl AppCore {
                 let n = args.len();
                 ors.push(format!("p.product_id IN (SELECT product_id FROM product_barcodes WHERE barcode = ?{n})"));
                 ors.push(format!("p.sku = ?{n} COLLATE NOCASE"));
-                args.push(format!("{}%", text.replace('%', "").replace('_', "")).into());
+                args.push(format!("{}%", text.replace(['%', '_'], "")).into());
                 ors.push(format!("p.sku LIKE ?{} ESCAPE '\\'", args.len()));
                 if let Some(f) = validate::fts_query(text) {
                     args.push(f.into());
@@ -549,9 +548,7 @@ impl AppCore {
             let total: i64 = c.query_row(&count_sql, params_from_iter(args.iter()), |r| r.get(0))?;
             let sql = format!("{}{where_sql} ORDER BY {order} LIMIT {limit} OFFSET {offset}", product_row_sql());
             let mut stmt = c.prepare(&sql)?;
-            let rows = stmt
-                .query_map(params_from_iter(args.iter()), |r| map_product_row(r, show_cost))?
-                .collect::<Result<Vec<_>, _>>()?;
+            let rows = stmt.query_map(params_from_iter(args.iter()), |r| map_product_row(r, show_cost))?.collect::<Result<Vec<_>, _>>()?;
             Ok(Page { rows, total, limit, offset })
         })
     }
@@ -657,10 +654,18 @@ impl AppCore {
         let pid = self.db.write(|tx| {
             let pid = insert_product(tx, &s, &req, "manual")?;
             let after = product_json(tx, &pid)?;
-            audit::record(tx, &actor, "product.created", "product", Some(&pid), None, Some(&json!({
-                "product": after, "price_minor": req.price_minor, "barcodes": req.barcodes,
-                "opening_stock_milli": req.opening_stock_milli
-            })))?;
+            audit::record(
+                tx,
+                &actor,
+                "product.created",
+                "product",
+                Some(&pid),
+                None,
+                Some(&json!({
+                    "product": after, "price_minor": req.price_minor, "barcodes": req.barcodes,
+                    "opening_stock_milli": req.opening_stock_milli
+                })),
+            )?;
             Ok(pid)
         })?;
         self.product_get(token, &pid)
@@ -675,15 +680,12 @@ impl AppCore {
         self.db.write(|tx| {
             let p = validate_product_input(tx, &req.product)?;
             let before = product_json(tx, &pid)?;
-            let (version, old_sku, old_track): (i64, String, i64) = tx.query_row(
-                "SELECT version, sku, track_inventory FROM products WHERE product_id=?1",
-                [&pid],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )?;
+            let (version, old_sku, old_track): (i64, String, i64) =
+                tx.query_row("SELECT version, sku, track_inventory FROM products WHERE product_id=?1", [&pid], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })?;
             if version != req.expected_version {
-                return Err(AppError::conflict(
-                    "This product was changed by someone else. Reload it and apply your changes again.",
-                ));
+                return Err(AppError::conflict("This product was changed by someone else. Reload it and apply your changes again."));
             }
             let sku = match &p.sku {
                 Some(sk) => validate_sku(sk)?,
@@ -713,9 +715,19 @@ impl AppCore {
                     updated_at=?13, version=version+1
                  WHERE product_id=?1",
                 params![
-                    pid, sku, p.name, p.name_ar, p.description, p.category_id, p.tax_rule_id, p.unit,
-                    p.track_inventory as i64, p.allow_decimal_quantity as i64, p.reorder_point_milli,
-                    p.is_favorite as i64, time::now_str()
+                    pid,
+                    sku,
+                    p.name,
+                    p.name_ar,
+                    p.description,
+                    p.category_id,
+                    p.tax_rule_id,
+                    p.unit,
+                    p.track_inventory as i64,
+                    p.allow_decimal_quantity as i64,
+                    p.reorder_point_milli,
+                    p.is_favorite as i64,
+                    time::now_str()
                 ],
             )?;
             let after = product_json(tx, &pid)?;
@@ -739,21 +751,14 @@ impl AppCore {
                 params![pid, active as i64, now],
             )?;
             if n == 0 {
-                let exists: bool = tx.query_row("SELECT 1 FROM products WHERE product_id=?1", [&pid], |_| Ok(true)).optional()?.unwrap_or(false);
+                let exists: bool =
+                    tx.query_row("SELECT 1 FROM products WHERE product_id=?1", [&pid], |_| Ok(true)).optional()?.unwrap_or(false);
                 if !exists {
                     return Err(AppError::not_found("Product"));
                 }
                 return Ok(());
             }
-            audit::record(
-                tx,
-                &actor,
-                if active { "product.restored" } else { "product.archived" },
-                "product",
-                Some(&pid),
-                None,
-                None,
-            )?;
+            audit::record(tx, &actor, if active { "product.restored" } else { "product.archived" }, "product", Some(&pid), None, None)?;
             Ok(())
         })?;
         self.product_get(token, &pid)
@@ -802,7 +807,15 @@ impl AppCore {
         let b = validate::barcode(barcode)?;
         self.db.write(|tx| {
             add_barcode(tx, &s, &pid, &b, make_primary, "manual")?;
-            audit::record(tx, &actor, "barcode.added", "product", Some(&pid), None, Some(&json!({ "barcode": b, "primary": make_primary })))?;
+            audit::record(
+                tx,
+                &actor,
+                "barcode.added",
+                "product",
+                Some(&pid),
+                None,
+                Some(&json!({ "barcode": b, "primary": make_primary })),
+            )?;
             Ok(())
         })?;
         self.product_get(token, &pid)
@@ -901,7 +914,11 @@ impl AppCore {
         self.db.write(|tx| {
             let now = time::now_str();
             let before: Option<i64> = tx
-                .query_row("SELECT avg_cost_minor FROM product_costs WHERE product_id=?1 AND branch_id=?2", params![pid, s.branch_id], |r| r.get(0))
+                .query_row(
+                    "SELECT avg_cost_minor FROM product_costs WHERE product_id=?1 AND branch_id=?2",
+                    params![pid, s.branch_id],
+                    |r| r.get(0),
+                )
                 .optional()?;
             tx.execute(
                 "INSERT INTO product_costs(product_id, branch_id, avg_cost_minor, last_cost_minor, updated_at) VALUES (?1,?2,?3,?3,?4)
@@ -913,15 +930,28 @@ impl AppCore {
                  VALUES (?1,?2,NULL,?3,'manual',NULL,?4,?5)",
                 params![new_id(), pid, cost_minor, now, s.user_id],
             )?;
-            audit::record(tx, &actor, "product.cost_set", "product", Some(&pid),
-                Some(&json!({ "avg_cost_minor": before })), Some(&json!({ "cost_minor": cost_minor, "reason": reason })))?;
+            audit::record(
+                tx,
+                &actor,
+                "product.cost_set",
+                "product",
+                Some(&pid),
+                Some(&json!({ "avg_cost_minor": before })),
+                Some(&json!({ "cost_minor": cost_minor, "reason": reason })),
+            )?;
             Ok(())
         })?;
         self.product_get(token, &pid)
     }
 
     /// Apply many price changes atomically (previewed in the UI first).
-    pub fn product_bulk_price(&self, token: &str, changes: Vec<BulkPrice>, reason: Option<String>, operation_id: &str) -> AppResult<serde_json::Value> {
+    pub fn product_bulk_price(
+        &self,
+        token: &str,
+        changes: Vec<BulkPrice>,
+        reason: Option<String>,
+        operation_id: &str,
+    ) -> AppResult<serde_json::Value> {
         let s = self.session(token)?;
         s.require("prices.manage")?;
         self.require_back_office_writable()?;
@@ -1045,10 +1075,7 @@ impl AppCore {
                 }
             }
         })?;
-        self.categories_list(token, true)?
-            .into_iter()
-            .find(|c| c.category_id == id)
-            .ok_or_else(|| AppError::not_found("Category"))
+        self.categories_list(token, true)?.into_iter().find(|c| c.category_id == id).ok_or_else(|| AppError::not_found("Category"))
     }
 
     /// Archive a category. Active products must be reassigned first (or via `reassign_to`).
@@ -1067,7 +1094,10 @@ impl AppCore {
                         if target == cid {
                             return Err(AppError::validation("Choose a different category to move products into."));
                         }
-                        let ok: bool = tx.query_row("SELECT 1 FROM categories WHERE category_id=?1 AND active=1", [&target], |_| Ok(true)).optional()?.unwrap_or(false);
+                        let ok: bool = tx
+                            .query_row("SELECT 1 FROM categories WHERE category_id=?1 AND active=1", [&target], |_| Ok(true))
+                            .optional()?
+                            .unwrap_or(false);
                         if !ok {
                             return Err(AppError::validation("The target category does not exist."));
                         }
@@ -1089,7 +1119,15 @@ impl AppCore {
                 return Err(AppError::conflict("Archive or move the sub-categories first."));
             }
             tx.execute("UPDATE categories SET active=0, updated_at=?2 WHERE category_id=?1", params![cid, time::now_str()])?;
-            audit::record(tx, &actor, "category.archived", "category", Some(&cid), None, Some(&json!({ "moved_products": count, "to": reassign_to })))?;
+            audit::record(
+                tx,
+                &actor,
+                "category.archived",
+                "category",
+                Some(&cid),
+                None,
+                Some(&json!({ "moved_products": count, "to": reassign_to })),
+            )?;
             Ok(())
         })
     }
@@ -1123,7 +1161,14 @@ impl AppCore {
 
     /// Tax rules are versioned: a rate change is a new rule; products are
     /// moved to it explicitly. Sold lines keep their snapshot rate.
-    pub fn tax_rule_create(&self, token: &str, name: &str, rate_bp: i64, inclusive: bool, replace_rule_id: Option<String>) -> AppResult<Vec<TaxRuleRow>> {
+    pub fn tax_rule_create(
+        &self,
+        token: &str,
+        name: &str,
+        rate_bp: i64,
+        inclusive: bool,
+        replace_rule_id: Option<String>,
+    ) -> AppResult<Vec<TaxRuleRow>> {
         let s = self.session(token)?;
         s.require("settings.manage")?;
         self.require_back_office_writable()?;
@@ -1148,8 +1193,15 @@ impl AppCore {
                 )?;
                 tx.execute("UPDATE tax_rules SET active=0, effective_to=?2 WHERE tax_rule_id=?1", params![old, now])?;
             }
-            audit::record(tx, &actor, "tax_rule.created", "tax_rule", Some(&id), None,
-                Some(&json!({ "name": name, "rate_bp": rate_bp, "inclusive": inclusive, "products_moved": moved })))?;
+            audit::record(
+                tx,
+                &actor,
+                "tax_rule.created",
+                "tax_rule",
+                Some(&id),
+                None,
+                Some(&json!({ "name": name, "rate_bp": rate_bp, "inclusive": inclusive, "products_moved": moved })),
+            )?;
             Ok(())
         })?;
         self.tax_rules_list(token)

@@ -69,13 +69,16 @@ fn sync_once(hub: &AppCore, term: &AppCore, lose_response: bool) {
 fn sell(core: &AppCore, token: &str, barcode: &str, qty: i64) -> String {
     let cart = core.pos_scan(token, barcode, Some(qty)).unwrap().cart;
     let total = cart.totals.total_minor;
-    core.pos_finalize(token, FinalizeRequest {
-        cart_id: cart.cart_id.unwrap(),
-        operation_id: op(),
-        tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
-        approval_token: None,
-        expected_total_minor: None,
-    })
+    core.pos_finalize(
+        token,
+        FinalizeRequest {
+            cart_id: cart.cart_id.unwrap(),
+            operation_id: op(),
+            tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
+            approval_token: None,
+            expected_total_minor: None,
+        },
+    )
     .unwrap()
     .sale_id
 }
@@ -137,10 +140,14 @@ fn hub_and_terminals_converge_without_duplicates() {
     // A terminal can refund a sale made on another terminal once synced.
     let d = t1.core.sale_get(&t1.token, &t2_sale).unwrap();
     t1.core
-        .refund_create(&t1.token, serde_json::from_value(serde_json::json!({
-            "sale_id": t2_sale, "reason": "Expired", "operation_id": op(),
-            "lines": [{ "sale_item_id": d.items[0].sale_item_id, "qty_milli": 1000 }]
-        })).unwrap())
+        .refund_create(
+            &t1.token,
+            serde_json::from_value(serde_json::json!({
+                "sale_id": t2_sale, "reason": "Expired", "operation_id": op(),
+                "lines": [{ "sale_item_id": d.items[0].sale_item_id, "qty_milli": 1000 }]
+            }))
+            .unwrap(),
+        )
         .unwrap();
     sync_once(&hub.core, &t1.core, false);
     sync_once(&hub.core, &t2.core, false);

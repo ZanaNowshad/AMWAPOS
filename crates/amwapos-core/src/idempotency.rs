@@ -42,11 +42,9 @@ pub fn check<T: Serialize>(conn: &Connection, op_id: &str, op_type: &str, payloa
     validate_operation_id(op_id)?;
     let hash = payload_hash(op_type, payload)?;
     let existing: Option<(String, String, Option<String>)> = conn
-        .query_row(
-            "SELECT operation_type, payload_hash, result_json FROM operation_idempotency WHERE operation_id = ?1",
-            [op_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
+        .query_row("SELECT operation_type, payload_hash, result_json FROM operation_idempotency WHERE operation_id = ?1", [op_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
         .optional()?;
     match existing {
         None => Ok(Check::New { payload_hash: hash }),

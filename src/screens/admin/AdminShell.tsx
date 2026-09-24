@@ -55,7 +55,16 @@ import { SuppliersPage, SupplierDetailPage, PurchaseOrdersPage, PoEditorPage } f
 import { CustomersPage, CustomerDetailPage, DeliveriesPage } from "./customers";
 import { ReportsHome, ReportViewer, AnalyticsPage } from "./reports";
 import { UsersPage, RolesPage, ProfilePage } from "./staff";
-import { DevicesPage, SyncPage, ImportPage, BackupsPage, AuditPage, SettingsPage, DiagnosticsPage, UpdatesPage } from "./system";
+import {
+  DevicesPage,
+  SyncPage,
+  ImportPage,
+  BackupsPage,
+  AuditPage,
+  SettingsPage,
+  DiagnosticsPage,
+  UpdatesPage,
+} from "./system";
 import { WhatsAppPage, AiAssistantPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
 
 interface NavItem {
@@ -67,7 +76,18 @@ interface NavItem {
 }
 
 const NAV: { group: string; items: NavItem[] }[] = [
-  { group: "OVERVIEW", items: [{ path: "dashboard", label: "Dashboard", icon: LayoutDashboard, perm: ["reports.sales", "admin.access"], element: Dashboard }] },
+  {
+    group: "OVERVIEW",
+    items: [
+      {
+        path: "dashboard",
+        label: "Dashboard",
+        icon: LayoutDashboard,
+        perm: ["reports.sales", "admin.access"],
+        element: Dashboard,
+      },
+    ],
+  },
   {
     group: "SALES",
     items: [
@@ -83,7 +103,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { path: "products", label: "Products", icon: Boxes, perm: "products.view", element: ProductsPage },
       { path: "categories", label: "Categories", icon: Layers, perm: "products.view", element: CategoriesPage },
       { path: "pricing", label: "Pricing", icon: Tags, perm: "prices.manage", element: PricingPage },
-      { path: "unknown-barcodes", label: "Unknown Barcodes", icon: Barcode, perm: ["barcodes.resolve", "products.manage"], element: UnknownBarcodesPage },
+      {
+        path: "unknown-barcodes",
+        label: "Unknown Barcodes",
+        icon: Barcode,
+        perm: ["barcodes.resolve", "products.manage"],
+        element: UnknownBarcodesPage,
+      },
     ],
   },
   {
@@ -91,16 +117,34 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { path: "inventory", label: "Inventory", icon: Warehouse, perm: "inventory.view", element: InventoryPage },
       { path: "movements", label: "Stock Movements", icon: History, perm: "inventory.view", element: MovementsPage },
-      { path: "stocktake", label: "Stocktake", icon: ClipboardCheck, perm: "stocktake.manage", element: StocktakesPage },
+      {
+        path: "stocktake",
+        label: "Stocktake",
+        icon: ClipboardCheck,
+        perm: "stocktake.manage",
+        element: StocktakesPage,
+      },
     ],
   },
   {
     group: "PURCHASING",
     items: [
       { path: "suppliers", label: "Suppliers", icon: Building2, perm: "suppliers.manage", element: SuppliersPage },
-      { path: "purchase-orders", label: "Purchase Orders", icon: FileText, perm: ["purchasing.manage", "inventory.receive"], element: PurchaseOrdersPage },
+      {
+        path: "purchase-orders",
+        label: "Purchase Orders",
+        icon: FileText,
+        perm: ["purchasing.manage", "inventory.receive"],
+        element: PurchaseOrdersPage,
+      },
       { path: "receiving", label: "Receiving", icon: PackageCheck, perm: "inventory.receive", element: ReceivingPage },
-      { path: "invoice-scan", label: "Invoice Scan", icon: FileScan, perm: "purchasing.manage", element: InvoiceScanPage },
+      {
+        path: "invoice-scan",
+        label: "Invoice Scan",
+        icon: FileScan,
+        perm: "purchasing.manage",
+        element: InvoiceScanPage,
+      },
     ],
   },
   {
@@ -113,7 +157,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "BUSINESS",
     items: [
-      { path: "reports", label: "Reports", icon: ScrollText, perm: ["reports.sales", "reports.financial", "reports.tax", "inventory.view"], element: ReportsHome },
+      {
+        path: "reports",
+        label: "Reports",
+        icon: ScrollText,
+        perm: ["reports.sales", "reports.financial", "reports.tax", "inventory.view"],
+        element: ReportsHome,
+      },
       { path: "analytics", label: "Analytics", icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
     ],
   },
@@ -121,7 +171,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: "AUTOMATION",
     items: [
       { path: "whatsapp", label: "WhatsApp", icon: MessageCircle, perm: "whatsapp.manage", element: WhatsAppPage },
-      { path: "payment-reviews", label: "Payment Reviews", icon: BadgeCheck, perm: "whatsapp.manage", element: PaymentReviewsPage },
+      {
+        path: "payment-reviews",
+        label: "Payment Reviews",
+        icon: BadgeCheck,
+        perm: "whatsapp.manage",
+        element: PaymentReviewsPage,
+      },
       { path: "ai", label: "AI Assistant", icon: Bot, perm: "ai.use", element: AiAssistantPage },
     ],
   },
@@ -129,13 +185,25 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: "SYSTEM",
     items: [
       { path: "users", label: "Users & Roles", icon: ShieldCheck, perm: "users.manage", element: UsersPage },
-      { path: "devices", label: "Devices", icon: Monitor, perm: ["devices.manage", "diagnostics.view"], element: DevicesPage },
+      {
+        path: "devices",
+        label: "Devices",
+        icon: Monitor,
+        perm: ["devices.manage", "diagnostics.view"],
+        element: DevicesPage,
+      },
       { path: "sync", label: "Sync / Hub", icon: Cloud, perm: ["sync.manage", "devices.manage"], element: SyncPage },
       { path: "import", label: "Import", icon: FileInput, perm: "import.run", element: ImportPage },
       { path: "backups", label: "Backups", icon: HardDriveDownload, perm: "backup.manage", element: BackupsPage },
       { path: "audit", label: "Audit", icon: Activity, perm: "audit.view", element: AuditPage },
       { path: "settings", label: "Settings", icon: Settings, perm: "settings.manage", element: SettingsPage },
-      { path: "diagnostics", label: "Diagnostics", icon: Stethoscope, perm: "diagnostics.view", element: DiagnosticsPage },
+      {
+        path: "diagnostics",
+        label: "Diagnostics",
+        icon: Stethoscope,
+        perm: "diagnostics.view",
+        element: DiagnosticsPage,
+      },
       { path: "updates", label: "Updates", icon: Database, perm: "settings.manage", element: UpdatesPage },
     ],
   },
@@ -193,7 +261,12 @@ function Shell() {
               <div key={g.group}>
                 <div className="sb-group">{g.group}</div>
                 {items.map((i) => (
-                  <NavLink key={i.path} to={`/admin/${i.path}`} className={({ isActive }) => `sb-link ${isActive ? "active" : ""}`} title={i.label}>
+                  <NavLink
+                    key={i.path}
+                    to={`/admin/${i.path}`}
+                    className={({ isActive }) => `sb-link ${isActive ? "active" : ""}`}
+                    title={i.label}
+                  >
                     <i.icon size={17} />
                     <span className="sb-label">{i.label}</span>
                   </NavLink>
@@ -259,7 +332,10 @@ function Shell() {
             {EXTRA.map((i) => (
               <Route key={i.path} path={`/admin/${i.path}`} element={allowed(i.perm) ? <i.element /> : <Denied />} />
             ))}
-            <Route path="*" element={firstAllowed ? <Navigate to={`/admin/${firstAllowed.path}`} replace /> : <Denied />} />
+            <Route
+              path="*"
+              element={firstAllowed ? <Navigate to={`/admin/${firstAllowed.path}`} replace /> : <Denied />}
+            />
           </Routes>
         </main>
       </div>

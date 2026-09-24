@@ -48,29 +48,34 @@ pub fn apply_movement(c: &Connection, m: &Movement) -> AppResult<i64> {
              source_type, source_id, reason, user_id, device_id, created_at)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
         params![
-            new_id(), m.product_id, m.branch_id, m.kind, m.qty_delta_milli, m.unit_cost_minor, balance,
-            m.source_type, m.source_id, m.reason, m.user_id, m.device_id, now
+            new_id(),
+            m.product_id,
+            m.branch_id,
+            m.kind,
+            m.qty_delta_milli,
+            m.unit_cost_minor,
+            balance,
+            m.source_type,
+            m.source_id,
+            m.reason,
+            m.user_id,
+            m.device_id,
+            now
         ],
     )?;
     Ok(balance)
 }
 
 pub fn current_qty(c: &Connection, product_id: &str, branch_id: &str) -> AppResult<i64> {
-    Ok(c.query_row(
-        "SELECT qty_milli FROM stock_levels WHERE product_id=?1 AND branch_id=?2",
-        params![product_id, branch_id],
-        |r| r.get(0),
-    )
-    .optional()?
-    .unwrap_or(0))
+    Ok(c.query_row("SELECT qty_milli FROM stock_levels WHERE product_id=?1 AND branch_id=?2", params![product_id, branch_id], |r| r.get(0))
+        .optional()?
+        .unwrap_or(0))
 }
 
 pub fn avg_cost(c: &Connection, product_id: &str, branch_id: &str) -> AppResult<i64> {
-    Ok(c.query_row(
-        "SELECT avg_cost_minor FROM product_costs WHERE product_id=?1 AND branch_id=?2",
-        params![product_id, branch_id],
-        |r| r.get(0),
-    )
+    Ok(c.query_row("SELECT avg_cost_minor FROM product_costs WHERE product_id=?1 AND branch_id=?2", params![product_id, branch_id], |r| {
+        r.get(0)
+    })
     .optional()?
     .unwrap_or(0))
 }
@@ -235,11 +240,9 @@ pub(crate) fn receive_lines(
     for l in lines {
         let pid = validate::id(&l.product_id, "Product")?;
         let (track, dec, name): (i64, i64, String) = c
-            .query_row(
-                "SELECT track_inventory, allow_decimal_quantity, name FROM products WHERE product_id=?1",
-                [&pid],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
+            .query_row("SELECT track_inventory, allow_decimal_quantity, name FROM products WHERE product_id=?1", [&pid], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
             .optional()?
             .ok_or_else(|| AppError::not_found("Product"))?;
         validate::qty_positive(l.qty_milli, dec == 1, &format!("Quantity for {name}"))?;
@@ -437,9 +440,25 @@ impl AppCore {
                 },
             )?;
             let result = json!({ "product_id": pid, "before_milli": before, "after_milli": after, "delta_milli": delta });
-            audit::record(tx, &actor, "stock.adjusted", "product", Some(&pid), Some(&json!({ "qty_milli": before })),
-                Some(&json!({ "qty_milli": after, "delta_milli": delta, "reason": reason })))?;
-            idempotency::complete(tx, &req.operation_id, "inventory.adjust", Some(&s.user_id), Some(&s.device_id), &hash, Some(&pid), &result)?;
+            audit::record(
+                tx,
+                &actor,
+                "stock.adjusted",
+                "product",
+                Some(&pid),
+                Some(&json!({ "qty_milli": before })),
+                Some(&json!({ "qty_milli": after, "delta_milli": delta, "reason": reason })),
+            )?;
+            idempotency::complete(
+                tx,
+                &req.operation_id,
+                "inventory.adjust",
+                Some(&s.user_id),
+                Some(&s.device_id),
+                &hash,
+                Some(&pid),
+                &result,
+            )?;
             Ok(result)
         })
     }
@@ -704,12 +723,23 @@ impl AppCore {
                 .query_row("SELECT status FROM stocktakes WHERE stocktake_id=?1", [&id], |r| r.get(0))
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Stocktake"))?;
-            let ok = matches!((cur.as_str(), status), ("counting", "review") | ("review", "counting") | ("counting", "cancelled") | ("review", "cancelled"));
+            let ok = matches!(
+                (cur.as_str(), status),
+                ("counting", "review") | ("review", "counting") | ("counting", "cancelled") | ("review", "cancelled")
+            );
             if !ok {
                 return Err(AppError::conflict(format!("A stocktake in {cur} cannot move to {status}.")));
             }
             tx.execute("UPDATE stocktakes SET status=?2 WHERE stocktake_id=?1", params![id, status])?;
-            audit::record(tx, &actor, "stocktake.status", "stocktake", Some(&id), Some(&json!({ "status": cur })), Some(&json!({ "status": status })))?;
+            audit::record(
+                tx,
+                &actor,
+                "stocktake.status",
+                "stocktake",
+                Some(&id),
+                Some(&json!({ "status": cur })),
+                Some(&json!({ "status": status })),
+            )?;
             Ok(())
         })?;
         self.stocktake_get(token, &id)

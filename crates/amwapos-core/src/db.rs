@@ -25,16 +25,8 @@ pub struct Migration {
 }
 
 pub const MIGRATIONS: &[Migration] = &[
-    Migration {
-        version: 1,
-        name: "init",
-        sql: include_str!("migrations/0001_init.sql"),
-    },
-    Migration {
-        version: 2,
-        name: "sync",
-        sql: include_str!("migrations/0002_sync.sql"),
-    },
+    Migration { version: 1, name: "init", sql: include_str!("migrations/0001_init.sql") },
+    Migration { version: 2, name: "sync", sql: include_str!("migrations/0002_sync.sql") },
 ];
 
 pub fn latest_schema_version() -> i64 {
@@ -101,10 +93,7 @@ impl Db {
         configure(&writer)?;
         let mode: String = writer.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
         if !mode.eq_ignore_ascii_case("wal") {
-            return Err(AppError::new(
-                ErrorCode::Database,
-                format!("Could not enable WAL journal mode (got {mode})."),
-            ));
+            return Err(AppError::new(ErrorCode::Database, format!("Could not enable WAL journal mode (got {mode}).")));
         }
         if exists {
             let qc: String = writer.query_row("PRAGMA quick_check", [], |r| r.get(0))?;
@@ -117,11 +106,7 @@ impl Db {
             }
         }
         let report = migrate(&writer, path)?;
-        let db = Db {
-            path: path.to_path_buf(),
-            writer: Mutex::new(writer),
-            readers: Mutex::new(Vec::new()),
-        };
+        let db = Db { path: path.to_path_buf(), writer: Mutex::new(writer), readers: Mutex::new(Vec::new()) };
         Ok((db, report))
     }
 
@@ -130,10 +115,7 @@ impl Db {
     }
 
     fn new_reader(&self) -> AppResult<Connection> {
-        let c = Connection::open_with_flags(
-            &self.path,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
+        let c = Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
         c.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MS))?;
         c.execute_batch("PRAGMA foreign_keys = ON; PRAGMA temp_store = MEMORY; PRAGMA cache_size = -16000;")?;
         Ok(c)
@@ -163,10 +145,7 @@ impl Db {
     /// bounded backoff; failures after work has started are not retried here
     /// (callers use idempotency keys for safe retries).
     pub fn write<T>(&self, f: impl FnOnce(&Transaction) -> AppResult<T>) -> AppResult<T> {
-        let mut guard = self
-            .writer
-            .lock()
-            .map_err(|_| AppError::internal("writer connection poisoned"))?;
+        let mut guard = self.writer.lock().map_err(|_| AppError::internal("writer connection poisoned"))?;
         let mut attempt = 0u32;
         let mut f = Some(f);
         loop {
@@ -200,25 +179,20 @@ impl Db {
 
     /// Direct access to the writer for maintenance tasks (backup, checkpoint).
     pub fn with_writer<T>(&self, f: impl FnOnce(&mut Connection) -> AppResult<T>) -> AppResult<T> {
-        let mut guard = self
-            .writer
-            .lock()
-            .map_err(|_| AppError::internal("writer connection poisoned"))?;
+        let mut guard = self.writer.lock().map_err(|_| AppError::internal("writer connection poisoned"))?;
         f(&mut guard)
     }
 
     pub fn integrity_check(&self) -> AppResult<Vec<String>> {
         self.read(|c| {
             let mut stmt = c.prepare("PRAGMA integrity_check")?;
-            let rows = stmt
-                .query_map([], |r| r.get::<_, String>(0))?
-                .collect::<Result<Vec<_>, _>>()?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })
     }
 
     pub fn schema_version(&self) -> AppResult<i64> {
-        self.read(|c| current_version(c))
+        self.read(current_version)
     }
 
     /// Drop pooled readers (needed before restoring over the file).
@@ -230,11 +204,9 @@ impl Db {
 }
 
 fn current_version(c: &Connection) -> AppResult<i64> {
-    let has: bool = c.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
-        [],
-        |r| r.get::<_, i64>(0).map(|n| n > 0),
-    )?;
+    let has: bool = c.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'", [], |r| {
+        r.get::<_, i64>(0).map(|n| n > 0)
+    })?;
     if !has {
         return Ok(0);
     }
@@ -253,9 +225,7 @@ pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationRepo
     // Verify applied migrations are unchanged.
     let applied: Vec<(i64, String)> = {
         let mut stmt = conn.prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")?;
-        let rows = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<Result<Vec<_>, _>>()?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
         rows
     };
     for (v, sum) in &applied {
@@ -271,20 +241,15 @@ pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationRepo
                 return Err(AppError::new(
                     ErrorCode::Database,
                     format!(
-                        "This database was created by a newer AMWAPOS (schema {v}). Install the newer version or restore a compatible backup."
-                    ),
+                    "This database was created by a newer AMWAPOS (schema {v}). Install the newer version or restore a compatible backup."
+                ),
                 ))
             }
         }
     }
     let from = applied.last().map(|a| a.0).unwrap_or(0);
     let pending: Vec<&Migration> = MIGRATIONS.iter().filter(|m| m.version > from).collect();
-    let mut report = MigrationReport {
-        from_version: from,
-        to_version: from,
-        applied: vec![],
-        safety_backup: None,
-    };
+    let mut report = MigrationReport { from_version: from, to_version: from, applied: vec![], safety_backup: None };
     if pending.is_empty() {
         return Ok(report);
     }
@@ -379,10 +344,7 @@ mod tests {
         let p = dir.path().join("t.db");
         let (db, _) = Db::open(&p, true).unwrap();
         db.with_writer(|c| {
-            c.execute(
-                "INSERT INTO schema_migrations VALUES (9999,'future','x','2026-01-01T00:00:00.000Z')",
-                [],
-            )?;
+            c.execute("INSERT INTO schema_migrations VALUES (9999,'future','x','2026-01-01T00:00:00.000Z')", [])?;
             Ok(())
         })
         .unwrap();
@@ -400,9 +362,7 @@ mod tests {
             Err(AppError::validation("boom"))
         });
         assert!(r.is_err());
-        let n: i64 = db
-            .read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sequences", [], |r| r.get(0))?))
-            .unwrap();
+        let n: i64 = db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sequences", [], |r| r.get(0))?)).unwrap();
         assert_eq!(n, 0);
     }
 

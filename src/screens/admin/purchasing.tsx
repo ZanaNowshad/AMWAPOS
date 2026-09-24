@@ -6,32 +6,99 @@ import type { PoDetail, PoRow, PosSearchRow, SupplierInput, SupplierRow } from "
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { newOperationId } from "../../lib/ids";
-import { formatAmount, formatMoney, formatPercent, formatQty, parseMoney, parsePercent, parseQty } from "../../lib/money";
+import {
+  formatAmount,
+  formatMoney,
+  formatPercent,
+  formatQty,
+  parseMoney,
+  parsePercent,
+  parseQty,
+} from "../../lib/money";
 import { formatShort } from "../../lib/time";
-import { Banner, Button, Checkbox, Chip, Empty, Field, Money, PageHeader, Skeleton, Tabs, TextInput } from "../../components/ui";
+import {
+  Banner,
+  Button,
+  Checkbox,
+  Chip,
+  Empty,
+  Field,
+  Money,
+  PageHeader,
+  Skeleton,
+  Tabs,
+  TextInput,
+} from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
 
-const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = { draft: "default", ordered: "info", partially_received: "warning", received: "success", cancelled: "default" };
+const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = {
+  draft: "default",
+  ordered: "info",
+  partially_received: "warning",
+  received: "success",
+  cancelled: "default",
+};
 const poLabel = (s: string) => s.replace("_", " ").replace(/^\w/, (c) => c.toUpperCase());
 
-function SupplierForm({ initial, onSaved, onCancel }: { initial: SupplierRow | null; onSaved: (s: SupplierRow) => void; onCancel: () => void }) {
+function SupplierForm({
+  initial,
+  onSaved,
+  onCancel,
+}: {
+  initial: SupplierRow | null;
+  onSaved: (s: SupplierRow) => void;
+  onCancel: () => void;
+}) {
   const [f, setF] = useState<SupplierInput>(
-    initial ?? { name: "", cr_number: "", vat_number: "", contact_name: "", phone: "", whatsapp: "", email: "", address: "", payment_terms: "", notes: "", active: true },
+    initial ?? {
+      name: "",
+      cr_number: "",
+      vat_number: "",
+      contact_name: "",
+      phone: "",
+      whatsapp: "",
+      email: "",
+      address: "",
+      payment_terms: "",
+      notes: "",
+      active: true,
+    },
   );
   const act = useAction();
   const set = (k: keyof SupplierInput, v: string | boolean) => setF({ ...f, [k]: v });
   return (
     <div className="col gap-16">
       <div className="form-grid">
-        <TextInput label="Supplier name" required value={f.name} onChange={(e) => set("name", e.target.value)} fieldClass="span-2" autoFocus />
-        <TextInput label="Contact person" value={f.contact_name ?? ""} onChange={(e) => set("contact_name", e.target.value)} />
+        <TextInput
+          label="Supplier name"
+          required
+          value={f.name}
+          onChange={(e) => set("name", e.target.value)}
+          fieldClass="span-2"
+          autoFocus
+        />
+        <TextInput
+          label="Contact person"
+          value={f.contact_name ?? ""}
+          onChange={(e) => set("contact_name", e.target.value)}
+        />
         <TextInput label="Phone" value={f.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
         <TextInput label="WhatsApp" value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
         <TextInput label="Email" value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
         <TextInput label="CR number" value={f.cr_number ?? ""} onChange={(e) => set("cr_number", e.target.value)} />
         <TextInput label="VAT number" value={f.vat_number ?? ""} onChange={(e) => set("vat_number", e.target.value)} />
-        <TextInput label="Payment terms" value={f.payment_terms ?? ""} onChange={(e) => set("payment_terms", e.target.value)} placeholder="e.g. 30 days" />
-        <TextInput label="Address" value={f.address ?? ""} onChange={(e) => set("address", e.target.value)} fieldClass="span-2" />
+        <TextInput
+          label="Payment terms"
+          value={f.payment_terms ?? ""}
+          onChange={(e) => set("payment_terms", e.target.value)}
+          placeholder="e.g. 30 days"
+        />
+        <TextInput
+          label="Address"
+          value={f.address ?? ""}
+          onChange={(e) => set("address", e.target.value)}
+          fieldClass="span-2"
+        />
         <Field label="Notes" className="span-2">
           <textarea className="textarea" value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
         </Field>
@@ -74,7 +141,13 @@ export function SuppliersPage() {
         }
       />
       <div className="filters">
-        <input className="input" style={{ width: 280 }} placeholder="Search name, phone or contact…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input
+          className="input"
+          style={{ width: 280 }}
+          placeholder="Search name, phone or contact…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
         <Checkbox label="Show inactive" checked={inactive} onChange={setInactive} />
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -91,12 +164,20 @@ export function SuppliersPage() {
           { key: "t", label: "Payment Terms", render: (r) => r.payment_terms ?? "—" },
           { key: "o", label: "Open POs", num: true, render: (r) => r.open_po_count },
           { key: "l", label: "Last Purchase", render: (r) => formatShort(r.last_purchase_at) },
-          { key: "s", label: "Status", render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>) },
+          {
+            key: "s",
+            label: "Status",
+            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>),
+          },
         ]}
       />
       {creating ? (
         <Drawer title="New supplier" onClose={() => setCreating(false)}>
-          <SupplierForm initial={null} onCancel={() => setCreating(false)} onSaved={() => (setCreating(false), void reload())} />
+          <SupplierForm
+            initial={null}
+            onCancel={() => setCreating(false)}
+            onSaved={() => (setCreating(false), void reload())}
+          />
         </Drawer>
       ) : null}
     </div>
@@ -115,13 +196,22 @@ export function SupplierDetailPage() {
   return (
     <div>
       <div className="page-header">
-        <Button variant="ghost" icon={<ArrowLeft size={18} />} aria-label="Back" onClick={() => nav("/admin/suppliers")} />
+        <Button
+          variant="ghost"
+          icon={<ArrowLeft size={18} />}
+          aria-label="Back"
+          onClick={() => nav("/admin/suppliers")}
+        />
         <div className="grow">
           <div className="tiny">Supplier</div>
           <h1>{s.name}</h1>
         </div>
         <Button onClick={() => setEditing(true)}>Edit</Button>
-        <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav(`/admin/purchase-orders/new?supplier=${s.supplier_id}`)}>
+        <Button
+          variant="primary"
+          icon={<Plus size={16} />}
+          onClick={() => nav(`/admin/purchase-orders/new?supplier=${s.supplier_id}`)}
+        >
           Purchase Order
         </Button>
       </div>
@@ -180,14 +270,23 @@ export function SupplierDetailPage() {
           columns={[
             { key: "n", label: "Product", render: (r) => String(r.name) },
             { key: "s", label: "SKU", render: (r) => String(r.sku) },
-            { key: "c", label: "Last cost", num: true, render: (r) => <Money minor={r.last_cost_minor as number | null} /> },
+            {
+              key: "c",
+              label: "Last cost",
+              num: true,
+              render: (r) => <Money minor={r.last_cost_minor as number | null} />,
+            },
             { key: "d", label: "Last received", render: (r) => formatShort(String(r.last_received_at)) },
           ]}
         />
       ) : null}
       {editing ? (
         <Drawer title={`Edit ${s.name}`} onClose={() => setEditing(false)}>
-          <SupplierForm initial={s} onCancel={() => setEditing(false)} onSaved={() => (setEditing(false), void reload())} />
+          <SupplierForm
+            initial={s}
+            onCancel={() => setEditing(false)}
+            onSaved={() => (setEditing(false), void reload())}
+          />
         </Drawer>
       ) : null}
     </div>
@@ -226,11 +325,22 @@ export function PurchaseOrdersPage() {
         onRowClick={(r) => nav(`/admin/purchase-orders/${r.po_id}`)}
         empty={<Empty title="No purchase orders">Create a purchase order to order stock from a supplier.</Empty>}
         columns={[
-          { key: "n", label: "PO", render: (r) => <span className="mono">{r.po_number}</span>, sort: (r) => r.po_number },
+          {
+            key: "n",
+            label: "PO",
+            render: (r) => <span className="mono">{r.po_number}</span>,
+            sort: (r) => r.po_number,
+          },
           { key: "s", label: "Supplier", render: (r) => r.supplier_name, sort: (r) => r.supplier_name },
           { key: "d", label: "Date", render: (r) => formatShort(r.created_at), sort: (r) => r.created_at },
           { key: "i", label: "Items", num: true, render: (r) => r.line_count },
-          { key: "t", label: "Total", num: true, render: (r) => <Money minor={r.total_minor} />, sort: (r) => r.total_minor },
+          {
+            key: "t",
+            label: "Total",
+            num: true,
+            render: (r) => <Money minor={r.total_minor} />,
+            sort: (r) => r.total_minor,
+          },
           { key: "r", label: "Received", num: true, render: (r) => `${r.received_pct}%` },
           { key: "st", label: "Status", render: (r) => <Chip tone={PO_TONE[r.status]}>{poLabel(r.status)}</Chip> },
         ]}
@@ -278,8 +388,26 @@ export function PoEditorPage() {
     setReference(d.reference ?? "");
     setExpected(d.expected_at ?? "");
     setNotes(d.notes ?? "");
-    setLines(d.lines.map((l) => ({ product_id: l.product_id, name: l.product_name, qty: formatQty(l.qty_ordered_milli), cost: formatAmount(l.unit_cost_minor), tax: formatPercent(l.tax_rate_bp).replace("%", "") })));
-    setRecv(Object.fromEntries(d.lines.map((l) => [l.po_item_id, { qty: l.qty_remaining_milli > 0 ? formatQty(l.qty_remaining_milli) : "", cost: formatAmount(l.unit_cost_minor) }])));
+    setLines(
+      d.lines.map((l) => ({
+        product_id: l.product_id,
+        name: l.product_name,
+        qty: formatQty(l.qty_ordered_milli),
+        cost: formatAmount(l.unit_cost_minor),
+        tax: formatPercent(l.tax_rate_bp).replace("%", ""),
+      })),
+    );
+    setRecv(
+      Object.fromEntries(
+        d.lines.map((l) => [
+          l.po_item_id,
+          {
+            qty: l.qty_remaining_milli > 0 ? formatQty(l.qty_remaining_milli) : "",
+            cost: formatAmount(l.unit_cost_minor),
+          },
+        ]),
+      ),
+    );
   };
   useEffect(() => {
     void act.run(load);
@@ -287,7 +415,14 @@ export function PoEditorPage() {
   }, [id]);
   useEffect(() => {
     if (!search.trim()) return setResults([]);
-    const t = setTimeout(() => api.pos.search(search, { limit: 8 }).then(setResults).catch(() => {}), 150);
+    const t = setTimeout(
+      () =>
+        api.pos
+          .search(search, { limit: 8 })
+          .then(setResults)
+          .catch(() => {}),
+      150,
+    );
     return () => clearTimeout(t);
   }, [search]);
 
@@ -308,7 +443,12 @@ export function PoEditorPage() {
       reference: reference || null,
       expected_at: expected || null,
       notes: notes || null,
-      lines: lines.map((l) => ({ product_id: l.product_id, qty_milli: parseQty(l.qty) ?? 0, unit_cost_minor: parseMoney(l.cost) ?? -1, tax_rate_bp: parsePercent(l.tax || "0") ?? -1 })),
+      lines: lines.map((l) => ({
+        product_id: l.product_id,
+        qty_milli: parseQty(l.qty) ?? 0,
+        unit_cost_minor: parseMoney(l.cost) ?? -1,
+        tax_rate_bp: parsePercent(l.tax || "0") ?? -1,
+      })),
     };
     const r = await act.run(() => api.po.save(isNew ? null : id!, payload));
     if (r) {
@@ -321,11 +461,21 @@ export function PoEditorPage() {
   const doReceive = async () => {
     if (!po) return;
     const rl = po.lines
-      .map((l) => ({ po_item_id: l.po_item_id, qty_milli: parseQty(recv[l.po_item_id]?.qty ?? "") ?? 0, unit_cost_minor: parseMoney(recv[l.po_item_id]?.cost ?? "") }))
+      .map((l) => ({
+        po_item_id: l.po_item_id,
+        qty_milli: parseQty(recv[l.po_item_id]?.qty ?? "") ?? 0,
+        unit_cost_minor: parseMoney(recv[l.po_item_id]?.cost ?? ""),
+      }))
       .filter((l) => l.qty_milli > 0);
-    const r = await act.run(() => api.po.receive({ po_id: po.po_id, reference: recvRef || null, lines: rl, operation_id: recvOp }));
+    const r = await act.run(() =>
+      api.po.receive({ po_id: po.po_id, reference: recvRef || null, lines: rl, operation_id: recvOp }),
+    );
     if (r) {
-      toast("success", "Goods received", r.status === "received" ? "Purchase order fully received" : "Partial delivery recorded");
+      toast(
+        "success",
+        "Goods received",
+        r.status === "received" ? "Purchase order fully received" : "Partial delivery recorded",
+      );
       setReceiving(false);
       setRecvOp(newOperationId());
       await load();
@@ -336,11 +486,17 @@ export function PoEditorPage() {
   return (
     <div>
       <div className="page-header">
-        <Button variant="ghost" icon={<ArrowLeft size={18} />} aria-label="Back" onClick={() => nav("/admin/purchase-orders")} />
+        <Button
+          variant="ghost"
+          icon={<ArrowLeft size={18} />}
+          aria-label="Back"
+          onClick={() => nav("/admin/purchase-orders")}
+        />
         <div className="grow">
           <div className="tiny">Purchase order</div>
           <h1>
-            {isNew ? "New purchase order" : po!.po_number} {po ? <Chip tone={PO_TONE[po.status]}>{poLabel(po.status)}</Chip> : null}
+            {isNew ? "New purchase order" : po!.po_number}{" "}
+            {po ? <Chip tone={PO_TONE[po.status]}>{poLabel(po.status)}</Chip> : null}
           </h1>
         </div>
         {editable && has("purchasing.manage") ? (
@@ -358,18 +514,28 @@ export function PoEditorPage() {
             Receive Goods
           </Button>
         ) : null}
-        {po && (po.status === "draft" || po.status === "ordered") && po.received_pct === 0 && has("purchasing.manage") ? (
+        {po &&
+        (po.status === "draft" || po.status === "ordered") &&
+        po.received_pct === 0 &&
+        has("purchasing.manage") ? (
           <Button variant="danger-outline" icon={<XCircle size={16} />} onClick={() => setConfirm("cancel")}>
             Cancel PO
           </Button>
         ) : null}
-        {po?.status === "partially_received" && has("purchasing.manage") ? <Button onClick={() => setConfirm("close")}>Close short</Button> : null}
+        {po?.status === "partially_received" && has("purchasing.manage") ? (
+          <Button onClick={() => setConfirm("close")}>Close short</Button>
+        ) : null}
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
           <Field label="Supplier" required>
-            <select className="select" value={supplier} onChange={(e) => setSupplier(e.target.value)} disabled={!editable}>
+            <select
+              className="select"
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              disabled={!editable}
+            >
               <option value="">Choose supplier…</option>
               {(suppliers.data ?? []).map((s) => (
                 <option key={s.supplier_id} value={s.supplier_id}>
@@ -378,8 +544,19 @@ export function PoEditorPage() {
               ))}
             </select>
           </Field>
-          <TextInput label="Reference" value={reference} onChange={(e) => setReference(e.target.value)} disabled={!editable} />
-          <TextInput label="Expected date" type="date" value={expected} onChange={(e) => setExpected(e.target.value)} disabled={!editable} />
+          <TextInput
+            label="Reference"
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            disabled={!editable}
+          />
+          <TextInput
+            label="Expected date"
+            type="date"
+            value={expected}
+            onChange={(e) => setExpected(e.target.value)}
+            disabled={!editable}
+          />
           <TextInput label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!editable} />
         </div>
       </div>
@@ -387,7 +564,13 @@ export function PoEditorPage() {
         <div className="card">
           <div className="card-head">
             <h3 className="grow">Receive goods</h3>
-            <input className="input" style={{ width: 240 }} placeholder="Delivery note / invoice ref" value={recvRef} onChange={(e) => setRecvRef(e.target.value)} />
+            <input
+              className="input"
+              style={{ width: 240 }}
+              placeholder="Delivery note / invoice ref"
+              value={recvRef}
+              onChange={(e) => setRecvRef(e.target.value)}
+            />
           </div>
           <table className="table">
             <thead>
@@ -410,10 +593,27 @@ export function PoEditorPage() {
                   <td className="num">{formatQty(l.qty_ordered_milli)}</td>
                   <td className="num">{formatQty(l.qty_received_milli)}</td>
                   <td className="num">
-                    <input className="input num" style={{ width: 100 }} value={recv[l.po_item_id]?.qty ?? ""} disabled={l.qty_remaining_milli === 0} onChange={(e) => setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], qty: e.target.value } })} aria-label={`Receive ${l.product_name}`} />
+                    <input
+                      className="input num"
+                      style={{ width: 100 }}
+                      value={recv[l.po_item_id]?.qty ?? ""}
+                      disabled={l.qty_remaining_milli === 0}
+                      onChange={(e) =>
+                        setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], qty: e.target.value } })
+                      }
+                      aria-label={`Receive ${l.product_name}`}
+                    />
                   </td>
                   <td className="num">
-                    <input className="input num" style={{ width: 110 }} value={recv[l.po_item_id]?.cost ?? ""} onChange={(e) => setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], cost: e.target.value } })} aria-label={`Cost ${l.product_name}`} />
+                    <input
+                      className="input num"
+                      style={{ width: 110 }}
+                      value={recv[l.po_item_id]?.cost ?? ""}
+                      onChange={(e) =>
+                        setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], cost: e.target.value } })
+                      }
+                      aria-label={`Cost ${l.product_name}`}
+                    />
                   </td>
                   <td className="num">{formatQty(l.qty_remaining_milli)}</td>
                 </tr>
@@ -433,14 +633,24 @@ export function PoEditorPage() {
             <h3 className="grow">Items</h3>
             {editable ? (
               <div style={{ position: "relative", width: 360 }}>
-                <input className="input" placeholder="Add product by name, SKU or barcode…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Add product" />
+                <input
+                  className="input"
+                  placeholder="Add product by name, SKU or barcode…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label="Add product"
+                />
                 {results.length ? (
                   <div className="menu" style={{ left: 0, right: 0 }}>
                     {results.map((r) => (
                       <button
                         key={r.product_id}
                         onClick={() => {
-                          if (!lines.some((l) => l.product_id === r.product_id)) setLines([...lines, { product_id: r.product_id, name: r.name, qty: "1", cost: "", tax: "0" }]);
+                          if (!lines.some((l) => l.product_id === r.product_id))
+                            setLines([
+                              ...lines,
+                              { product_id: r.product_id, name: r.name, qty: "1", cost: "", tax: "0" },
+                            ]);
                           setSearch("");
                           setResults([]);
                         }}
@@ -474,24 +684,71 @@ export function PoEditorPage() {
                   <tr key={l.product_id}>
                     <td>{l.name}</td>
                     <td className="num">
-                      {editable ? <input className="input num" style={{ width: 100 }} value={l.qty} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} aria-label="Quantity" /> : l.qty}
+                      {editable ? (
+                        <input
+                          className="input num"
+                          style={{ width: 100 }}
+                          value={l.qty}
+                          onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))}
+                          aria-label="Quantity"
+                        />
+                      ) : (
+                        l.qty
+                      )}
                     </td>
                     <td className="num">
-                      {editable ? <input className="input num" style={{ width: 110 }} value={l.cost} placeholder={formatAmount(0)} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))} aria-label="Unit cost" /> : formatMoney(c)}
+                      {editable ? (
+                        <input
+                          className="input num"
+                          style={{ width: 110 }}
+                          value={l.cost}
+                          placeholder={formatAmount(0)}
+                          onChange={(e) =>
+                            setLines(lines.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))
+                          }
+                          aria-label="Unit cost"
+                        />
+                      ) : (
+                        formatMoney(c)
+                      )}
                     </td>
                     <td className="num">
-                      {editable ? <input className="input num" style={{ width: 70 }} value={l.tax} onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, tax: e.target.value } : x)))} aria-label="Tax percent" /> : `${l.tax}%`}
+                      {editable ? (
+                        <input
+                          className="input num"
+                          style={{ width: 70 }}
+                          value={l.tax}
+                          onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, tax: e.target.value } : x)))}
+                          aria-label="Tax percent"
+                        />
+                      ) : (
+                        `${l.tax}%`
+                      )}
                     </td>
                     <td className="num">{q !== null && c !== null ? formatMoney(Math.round((c * q) / 1000)) : "—"}</td>
                     {po && !editable ? <td className="num">{pl ? formatQty(pl.qty_received_milli) : "—"}</td> : null}
-                    <td className="num">{editable ? <Button size="sm" variant="ghost" aria-label="Remove line" icon={<Trash2 size={14} />} onClick={() => setLines(lines.filter((_, j) => j !== i))} /> : null}</td>
+                    <td className="num">
+                      {editable ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label="Remove line"
+                          icon={<Trash2 size={14} />}
+                          onClick={() => setLines(lines.filter((_, j) => j !== i))}
+                        />
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4}>{po ? `Subtotal ${formatMoney(po.subtotal_minor)} · Tax ${formatMoney(po.tax_minor)}` : "Subtotal (before tax)"}</td>
+                <td colSpan={4}>
+                  {po
+                    ? `Subtotal ${formatMoney(po.subtotal_minor)} · Tax ${formatMoney(po.tax_minor)}`
+                    : "Subtotal (before tax)"}
+                </td>
                 <td className="num">{po && !editable ? formatMoney(po.total_minor) : formatMoney(totals)}</td>
                 <td colSpan={2} />
               </tr>
@@ -521,14 +778,25 @@ export function PoEditorPage() {
       ) : null}
       {confirm && po ? (
         <Confirm
-          title={confirm === "order" ? "Place order" : confirm === "cancel" ? "Cancel purchase order" : "Close purchase order short"}
+          title={
+            confirm === "order"
+              ? "Place order"
+              : confirm === "cancel"
+                ? "Cancel purchase order"
+                : "Close purchase order short"
+          }
           confirmLabel={confirm === "order" ? "Place Order" : confirm === "cancel" ? "Cancel PO" : "Close PO"}
           danger={confirm === "cancel"}
           busy={act.busy}
           error={act.error}
           onCancel={() => setConfirm(null)}
           onConfirm={async () => {
-            const r = await act.run(() => api.po.setStatus(po.po_id, confirm === "order" ? "ordered" : confirm === "cancel" ? "cancelled" : "received"));
+            const r = await act.run(() =>
+              api.po.setStatus(
+                po.po_id,
+                confirm === "order" ? "ordered" : confirm === "cancel" ? "cancelled" : "received",
+              ),
+            );
             if (r) {
               setConfirm(null);
               await load();

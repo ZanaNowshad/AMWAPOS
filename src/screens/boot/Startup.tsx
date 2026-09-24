@@ -35,11 +35,22 @@ export function StartupFailure({ error, onRetry }: { error: unknown; onRetry: ()
           <Button variant="primary" onClick={onRetry}>
             Retry
           </Button>
-          {recovery ? <span className="small muted">To restore, open the data folder listed below and copy a verified backup into place, or reinstall and restore from Admin → Backups.</span> : null}
+          {recovery ? (
+            <span className="small muted">
+              To restore, open the data folder listed below and copy a verified backup into place, or reinstall and
+              restore from Admin → Backups.
+            </span>
+          ) : null}
         </div>
         <details className="tech" style={{ marginTop: 16, width: "100%" }}>
           <summary>Technical details</summary>
-          <pre>{JSON.stringify(apiErr ? { code: apiErr.code, message: apiErr.message, details: apiErr.details } : String(error), null, 2)}</pre>
+          <pre>
+            {JSON.stringify(
+              apiErr ? { code: apiErr.code, message: apiErr.message, details: apiErr.details } : String(error),
+              null,
+              2,
+            )}
+          </pre>
         </details>
       </div>
     </div>

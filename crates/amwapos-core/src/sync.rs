@@ -469,7 +469,8 @@ pub fn apply_change(c: &Connection, ch: &Change, side: &ApplySide) -> AppResult<
     // and adjust the cached stock level.
     if ch.table == "stock_movements" {
         let id = row.get("movement_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let exists: bool = c.query_row("SELECT 1 FROM stock_movements WHERE movement_id=?1", [&id], |_| Ok(true)).optional()?.unwrap_or(false);
+        let exists: bool =
+            c.query_row("SELECT 1 FROM stock_movements WHERE movement_id=?1", [&id], |_| Ok(true)).optional()?.unwrap_or(false);
         if exists {
             return Ok(false);
         }
@@ -482,7 +483,8 @@ pub fn apply_change(c: &Connection, ch: &Change, side: &ApplySide) -> AppResult<
              ON CONFLICT(product_id, branch_id) DO UPDATE SET qty_milli = qty_milli + ?3, last_movement_at=?4, updated_at=?4",
             params![pid, br, delta, now],
         )?;
-        let bal: i64 = c.query_row("SELECT qty_milli FROM stock_levels WHERE product_id=?1 AND branch_id=?2", params![pid, br], |r| r.get(0))?;
+        let bal: i64 =
+            c.query_row("SELECT qty_milli FROM stock_levels WHERE product_id=?1 AND branch_id=?2", params![pid, br], |r| r.get(0))?;
         row.insert("balance_after_milli".into(), json!(bal));
     }
     let keys: Vec<String> = row.keys().cloned().collect();
@@ -492,11 +494,8 @@ pub fn apply_change(c: &Connection, ch: &Change, side: &ApplySide) -> AppResult<
     let sql = match pol {
         Policy::Append => format!("INSERT OR IGNORE INTO {} ({}) VALUES ({})", ch.table, quoted.join(","), placeholders.join(",")),
         _ => {
-            let updates: Vec<String> = keys
-                .iter()
-                .filter(|k| !pks.contains(&k.as_str()))
-                .map(|k| format!("\"{k}\"=excluded.\"{k}\""))
-                .collect();
+            let updates: Vec<String> =
+                keys.iter().filter(|k| !pks.contains(&k.as_str())).map(|k| format!("\"{k}\"=excluded.\"{k}\"")).collect();
             let conflict = pks.iter().map(|k| format!("\"{k}\"")).collect::<Vec<_>>().join(",");
             if updates.is_empty() {
                 format!("INSERT OR IGNORE INTO {} ({}) VALUES ({})", ch.table, quoted.join(","), placeholders.join(","))
@@ -581,20 +580,40 @@ impl AppCore {
     }
 
     /// Authenticate a signed request. Returns the active device row id.
-    pub fn hub_authenticate(&self, nonces: &NonceCache, device_id: &str, ts: i64, nonce: &str, signature: &str, method: &str, path: &str, body: &[u8]) -> AppResult<String> {
+    #[allow(clippy::too_many_arguments)]
+    pub fn hub_authenticate(
+        &self,
+        nonces: &NonceCache,
+        device_id: &str,
+        ts: i64,
+        nonce: &str,
+        signature: &str,
+        method: &str,
+        path: &str,
+        body: &[u8],
+    ) -> AppResult<String> {
         self.require_hub()?;
         let id = validate::id(device_id, "Device")?;
         let now = time::now().timestamp_millis();
         if (now - ts).abs() > 5 * 60 * 1000 {
-            return Err(AppError::new(ErrorCode::Unauthenticated, "Request timestamp outside the allowed window. Check the terminal clock."));
+            return Err(AppError::new(
+                ErrorCode::Unauthenticated,
+                "Request timestamp outside the allowed window. Check the terminal clock.",
+            ));
         }
         if nonce.len() < 16 || nonce.len() > 64 {
             return Err(AppError::new(ErrorCode::Unauthenticated, "Invalid nonce."));
         }
-        let active: Option<i64> = self.db.read(|c| Ok(c.query_row("SELECT active FROM devices WHERE device_id=?1", [&id], |r| r.get(0)).optional()?))?;
+        let active: Option<i64> =
+            self.db.read(|c| Ok(c.query_row("SELECT active FROM devices WHERE device_id=?1", [&id], |r| r.get(0)).optional()?))?;
         match active {
             Some(1) => {}
-            Some(_) => return Err(AppError::new(ErrorCode::Forbidden, "This terminal has been revoked. Ask the owner to re-activate or re-pair it.")),
+            Some(_) => {
+                return Err(AppError::new(
+                    ErrorCode::Forbidden,
+                    "This terminal has been revoked. Ask the owner to re-activate or re-pair it.",
+                ))
+            }
             None => return Err(AppError::new(ErrorCode::Unauthenticated, "Unknown terminal. Pair it with the hub again.")),
         }
         let key = self.hub_device_key(&id)?;
@@ -611,7 +630,8 @@ impl AppCore {
     pub fn hub_info(&self) -> AppResult<HubInfo> {
         let d = self.require_hub()?;
         self.db.read(|c| {
-            let (bid, bname): (String, String) = c.query_row("SELECT business_id, name FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            let (bid, bname): (String, String) =
+                c.query_row("SELECT business_id, name FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
             Ok(HubInfo {
                 product: "AMWAPOS".into(),
                 protocol: PROTOCOL_VERSION,
@@ -694,7 +714,13 @@ impl AppCore {
         let dcode = crate::setup::validate_code(&req.device_code, "Terminal code")?;
         let device_id = new_id();
         let now = time::now_str();
-        let identity = DeviceIdentity { device_id: device_id.clone(), device_code: dcode.clone(), name: name.clone(), branch_id: hub.branch_id.clone(), mode: "terminal".into() };
+        let identity = DeviceIdentity {
+            device_id: device_id.clone(),
+            device_code: dcode.clone(),
+            name: name.clone(),
+            branch_id: hub.branch_id.clone(),
+            mode: "terminal".into(),
+        };
         let hash = auth::sha256_hex(&code);
         self.db.write(|tx| {
             let row: Option<(String, Option<String>)> = tx
@@ -727,8 +753,16 @@ impl AppCore {
             Ok(())
         })?;
         let snapshot = self.hub_snapshot()?;
-        let (hid, bid) = self.db.read(|c| Ok((hub_instance_id(c)?, c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get::<_, String>(0))?)))?;
-        Ok(PairResponse { device: identity, device_key: self.hub_device_key(&device_id)?, hub_instance_id: hid, business_id: bid, snapshot })
+        let (hid, bid) = self
+            .db
+            .read(|c| Ok((hub_instance_id(c)?, c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get::<_, String>(0))?)))?;
+        Ok(PairResponse {
+            device: identity,
+            device_key: self.hub_device_key(&device_id)?,
+            hub_instance_id: hid,
+            business_id: bid,
+            snapshot,
+        })
     }
 
     /// Consistent snapshot of everything a new terminal needs.
@@ -835,7 +869,9 @@ impl AppCore {
             )?;
             Ok(())
         })?;
-        Ok(json!({ "ok": true, "server_time": time::now_str(), "schema_version": crate::db::latest_schema_version(), "app_version": audit::APP_VERSION }))
+        Ok(
+            json!({ "ok": true, "server_time": time::now_str(), "schema_version": crate::db::latest_schema_version(), "app_version": audit::APP_VERSION }),
+        )
     }
 
     // ---------------- terminal side ----------------
@@ -864,7 +900,8 @@ impl AppCore {
                     let pk: Map<String, Value> = pks.iter().map(|k| (k.to_string(), row.get(*k).cloned().unwrap_or(Value::Null))).collect();
                     // Movements are not part of snapshots; stock levels are loaded below.
                     let ch = Change { seq: i as i64, table: table.clone(), pk, op: "upsert".into(), row: Some(row.clone()), origin: None };
-                    apply_change(tx, &ch, &ApplySide::Terminal).map_err(|e| AppError::new(e.code, format!("Snapshot {table}: {}", e.message)))?;
+                    apply_change(tx, &ch, &ApplySide::Terminal)
+                        .map_err(|e| AppError::new(e.code, format!("Snapshot {table}: {}", e.message)))?;
                 }
             }
             let cols = columns(tx, "stock_levels")?;
@@ -901,7 +938,11 @@ impl AppCore {
             )?;
             audit::record(
                 tx,
-                &audit::Actor { device_id: Some(identity.device_id.clone()), branch_id: Some(identity.branch_id.clone()), ..Default::default() },
+                &audit::Actor {
+                    device_id: Some(identity.device_id.clone()),
+                    branch_id: Some(identity.branch_id.clone()),
+                    ..Default::default()
+                },
                 "sync.terminal_bootstrapped",
                 "device",
                 Some(&identity.device_id),
@@ -921,9 +962,9 @@ impl AppCore {
     }
 
     pub fn terminal_device_key(&self) -> AppResult<String> {
-        self.secrets
-            .get(SECRET_DEVICE_KEY)?
-            .ok_or_else(|| AppError::new(ErrorCode::Sync, "This terminal's hub credential is missing from secure storage. Pair it with the hub again."))
+        self.secrets.get(SECRET_DEVICE_KEY)?.ok_or_else(|| {
+            AppError::new(ErrorCode::Sync, "This terminal's hub credential is missing from secure storage. Pair it with the hub again.")
+        })
     }
 
     /// Terminal: local changes not yet accepted by the hub.
@@ -984,7 +1025,9 @@ impl AppCore {
             }
             let pending: HashSet<(String, String)> = {
                 let mut st = tx.prepare("SELECT table_name, row_pk FROM sync_outbox WHERE seq > ?1")?;
-                let rows = st.query_map([ss.push_cursor], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<Result<HashSet<_>, _>>()?;
+                let rows = st
+                    .query_map([ss.push_cursor], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                    .collect::<Result<HashSet<_>, _>>()?;
                 rows
             };
             set_control(tx, true, None)?;
@@ -1062,7 +1105,9 @@ impl AppCore {
             let ss = sync_settings(c)?;
             let tables: Vec<&str> = TABLES.iter().filter(|t| t.2 != Policy::Hub).map(|t| t.0).collect();
             let ph = tables.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(",");
-            Ok(c.query_row(&format!("SELECT COUNT(*) FROM sync_outbox WHERE seq > ?1 AND table_name IN ({ph})"), [ss.push_cursor], |r| r.get(0))?)
+            Ok(c.query_row(&format!("SELECT COUNT(*) FROM sync_outbox WHERE seq > ?1 AND table_name IN ({ph})"), [ss.push_cursor], |r| {
+                r.get(0)
+            })?)
         })
     }
 
@@ -1188,7 +1233,9 @@ impl AppCore {
         let is_hub = self.device().map(|d| d.mode == "hub").unwrap_or(false);
         self.db.write(|tx| {
             let (direction, origin, payload): (String, Option<String>, String) = tx
-                .query_row("SELECT direction, origin, payload_json FROM sync_dead_letters WHERE dead_id=?1 AND status='open'", [&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .query_row("SELECT direction, origin, payload_json FROM sync_dead_letters WHERE dead_id=?1 AND status='open'", [&id], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                })
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Dead letter"))?;
             let ch: Change = serde_json::from_str(&payload)?;
@@ -1209,7 +1256,10 @@ impl AppCore {
                     "applied"
                 }
             };
-            tx.execute("UPDATE sync_dead_letters SET status='resolved', last_attempt_at=?2 WHERE dead_id=?1", params![id, time::now_str()])?;
+            tx.execute(
+                "UPDATE sync_dead_letters SET status='resolved', last_attempt_at=?2 WHERE dead_id=?1",
+                params![id, time::now_str()],
+            )?;
             audit::record(tx, &actor, "sync.dead_letter_retried", "sync", Some(&id), None, Some(&json!({ "outcome": outcome })))?;
             Ok(json!({ "outcome": outcome }))
         })
@@ -1218,7 +1268,8 @@ impl AppCore {
     pub(crate) fn sync_diagnostic(&self) -> AppResult<DiagnosticItem> {
         let mode = self.device().map(|d| d.mode).unwrap_or_else(|| "standalone".into());
         let ss = self.terminal_sync_settings()?;
-        let dead: i64 = self.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?))?;
+        let dead: i64 =
+            self.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?))?;
         let pending = if mode == "terminal" { self.terminal_pending_count()? } else { 0 };
         let state = if ss.blocked_reason.is_some() || dead > 0 {
             "error"
@@ -1242,4 +1293,3 @@ impl AppCore {
         })
     }
 }
-

@@ -36,7 +36,9 @@ export function UsersPage() {
       if (r) toast("success", `User ${r.display_name} created`);
       else return;
     } else if (edit) {
-      const r = await act.run(() => api.users.update(edit.user_id, { display_name: name, role_id: role, pin: pin || null, active }));
+      const r = await act.run(() =>
+        api.users.update(edit.user_id, { display_name: name, role_id: role, pin: pin || null, active }),
+      );
       if (r) toast("success", "User saved");
       else return;
     }
@@ -83,7 +85,15 @@ export function UsersPage() {
             key: "s",
             label: "Status",
             render: (r) =>
-              !r.active ? <Chip>Inactive</Chip> : r.locked_until && r.locked_until > now ? <Chip tone="danger"><Lock size={12} /> Locked</Chip> : <Chip tone="success">Active</Chip>,
+              !r.active ? (
+                <Chip>Inactive</Chip>
+              ) : r.locked_until && r.locked_until > now ? (
+                <Chip tone="danger">
+                  <Lock size={12} /> Locked
+                </Chip>
+              ) : (
+                <Chip tone="success">Active</Chip>
+              ),
           },
           {
             key: "a",
@@ -127,7 +137,11 @@ export function UsersPage() {
               autoComplete="new-password"
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
-              hint={edit === "new" ? "4–8 digits. The user should change it after first login." : "Leave empty to keep the current PIN. PINs are never shown."}
+              hint={
+                edit === "new"
+                  ? "4–8 digits. The user should change it after first login."
+                  : "Leave empty to keep the current PIN. PINs are never shown."
+              }
             />
             <Checkbox label="Active" checked={active} onChange={setActive} />
             {edit !== "new" ? (
@@ -136,7 +150,12 @@ export function UsersPage() {
               </div>
             ) : null}
             {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-            <Button variant="primary" onClick={save} loading={act.busy} disabled={!name.trim() || (edit === "new" && pin.length < 4)}>
+            <Button
+              variant="primary"
+              onClick={save}
+              loading={act.busy}
+              disabled={!name.trim() || (edit === "new" && pin.length < 4)}
+            >
               Save
             </Button>
           </div>
@@ -162,7 +181,7 @@ export function RolesPage() {
   useEffect(() => {
     if (!sel) return;
     setName(sel === "new" ? "" : sel.name);
-    setDesc(sel === "new" ? "" : sel.description ?? "");
+    setDesc(sel === "new" ? "" : (sel.description ?? ""));
     setChecked(new Set(sel === "new" ? [] : sel.permissions));
   }, [sel]);
   const domains = useMemo(() => {
@@ -189,7 +208,11 @@ export function RolesPage() {
       <div className="settings-layout">
         <div className="subnav">
           {roles.data.map((r) => (
-            <button key={r.role_id} className={sel !== "new" && sel?.role_id === r.role_id ? "active" : ""} onClick={() => setSel(r)}>
+            <button
+              key={r.role_id}
+              className={sel !== "new" && sel?.role_id === r.role_id ? "active" : ""}
+              onClick={() => setSel(r)}
+            >
               {r.name} <span className="tiny">({r.user_count})</span>
             </button>
           ))}
@@ -230,14 +253,18 @@ export function RolesPage() {
           {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
           {canEdit ? (
             <div className="row">
-              <span className="tiny">Changing a role signs out its users so the new permissions apply immediately.</span>
+              <span className="tiny">
+                Changing a role signs out its users so the new permissions apply immediately.
+              </span>
               <Button
                 variant="primary"
                 className="right"
                 loading={act.busy}
                 disabled={!name.trim()}
                 onClick={async () => {
-                  const r = await act.run(() => api.roles.save(sel === "new" ? null : sel!.role_id, name, desc || null, Array.from(checked)));
+                  const r = await act.run(() =>
+                    api.roles.save(sel === "new" ? null : sel!.role_id, name, desc || null, Array.from(checked)),
+                  );
                   if (r) {
                     toast("success", "Role saved");
                     await roles.reload();
@@ -282,9 +309,28 @@ export function ProfilePage() {
       </div>
       <div className="card card-pad col gap-16">
         <h3>Change PIN</h3>
-        <TextInput label="Current PIN" type="password" inputMode="numeric" value={cur} onChange={(e) => setCur(e.target.value.replace(/\D/g, ""))} />
-        <TextInput label="New PIN" type="password" inputMode="numeric" value={next} onChange={(e) => setNext(e.target.value.replace(/\D/g, ""))} />
-        <TextInput label="Confirm new PIN" type="password" inputMode="numeric" value={again} onChange={(e) => setAgain(e.target.value.replace(/\D/g, ""))} error={again && again !== next ? "PINs do not match." : null} />
+        <TextInput
+          label="Current PIN"
+          type="password"
+          inputMode="numeric"
+          value={cur}
+          onChange={(e) => setCur(e.target.value.replace(/\D/g, ""))}
+        />
+        <TextInput
+          label="New PIN"
+          type="password"
+          inputMode="numeric"
+          value={next}
+          onChange={(e) => setNext(e.target.value.replace(/\D/g, ""))}
+        />
+        <TextInput
+          label="Confirm new PIN"
+          type="password"
+          inputMode="numeric"
+          value={again}
+          onChange={(e) => setAgain(e.target.value.replace(/\D/g, ""))}
+          error={again && again !== next ? "PINs do not match." : null}
+        />
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
         <Button
           variant="primary"

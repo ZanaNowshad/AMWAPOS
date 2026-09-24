@@ -304,7 +304,8 @@ impl AppCore {
                 crate::setup::clean(r, "Payment reference", 60, false)?;
             }
         }
-        let change_methods: Vec<&str> = pay_cfg.tenders.iter().filter(|t| t.allows_change && t.enabled).map(|t| t.method.as_str()).collect();
+        let change_methods: Vec<&str> =
+            pay_cfg.tenders.iter().filter(|t| t.allows_change && t.enabled).map(|t| t.method.as_str()).collect();
 
         // Negative-stock check happens before the write so that an approval can be requested.
         let shortfalls: Vec<String> = self.db.read(|c| {
@@ -606,7 +607,8 @@ impl AppCore {
         let s = self.session(token)?;
         let sid = validate::id(sale_id, "Sale")?;
         let d = self.db.read(|c| load_sale_detail(c, &sid, s.has("products.view_cost")))?;
-        if !s.has("sales.view") && !(d.cashier_user_id == s.user_id && d.device_id == s.device_id) && !s.has("refund.create") {
+        let own = d.cashier_user_id == s.user_id && d.device_id == s.device_id;
+        if !(s.has("sales.view") || s.has("refund.create") || own) {
             return Err(AppError::forbidden("sales.view"));
         }
         Ok(d)

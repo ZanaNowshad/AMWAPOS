@@ -51,7 +51,25 @@ test("first run → products → offline checkout → refund → shift close", a
   const tax = (await rpc(page, "tax.list", {}, token))[0].tax_rule_id;
   const cat = await rpc(page, "categories.save", { name: "Beverages" }, token);
   const mk = (name: string, barcode: string, price: number, stock: number, fav = true) =>
-    rpc(page, "products.create", { name, tax_rule_id: tax, category_id: cat.category_id, price_minor: price, cost_minor: Math.round(price * 0.6), barcodes: [barcode], opening_stock_milli: stock, is_favorite: fav, unit: "pcs", track_inventory: true, allow_decimal_quantity: false, reorder_point_milli: 5000 }, token);
+    rpc(
+      page,
+      "products.create",
+      {
+        name,
+        tax_rule_id: tax,
+        category_id: cat.category_id,
+        price_minor: price,
+        cost_minor: Math.round(price * 0.6),
+        barcodes: [barcode],
+        opening_stock_milli: stock,
+        is_favorite: fav,
+        unit: "pcs",
+        track_inventory: true,
+        allow_decimal_quantity: false,
+        reorder_point_milli: 5000,
+      },
+      token,
+    );
   await mk("Coca-Cola Original 330ml", "06291100001234", 250, 48000);
   await mk("Almarai Fresh Milk 1L", "6281007031126", 850, 12000);
   await mk("Lays Salted 40g", "6281006511339", 300, 3000);

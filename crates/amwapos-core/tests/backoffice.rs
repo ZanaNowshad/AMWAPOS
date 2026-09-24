@@ -17,13 +17,16 @@ fn sell(e: &Env, barcode: &str, qty: i64, tender: &str) -> amwapos_core::sales::
     let cart = e.core.pos_scan(t, barcode, Some(qty)).unwrap().cart;
     let total = cart.totals.total_minor;
     e.core
-        .pos_finalize(t, FinalizeRequest {
-            cart_id: cart.cart_id.unwrap(),
-            operation_id: op(),
-            tenders: vec![TenderInput { method: tender.into(), amount_minor: total, reference: None }],
-            approval_token: None,
-            expected_total_minor: Some(total),
-        })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![TenderInput { method: tender.into(), amount_minor: total, reference: None }],
+                approval_token: None,
+                expected_total_minor: Some(total),
+            },
+        )
         .unwrap()
 }
 
@@ -35,10 +38,15 @@ fn purchase_order_partial_receiving() {
     let sup = e.core.supplier_save(t, None, serde_json::from_value(json!({ "name": "Gulf Foods", "phone": "17000000" })).unwrap()).unwrap();
     let po = e
         .core
-        .purchase_order_save(t, None, serde_json::from_value(json!({
-            "supplier_id": sup.supplier_id, "reference": "Q-77",
-            "lines": [{ "product_id": pid, "qty_milli": 24000, "unit_cost_minor": 850 }]
-        })).unwrap())
+        .purchase_order_save(
+            t,
+            None,
+            serde_json::from_value(json!({
+                "supplier_id": sup.supplier_id, "reference": "Q-77",
+                "lines": [{ "product_id": pid, "qty_milli": 24000, "unit_cost_minor": 850 }]
+            }))
+            .unwrap(),
+        )
         .unwrap();
     assert_eq!(po.header.status, "draft");
     assert_eq!(po.header.total_minor, 20_400);
@@ -46,7 +54,11 @@ fn purchase_order_partial_receiving() {
     let recv = |qty: i64| amwapos_core::purchasing::PoReceiveRequest {
         po_id: po.header.po_id.clone(),
         reference: Some("INV-9".into()),
-        lines: vec![amwapos_core::purchasing::PoReceiveLine { po_item_id: po.lines[0].po_item_id.clone(), qty_milli: qty, unit_cost_minor: None }],
+        lines: vec![amwapos_core::purchasing::PoReceiveLine {
+            po_item_id: po.lines[0].po_item_id.clone(),
+            qty_milli: qty,
+            unit_cost_minor: None,
+        }],
         operation_id: op(),
     };
     assert_eq!(e.core.purchase_order_receive(t, recv(1000)).unwrap_err().code, ErrorCode::Conflict);
@@ -71,7 +83,12 @@ fn customers_and_deliveries() {
     e.product("Water 12pk", "6001", 1_500, 900, 100_000);
     let cust = e
         .core
-        .customer_save(t, None, serde_json::from_value(json!({ "name": "Fatima Ali", "phone": "3312 3456", "area": "Juffair", "address": "Bldg 12, Road 40" })).unwrap())
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "Fatima Ali", "phone": "3312 3456", "area": "Juffair", "address": "Bldg 12, Road 40" }))
+                .unwrap(),
+        )
         .unwrap();
     assert_eq!(cust.info.phone.as_deref(), Some("+97333123456"));
     let dup = e.core.customer_save(t, None, serde_json::from_value(json!({ "name": "Someone", "phone": "+973 33123456" })).unwrap());
@@ -84,13 +101,25 @@ fn customers_and_deliveries() {
     let cart = e.core.pos_get_cart(t).unwrap();
     let sale = e
         .core
-        .pos_finalize(t, FinalizeRequest { cart_id: cart.cart_id.unwrap(), operation_id: op(), tenders: vec![TenderInput { method: "cash".into(), amount_minor: 1_500, reference: None }], approval_token: None, expected_total_minor: None })
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![TenderInput { method: "cash".into(), amount_minor: 1_500, reference: None }],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
         .unwrap();
     let d = e.core.delivery_create(t, serde_json::from_value(json!({ "sale_id": sale.sale_id })).unwrap()).unwrap();
     assert_eq!(d.customer_name.as_deref(), Some("Fatima Ali"));
     assert_eq!(d.payment_status, "paid");
     assert_eq!(d.amount_minor, 1_500);
-    assert_eq!(e.core.delivery_update(t, &d.delivery_id, Some("delivered".into()), None, None, None).unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(
+        e.core.delivery_update(t, &d.delivery_id, Some("delivered".into()), None, None, None).unwrap_err().code,
+        ErrorCode::Conflict
+    );
     e.core.delivery_update(t, &d.delivery_id, Some("dispatched".into()), None, None, None).unwrap();
     let d2 = e.core.delivery_update(t, &d.delivery_id, Some("delivered".into()), None, None, Some("Left with guard".into())).unwrap();
     assert!(d2.delivered_at.is_some());
@@ -113,10 +142,14 @@ fn reports_reconcile_with_sales_and_refunds() {
     // Refund s3 fully.
     let d = e.core.sale_get(t, &s3.sale_id).unwrap();
     e.core
-        .refund_create(t, serde_json::from_value(json!({
-            "sale_id": s3.sale_id, "reason": "Returned", "operation_id": op(),
-            "lines": [{ "sale_item_id": d.items[0].sale_item_id, "qty_milli": 1000 }]
-        })).unwrap())
+        .refund_create(
+            t,
+            serde_json::from_value(json!({
+                "sale_id": s3.sale_id, "reason": "Returned", "operation_id": op(),
+                "lines": [{ "sale_item_id": d.items[0].sale_item_id, "qty_milli": 1000 }]
+            }))
+            .unwrap(),
+        )
         .unwrap();
     let rep = e.core.report_run(t, "sales", ReportParams::default()).unwrap();
     let k = |label: &str| rep.kpis.iter().find(|k| k.label == label).unwrap().value;
@@ -141,7 +174,7 @@ fn reports_reconcile_with_sales_and_refunds() {
     assert_eq!(dash["kpis"]["sales"], 4_400);
     assert_eq!(dash["kpis"]["transactions"], 3);
     let cash = e.core.report_run(t, "cash", ReportParams::default()).unwrap();
-    assert_eq!(cash.rows[0]["expected"], 2_200 - 1_100 * 0, "benefitpay refund goes back to benefitpay, not cash");
+    assert_eq!(cash.rows[0]["expected"], 2_200, "the benefitpay refund goes back to benefitpay, not the cash drawer");
 }
 
 #[test]

@@ -157,11 +157,10 @@ pub fn shift_summary(c: &Connection, shift_id: &str) -> AppResult<ShiftSummary> 
         .query_map([shift_id], |r| Ok(MethodTotal { method: r.get(0)?, amount_minor: r.get(1)?, count: r.get(2)? }))?
         .collect::<Result<Vec<_>, _>>()?;
     s.cash_sales_minor = s.by_method.iter().filter(|m| m.method == "cash").map(|m| m.amount_minor).sum();
-    let (rn, rt): (i64, i64) = c.query_row(
-        "SELECT COUNT(*), COALESCE(SUM(total_minor),0) FROM refunds WHERE shift_id=?1",
-        [shift_id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )?;
+    let (rn, rt): (i64, i64) =
+        c.query_row("SELECT COUNT(*), COALESCE(SUM(total_minor),0) FROM refunds WHERE shift_id=?1", [shift_id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
     s.refund_count = rn;
     s.refunds_total_minor = rt;
     s.cash_refunds_minor = c.query_row(
@@ -182,9 +181,8 @@ pub fn shift_summary(c: &Connection, shift_id: &str) -> AppResult<ShiftSummary> 
             _ => {}
         }
     }
-    s.expected_cash_minor = s.opening_float_minor + s.cash_sales_minor - s.cash_refunds_minor + s.paid_in_minor
-        - s.paid_out_minor
-        - s.safe_drop_minor;
+    s.expected_cash_minor =
+        s.opening_float_minor + s.cash_sales_minor - s.cash_refunds_minor + s.paid_in_minor - s.paid_out_minor - s.safe_drop_minor;
     Ok(s)
 }
 
@@ -279,13 +277,15 @@ impl AppCore {
         let id = validate::id(shift_id, "Shift")?;
         validate::money_non_negative(req.counted_cash_minor, "Counted cash")?;
         let note = crate::setup::clean_opt(&req.note, "Note", 300)?;
-        let (sum, cfg) = self.db.read(|c| Ok((shift_summary(c, &id)?, settings::get::<settings::ShiftSettings>(c, settings::KEY_SHIFT)?)))?;
+        let (sum, cfg) =
+            self.db.read(|c| Ok((shift_summary(c, &id)?, settings::get::<settings::ShiftSettings>(c, settings::KEY_SHIFT)?)))?;
         if sum.status != "open" {
             // Idempotent replay of an already-closed shift.
             let replay = self.db.read(|c| idempotency::check(c, &req.operation_id, "shift.close", &(&id, &req)))?;
             if let Check::Replay { .. } = replay {
                 let sm = self.db.read(|c| shift_summary(c, &id))?;
-                let po = self.db.read(|c| crate::printing::latest_job_outcome(c, "shift_report", &id))?.unwrap_or_else(PrintOutcome::queued);
+                let po =
+                    self.db.read(|c| crate::printing::latest_job_outcome(c, "shift_report", &id))?.unwrap_or_else(PrintOutcome::queued);
                 return Ok((sm, po));
             }
             return Err(AppError::conflict("This shift is already closed."));
@@ -359,8 +359,14 @@ impl AppCore {
             return Ok(result);
         }
         let cfg: settings::ShiftSettings = self.db.read(|c| settings::get(c, settings::KEY_SHIFT))?;
-        let mut approved = self.authorize(&s, perm, req.approval_token.as_deref(), &format!("{} {}", req.kind.replace('_', " "), reason))?;
-        if req.kind == "paid_out" && cfg.paid_out_approval_minor > 0 && req.amount_minor > cfg.paid_out_approval_minor && approved.is_none() && !s.has("shift.approve_variance") {
+        let mut approved =
+            self.authorize(&s, perm, req.approval_token.as_deref(), &format!("{} {}", req.kind.replace('_', " "), reason))?;
+        if req.kind == "paid_out"
+            && cfg.paid_out_approval_minor > 0
+            && req.amount_minor > cfg.paid_out_approval_minor
+            && approved.is_none()
+            && !s.has("shift.approve_variance")
+        {
             approved = self.authorize(&s, "shift.approve_variance", req.approval_token.as_deref(), "Large paid-out")?;
         }
         let actor = self.actor(&s, approved.clone());
@@ -405,13 +411,21 @@ impl AppCore {
                 (None, None) => ("0".to_string(), "9".to_string()),
                 _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &tz)?,
             };
-            let mut st = c.prepare(&format!("SELECT shift_id FROM shifts WHERE opened_at>=?1 AND opened_at<?2 ORDER BY opened_at DESC LIMIT {limit}"))?;
+            let mut st = c.prepare(&format!(
+                "SELECT shift_id FROM shifts WHERE opened_at>=?1 AND opened_at<?2 ORDER BY opened_at DESC LIMIT {limit}"
+            ))?;
             let ids = st.query_map(params![a, b], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
             ids.iter().map(|id| shift_summary(c, id)).collect()
         })
     }
 
-    pub fn cash_events_list(&self, token: &str, shift_id: Option<String>, from: Option<String>, to: Option<String>) -> AppResult<Vec<CashEventRow>> {
+    pub fn cash_events_list(
+        &self,
+        token: &str,
+        shift_id: Option<String>,
+        from: Option<String>,
+        to: Option<String>,
+    ) -> AppResult<Vec<CashEventRow>> {
         let s = self.session(token)?;
         s.require("sales.view")?;
         self.db.read(|c| {

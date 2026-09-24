@@ -64,12 +64,8 @@ pub fn offset(v: Option<i64>) -> i64 {
 /// Build a safe FTS5 query: every token becomes a quoted prefix term.
 /// Returns None when no searchable token remains.
 pub fn fts_query(q: &str) -> Option<String> {
-    let terms: Vec<String> = q
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|t| !t.is_empty())
-        .take(8)
-        .map(|t| format!("\"{}\"*", t.replace('"', "")))
-        .collect();
+    let terms: Vec<String> =
+        q.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).take(8).map(|t| format!("\"{}\"*", t.replace('"', ""))).collect();
     if terms.is_empty() {
         None
     } else {

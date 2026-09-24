@@ -54,7 +54,8 @@ pub async fn respond(core: Arc<AppCore>, port: u16) -> std::io::Result<()> {
         let c = core.clone();
         let info = tokio::task::spawn_blocking(move || c.hub_info()).await;
         if let Ok(Ok(i)) = info {
-            let reply = serde_json::json!({ "port": port, "hub_name": i.hub_name, "business_name": i.business_name, "version": i.app_version });
+            let reply =
+                serde_json::json!({ "port": port, "hub_name": i.hub_name, "business_name": i.business_name, "version": i.app_version });
             let _ = sock.send_to(reply.to_string().as_bytes(), peer).await;
         }
     }
