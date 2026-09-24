@@ -1,20 +1,24 @@
 //! Hub HTTP API for terminals on the store LAN.
 //!
-//! Routes (no route exposes SQL or files):
+//! Protocol 2: every body except /health and /info is encrypted (see
+//! `amwapos_core::channel`). Routes (no route exposes SQL or files):
 //!   GET  /health            liveness (public)
 //!   GET  /info              hub identity and versions (public, no secrets)
-//!   POST /pair              one-time pairing with a code (rate limited)
-//!   POST /heartbeat         signed
-//!   POST /sync/push         signed
-//!   POST /sync/pull         signed
-//!   GET  /sync/status       signed
-//!   GET  /devices           signed (names and codes only)
+//!   POST /pair/start        SPAKE2 message exchange (rate limited)
+//!   POST /pair/finish       sealed pairing request → sealed device key + snapshot
+//!   POST /heartbeat         signed + sealed
+//!   POST /sync/push         signed + sealed
+//!   POST /sync/pull         signed + sealed
+//!   GET  /sync/status       signed, sealed response
+//!   GET  /devices           signed, sealed response (names and codes only)
+//!   POST /pair              protocol 1 (plaintext): refused with 426
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 
-use amwapos_core::sync::{self, Heartbeat, NonceCache, PairRequest, PullRequest, PushRequest};
+use amwapos_core::channel::{self, PairKeys, PROTOCOL_HEADER};
+use amwapos_core::sync::{self, Heartbeat, NonceCache, PairRequest, PullRequest, PushRequest, PROTOCOL_VERSION};
 use amwapos_core::{AppCore, AppError, AppResult, ErrorCode};
 use axum::body::Bytes;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, State};
@@ -22,12 +26,36 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub struct HubState {
     pub core: Arc<AppCore>,
     pub nonces: NonceCache,
     pair_attempts: Mutex<HashMap<IpAddr, (u32, i64)>>,
+    /// SPAKE2 exchanges waiting for /pair/finish: pairing id → (keys, code hash, started).
+    pending_pairs: Mutex<HashMap<String, (PairKeys, String, i64)>>,
+    /// Wrong-code attempts per pairing code hash; the code is burned at 5.
+    pair_failures: Mutex<HashMap<String, u32>>,
+}
+
+const PENDING_PAIR_TTL_SECS: i64 = 120;
+const MAX_PENDING_PAIRS: usize = 32;
+const MAX_CODE_FAILURES: u32 = 5;
+
+fn pair_aad(pairing_id: &str, dir: &str) -> Vec<u8> {
+    format!("amwapos/2\npair\n{dir}\n{pairing_id}").into_bytes()
+}
+
+/// `Some(426 response)` unless the request speaks the current protocol.
+fn protocol_rejection(h: &HeaderMap) -> Option<Response> {
+    (header(h, PROTOCOL_HEADER) != PROTOCOL_VERSION.to_string()).then(outdated)
+}
+
+fn outdated() -> Response {
+    let e = AppError::conflict(format!(
+        "This hub requires AMWAPOS sync protocol {PROTOCOL_VERSION} (encrypted). Install the same AMWAPOS version on the hub and this terminal."
+    ));
+    (StatusCode::UPGRADE_REQUIRED, [("content-type", "application/json")], serde_json::to_vec(&e).unwrap_or_default()).into_response()
 }
 
 pub fn status_for(code: ErrorCode) -> StatusCode {
@@ -76,35 +104,159 @@ async fn info(State(st): State<Arc<HubState>>) -> Response {
     }
 }
 
-async fn pair(State(st): State<Arc<HubState>>, ConnectInfo(addr): ConnectInfo<SocketAddr>, body: Bytes) -> Response {
+fn rate_limited(st: &HubState, ip: IpAddr) -> Option<Response> {
     // Brute-force protection: 5 attempts per IP per 5 minutes.
-    {
-        let now = chrono::Utc::now().timestamp();
-        let mut m = match st.pair_attempts.lock() {
-            Ok(m) => m,
-            Err(_) => return err_response(AppError::internal("state poisoned")),
-        };
-        let e = m.entry(addr.ip()).or_insert((0, now));
-        if now - e.1 > 300 {
-            *e = (0, now);
-        }
-        e.0 += 1;
-        if e.0 > 5 {
-            return err_response(AppError::new(ErrorCode::AccountLocked, "Too many pairing attempts. Wait five minutes and try again."));
-        }
+    let now = chrono::Utc::now().timestamp();
+    let mut m = match st.pair_attempts.lock() {
+        Ok(m) => m,
+        Err(_) => return Some(err_response(AppError::internal("state poisoned"))),
+    };
+    let e = m.entry(ip).or_insert((0, now));
+    if now - e.1 > 300 {
+        *e = (0, now);
     }
-    let req: PairRequest = match serde_json::from_slice(&body) {
+    e.0 += 1;
+    if e.0 > 5 {
+        return Some(err_response(AppError::new(ErrorCode::AccountLocked, "Too many pairing attempts. Wait five minutes and try again.")));
+    }
+    None
+}
+
+#[derive(Deserialize)]
+struct PairStart {
+    pairing_id: String,
+    message: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PairStartReply {
+    pub message: String,
+}
+
+async fn pair_v1() -> Response {
+    outdated()
+}
+
+async fn pair_start(
+    State(st): State<Arc<HubState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Some(r) = protocol_rejection(&headers) {
+        return r;
+    }
+    if let Some(r) = rate_limited(&st, addr.ip()) {
+        return r;
+    }
+    let req: PairStart = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => return err_response(AppError::validation(format!("Invalid pairing request: {e}"))),
+    };
+    if req.pairing_id.len() != 26 || !req.pairing_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return err_response(AppError::validation("Invalid pairing id."));
+    }
+    let Ok(terminal_msg) = hex::decode(&req.message) else {
+        return err_response(AppError::validation("Invalid pairing message."));
+    };
+    let core = st.core.clone();
+    let code_hash = match blocking(move || core.hub_active_pairing_code()).await {
+        Ok(h) => h,
+        Err(e) => return err_response(e),
+    };
+    let (hub, hub_msg) = channel::HubPairing::start(&code_hash);
+    let keys = match hub.finish(&terminal_msg, &req.pairing_id) {
+        Ok(k) => k,
+        Err(e) => return err_response(e),
+    };
+    let now = chrono::Utc::now().timestamp();
+    match st.pending_pairs.lock() {
+        Ok(mut m) => {
+            m.retain(|_, v| now - v.2 <= PENDING_PAIR_TTL_SECS);
+            if m.len() >= MAX_PENDING_PAIRS {
+                return err_response(AppError::new(ErrorCode::AccountLocked, "Too many pairings in progress. Try again in two minutes."));
+            }
+            // Never replace a pending exchange: the id is visible on the wire, and an
+            // overwrite would make the real terminal's finish look like a wrong code.
+            if m.contains_key(&req.pairing_id) {
+                return err_response(AppError::conflict("This pairing session already exists. Start pairing again."));
+            }
+            m.insert(req.pairing_id, (keys, code_hash, now));
+        }
+        Err(_) => return err_response(AppError::internal("state poisoned")),
+    }
+    json_response(&PairStartReply { message: hex::encode(hub_msg) })
+}
+
+async fn pair_finish(
+    State(st): State<Arc<HubState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    if let Some(r) = protocol_rejection(&headers) {
+        return r;
+    }
+    let pairing_id = header(&headers, "x-amw-pairing").to_string();
+    let pending = match st.pending_pairs.lock() {
+        Ok(mut m) => m.remove(&pairing_id),
+        Err(_) => return err_response(AppError::internal("state poisoned")),
+    };
+    let Some((keys, code_hash, started)) = pending else {
+        return err_response(AppError::new(ErrorCode::InvalidCredentials, "Pairing session expired. Start pairing again."));
+    };
+    if chrono::Utc::now().timestamp() - started > PENDING_PAIR_TTL_SECS {
+        return err_response(AppError::new(ErrorCode::InvalidCredentials, "Pairing session expired. Start pairing again."));
+    }
+    // Only a terminal that derived the same SPAKE2 key (knew the code) can seal this.
+    let plain = match channel::open(&keys.request, &pair_aad(&pairing_id, "request"), &body) {
+        Ok(p) => p,
+        Err(_) => {
+            let failures = st
+                .pair_failures
+                .lock()
+                .map(|mut m| {
+                    let n = m.entry(code_hash.clone()).or_insert(0);
+                    *n += 1;
+                    *n
+                })
+                .unwrap_or(MAX_CODE_FAILURES);
+            if failures >= MAX_CODE_FAILURES {
+                let core = st.core.clone();
+                let h = code_hash.clone();
+                let _ = blocking(move || core.hub_burn_pairing_code(&h)).await;
+                tracing::warn!(peer = %addr, "pairing code burned after repeated wrong attempts");
+                return err_response(AppError::new(
+                    ErrorCode::InvalidCredentials,
+                    "Too many wrong pairing codes. This code is no longer valid; generate a new one on the hub.",
+                ));
+            }
+            tracing::warn!(peer = %addr, "pairing refused: wrong code");
+            return err_response(AppError::new(ErrorCode::InvalidCredentials, "Invalid pairing code."));
+        }
+    };
+    let req: PairRequest = match serde_json::from_slice(&plain) {
         Ok(r) => r,
         Err(e) => return err_response(AppError::validation(format!("Invalid pairing request: {e}"))),
     };
     let core = st.core.clone();
-    match blocking(move || core.hub_pair(req)).await {
+    let h = code_hash.clone();
+    match blocking(move || core.hub_pair_verified(req, &h)).await {
         Ok(r) => {
             if let Ok(mut m) = st.pair_attempts.lock() {
                 m.remove(&addr.ip());
             }
+            if let Ok(mut m) = st.pair_failures.lock() {
+                m.remove(&code_hash);
+            }
             tracing::info!(peer = %addr, device = %r.device.device_code, "terminal paired");
-            json_response(&r)
+            match serde_json::to_vec(&r) {
+                Ok(b) => {
+                    let sealed = channel::seal(&keys.response, &pair_aad(&pairing_id, "response"), &b);
+                    (StatusCode::OK, [("content-type", "application/octet-stream")], sealed).into_response()
+                }
+                Err(e) => err_response(AppError::internal(e.to_string())),
+            }
         }
         Err(e) => {
             tracing::warn!(peer = %addr, error = %e.message, "pairing refused");
@@ -119,6 +271,9 @@ where
     F: FnOnce(Arc<AppCore>, String, Bytes) -> AppResult<T> + Send + 'static,
     T: Serialize + Send + 'static,
 {
+    if let Some(r) = protocol_rejection(&headers) {
+        return r;
+    }
     let device = header(&headers, "x-amw-device").to_string();
     let ts: i64 = header(&headers, "x-amw-ts").parse().unwrap_or(0);
     let nonce = header(&headers, "x-amw-nonce").to_string();
@@ -147,24 +302,35 @@ where
             Err(e) => return err_response(e),
         }
     };
+    let (k_req, k_resp) = channel::device_keys(&key);
+    let method_s = method.as_str().to_string();
+    let seal_reply = |status: StatusCode, plain: Vec<u8>| -> Response {
+        let sealed = channel::seal(&k_resp, &channel::aad("RESPONSE", &path, &device_id, ts, &nonce), &plain);
+        let sig = sync::hmac_hex(&key, sync::signing_string("RESPONSE", &path, ts, &nonce, &sealed).as_bytes());
+        let mut r = (status, [("content-type", "application/octet-stream")], sealed).into_response();
+        r.headers_mut().insert("x-amw-sealed", HeaderValue::from_static("1"));
+        if let Ok(hv) = HeaderValue::from_str(&sig) {
+            r.headers_mut().insert("x-amw-signature", hv);
+        }
+        r
+    };
+    let seal_error = |e: AppError| seal_reply(status_for(e.code), serde_json::to_vec(&e).unwrap_or_default());
+    let plain = if body.is_empty() {
+        Bytes::new()
+    } else {
+        match channel::open(&k_req, &channel::aad(&method_s, &path, &device_id, ts, &nonce), &body) {
+            Ok(p) => Bytes::from(p),
+            Err(e) => return err_response(e),
+        }
+    };
     let res = {
         let core = core.clone();
         let d = device_id.clone();
-        blocking(move || f(core, d, body)).await
+        blocking(move || f(core, d, plain)).await
     };
-    match res {
-        Ok(v) => match serde_json::to_vec(&v) {
-            Ok(b) => {
-                let sig = sync::hmac_hex(&key, sync::signing_string("RESPONSE", &path, ts, &nonce, &b).as_bytes());
-                let mut r = (StatusCode::OK, [("content-type", "application/json")], b).into_response();
-                if let Ok(hv) = HeaderValue::from_str(&sig) {
-                    r.headers_mut().insert("x-amw-signature", hv);
-                }
-                r
-            }
-            Err(e) => err_response(AppError::internal(e.to_string())),
-        },
-        Err(e) => err_response(e),
+    match res.and_then(|v| serde_json::to_vec(&v).map_err(|e| AppError::internal(e.to_string()))) {
+        Ok(b) => seal_reply(StatusCode::OK, b),
+        Err(e) => seal_error(e),
     }
 }
 
@@ -218,11 +384,19 @@ async fn devices(State(st): State<Arc<HubState>>, method: Method, uri: Uri, head
 }
 
 pub fn router(core: Arc<AppCore>) -> Router {
-    let st = Arc::new(HubState { core, nonces: NonceCache::default(), pair_attempts: Mutex::new(HashMap::new()) });
+    let st = Arc::new(HubState {
+        core,
+        nonces: NonceCache::default(),
+        pair_attempts: Mutex::new(HashMap::new()),
+        pending_pairs: Mutex::new(HashMap::new()),
+        pair_failures: Mutex::new(HashMap::new()),
+    });
     Router::new()
         .route("/health", get(health))
         .route("/info", get(info))
-        .route("/pair", post(pair))
+        .route("/pair", post(pair_v1))
+        .route("/pair/start", post(pair_start))
+        .route("/pair/finish", post(pair_finish))
         .route("/heartbeat", post(heartbeat))
         .route("/sync/push", post(push))
         .route("/sync/pull", post(pull))

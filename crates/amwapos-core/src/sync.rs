@@ -88,7 +88,9 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
 /// Columns never shipped to other devices.
 const PRIVATE_COLUMNS: &[(&str, &str)] = &[("devices", "credential_hash")];
 
-pub const PROTOCOL_VERSION: i64 = 1;
+/// Wire protocol. 2 = encrypted channel (SPAKE2 pairing + ChaCha20-Poly1305
+/// bodies, see `channel`). Hubs and terminals refuse any other version.
+pub const PROTOCOL_VERSION: i64 = 2;
 pub const KEY_SYNC: &str = "local.sync";
 pub const SECRET_HUB_MASTER: &str = "amwapos.hub.master_secret";
 const KEY_HUB_SECRET: &str = "local.hub_secret";
@@ -192,6 +194,9 @@ pub struct HubInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PairRequest {
+    /// Protocol 1 only (tests / in-process pairing). Protocol 2 proves the code
+    /// with SPAKE2 and never sends it.
+    #[serde(default)]
     pub code: String,
     pub device_name: String,
     pub device_code: String,
@@ -728,6 +733,8 @@ impl AppCore {
         let expires = time::fmt(now + chrono::Duration::minutes(PAIRING_TTL_MINUTES));
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
+            // One active code at a time: the hub runs SPAKE2 against the newest one.
+            tx.execute("UPDATE pairing_codes SET expires_at=?1 WHERE used_at IS NULL AND expires_at > ?1", [time::fmt(now)])?;
             tx.execute(
                 "INSERT INTO pairing_codes(code_hash, branch_id, device_name, created_by, created_at, expires_at) VALUES (?1,?2,?3,?4,?5,?6)",
                 params![auth::sha256_hex(&code), d.branch_id, device_name, s.user_id, time::fmt(now), expires],
@@ -741,6 +748,44 @@ impl AppCore {
     /// Hub: validate a pairing code, register the terminal and return its key
     /// and a bootstrap snapshot.
     pub fn hub_pair(&self, req: PairRequest) -> AppResult<PairResponse> {
+        let code = req.code.trim().to_string();
+        if code.len() != 8 || !code.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::new(ErrorCode::InvalidCredentials, "Invalid pairing code."));
+        }
+        self.hub_pair_verified(req, &auth::sha256_hex(&code))
+    }
+
+    /// Hash of the pairing code a protocol-2 pairing is checked against.
+    pub fn hub_active_pairing_code(&self) -> AppResult<String> {
+        self.require_hub()?;
+        let now = time::now_str();
+        self.db
+            .read(|c| {
+                Ok(c.query_row(
+                    "SELECT code_hash FROM pairing_codes WHERE used_at IS NULL AND expires_at > ?1 ORDER BY created_at DESC LIMIT 1",
+                    [&now],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()?)
+            })?
+            .ok_or_else(|| {
+                AppError::new(ErrorCode::InvalidCredentials, "No pairing code is active on the hub. Generate one in Admin → Sync / Hub.")
+            })
+    }
+
+    /// Invalidate a pairing code after repeated wrong guesses.
+    pub fn hub_burn_pairing_code(&self, code_hash: &str) -> AppResult<()> {
+        let now = time::now_str();
+        self.db.write(|tx| {
+            tx.execute("UPDATE pairing_codes SET expires_at=?2 WHERE code_hash=?1 AND used_at IS NULL", params![code_hash, now])?;
+            audit::record(tx, &audit::Actor::default(), "sync.pairing_code_burned", "device", None, None, None)?;
+            Ok(())
+        })
+    }
+
+    /// Register a terminal whose knowledge of the code (`code_hash`) was
+    /// already proven.
+    pub fn hub_pair_verified(&self, req: PairRequest, code_hash: &str) -> AppResult<PairResponse> {
         let hub = self.require_hub()?;
         if req.schema_version != crate::db::latest_schema_version() {
             return Err(AppError::conflict(format!(
@@ -748,10 +793,6 @@ impl AppCore {
                 crate::db::latest_schema_version(),
                 req.schema_version
             )));
-        }
-        let code = req.code.trim().to_string();
-        if code.len() != 8 || !code.chars().all(|c| c.is_ascii_digit()) {
-            return Err(AppError::new(ErrorCode::InvalidCredentials, "Invalid pairing code."));
         }
         let name = crate::setup::clean(&req.device_name, "Terminal name", 60, true)?;
         let dcode = crate::setup::validate_code(&req.device_code, "Terminal code")?;
@@ -764,7 +805,7 @@ impl AppCore {
             branch_id: hub.branch_id.clone(),
             mode: "terminal".into(),
         };
-        let hash = auth::sha256_hex(&code);
+        let hash = code_hash.to_string();
         self.db.write(|tx| {
             let row: Option<(String, Option<String>)> = tx
                 .query_row("SELECT expires_at, used_at FROM pairing_codes WHERE code_hash=?1", [&hash], |r| Ok((r.get(0)?, r.get(1)?)))

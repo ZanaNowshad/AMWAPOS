@@ -21,6 +21,9 @@ csv.workspace = true
 fs4.workspace = true
 hmac.workspace = true
 tracing.workspace = true
+spake2 = "0.4"
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Printing", "Win32_Graphics_Gdi"] }

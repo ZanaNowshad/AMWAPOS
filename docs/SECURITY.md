@@ -7,7 +7,9 @@
 | A cashier gives unauthorised discounts, voids, refunds or price changes | Role permissions enforced in the backend. Over-limit actions need a single-use manager approval token bound to the permission (120 s). Both people are recorded in the hash-chained audit log. |
 | Someone guesses a staff PIN | Argon2id hashes; weak PINs (sequences, repeats) rejected; lockout after N failures (default 5 → 15 min). |
 | Someone tampers with history in the database file | Append-only triggers on financial tables. SHA-256 audit chain whose verification shows the first broken link. Checksummed migrations. |
-| A device on the store LAN impersonates a terminal | Pairing needs a single-use 8-digit code shown on the hub (hashed at rest, 15 min, 5 attempts per 5 min per IP). All later traffic is HMAC-signed per device, with nonce replay protection, a ±5 min clock window and signed responses. A revoked device is refused. |
+| Someone on the store LAN or Wi-Fi reads sync traffic | Sync protocol 2 encrypts every pairing and sync body (ChaCha20-Poly1305). A test runs a full pairing, sale and sync through a recording proxy and checks that no product name, barcode, receipt number, pairing code, device key or PIN hash appears on the wire. |
+| A device on the store LAN impersonates a terminal or the hub | Pairing uses SPAKE2 with the single-use 8-digit code, which is never sent. An eavesdropper cannot test guesses offline, and each online guess needs a full exchange. Limits: one active code; 15 min; 5 attempts per IP per 5 min; 5 wrong codes cancel the code. Later traffic is sealed and HMAC-signed with a per-device key, with nonce replay protection and a ±5 min clock window. Replies are sealed and signed too. A revoked device is refused. |
+| An old or modified client talks plaintext to the hub | The hub accepts only sync protocol 2. Protocol 1 and requests without the protocol header get HTTP 426. |
 | A terminal pushes rows that belong to another device | The hub checks the device owns every append-only row it receives. Hub-owned tables are never accepted from terminals. |
 | A rolled-back or rebuilt hub corrupts terminals | `hub_instance_id` pinning; the terminal blocks sync until an owner decides. |
 | A replayed or double-submitted payment | Idempotent operations commit in one transaction; retries return the original result. |
@@ -28,6 +30,33 @@
 - The dev bridge (`amwapos-devserver`) keeps secrets in a plain file. It binds to loopback only
   and is not shipped.
 
+## What BitLocker covers, and what a stolen database yields
+
+**Stolen database.** Someone who copies `amwapos.db`, or an unencrypted backup, can read
+everything the store records:
+- sales, refunds, payments and cash history;
+- products, costs and suppliers;
+- customer names and phone numbers;
+- staff names and roles, and the audit log.
+
+They also get each staff member's Argon2id PIN hash. Short PINs can be brute-forced offline: a
+4-digit PIN in seconds, an 8-digit PIN in days to weeks on one computer. Treat PINs as exposed
+after a theft and reset them.
+
+The file does **not** contain the hub master secret, a terminal's device key or any session.
+Those live in Windows Credential Manager or in memory, so a copied database alone cannot sync as
+a terminal or impersonate the hub. Protecting the file therefore comes down to disk encryption
+and Windows account control.
+
+**BitLocker** protects a PC or drive that is taken while powered off. It does not protect:
+- a running, unlocked till;
+- anyone who can sign in to Windows on it (local Users can read the data folder);
+- malware running on the PC;
+- backups copied to USB drives or network shares.
+
+Store those backups encrypted, for example on a BitLocker To Go drive or an access-controlled
+share.
+
 ## Data at rest
 
 - `%ProgramData%\AMWAPOS` is created by the installer with explicit ACLs:
@@ -42,9 +71,23 @@
 
 - The hub listens on TCP 47800 and UDP 47801 discovery. The installer's firewall rules allow them
   on **private** profiles only, bound to `amwapos.exe`.
-- Traffic is authenticated and integrity-protected (HMAC) but **not encrypted** (no TLS). Catalogue,
-  sales and customer data cross the store LAN in clear text. Keep the POS network separate from
-  guest Wi-Fi.
+- **Encrypted (sync protocol 2):** everything a terminal sends or receives after `/info`:
+  - pairing request and reply, including the device key and the bootstrap snapshot of catalogue,
+    users with PIN hashes, and recent sales;
+  - pushes, pulls, heartbeats, status and device lists.
+- **In clear:**
+  - HTTP headers: route, device id, timestamp, nonce, signature, protocol version;
+  - message sizes and timing;
+  - the public `/health` and `/info` replies (product, version, business name, hub name, hub
+    instance id, outbox position), which a terminal fetches only when probing a hub address
+    during setup;
+  - UDP discovery broadcasts (hub name and address).
+- **Why not TLS:** the channel is application-layer encryption, not TLS. That avoids distributing
+  and renewing certificates on shop PCs. Trust comes from the pairing code, through a
+  password-authenticated key exchange, not from a certificate authority.
+- **Forward secrecy:** each paired device's traffic keys come from its device key. Someone who
+  records traffic and later steals a hub's Windows credential (the master secret) could decrypt
+  that recording. Pairing exchanges use fresh SPAKE2 keys each time.
 
 ## Reporting
 

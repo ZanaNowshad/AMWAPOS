@@ -3,13 +3,19 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use amwapos_core::sync::{self, Change, HubInfo, PairRequest, PairResponse, PullRequest, PullResponse, PushRequest, PushResponse};
+use amwapos_core::channel::{self, PROTOCOL_HEADER};
+use amwapos_core::sync::{
+    self, Change, HubInfo, PairRequest, PairResponse, PullRequest, PullResponse, PushRequest, PushResponse, PROTOCOL_VERSION,
+};
 use amwapos_core::{AppCore, AppError, AppResult, ErrorCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 fn http() -> AppResult<reqwest::Client> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(PROTOCOL_HEADER, reqwest::header::HeaderValue::from(PROTOCOL_VERSION));
     reqwest::Client::builder()
+        .default_headers(headers)
         .connect_timeout(Duration::from_secs(4))
         .timeout(Duration::from_secs(60))
         .no_proxy()
@@ -59,13 +65,77 @@ fn unreachable(base: &str, e: reqwest::Error) -> AppError {
 pub async fn hub_info(base: &str) -> AppResult<HubInfo> {
     let base = normalize_url(base)?;
     let r = http()?.get(format!("{base}/info")).send().await.map_err(|e| unreachable(&base, e))?;
-    decode(r).await
+    let info: HubInfo = decode(r).await?;
+    check_protocol(&info)?;
+    Ok(info)
 }
 
-pub async fn pair(base: &str, req: &PairRequest) -> AppResult<PairResponse> {
+fn check_protocol(info: &HubInfo) -> AppResult<()> {
+    if info.protocol != PROTOCOL_VERSION {
+        return Err(AppError::new(
+            ErrorCode::Sync,
+            format!(
+                "The hub runs AMWAPOS {} (sync protocol {}); this terminal needs protocol {PROTOCOL_VERSION}. Install the same AMWAPOS version on both.",
+                info.app_version, info.protocol
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn error_from(status: reqwest::StatusCode, bytes: &[u8]) -> AppError {
+    if status == reqwest::StatusCode::UPGRADE_REQUIRED || !bytes.is_empty() {
+        if let Ok(e) = serde_json::from_slice::<AppError>(bytes) {
+            return e;
+        }
+    }
+    AppError::new(ErrorCode::Sync, format!("Hub returned HTTP {status}."))
+}
+
+/// Pair with the hub over the encrypted protocol. The code is proven with
+/// SPAKE2 and never sent; the device key and snapshot arrive sealed.
+pub async fn pair(base: &str, code: &str, req: &PairRequest) -> AppResult<PairResponse> {
     let base = normalize_url(base)?;
-    let r = http()?.post(format!("{base}/pair")).json(req).send().await.map_err(|e| unreachable(&base, e))?;
-    decode(r).await
+    let code = code.trim();
+    if code.len() != 8 || !code.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::new(ErrorCode::InvalidCredentials, "The pairing code has 8 digits."));
+    }
+    let http = http()?;
+    let t = channel::TerminalPairing::start(code);
+    let id = t.pairing_id.clone();
+    let r = http
+        .post(format!("{base}/pair/start"))
+        .json(&serde_json::json!({ "pairing_id": id, "message": hex::encode(&t.message) }))
+        .send()
+        .await
+        .map_err(|e| unreachable(&base, e))?;
+    let reply: crate::server::PairStartReply = decode(r).await?;
+    let hub_msg = hex::decode(&reply.message).map_err(|_| AppError::new(ErrorCode::Sync, "The hub sent an invalid pairing message."))?;
+    let keys = t.finish(&hub_msg)?;
+    let mut req = req.clone();
+    req.code.clear();
+    let body = serde_json::to_vec(&req).map_err(|e| AppError::internal(e.to_string()))?;
+    let sealed = channel::seal(&keys.request, &pair_aad(&id, "request"), &body);
+    let r = http
+        .post(format!("{base}/pair/finish"))
+        .header("x-amw-pairing", &id)
+        .header("content-type", "application/octet-stream")
+        .body(sealed)
+        .send()
+        .await
+        .map_err(|e| unreachable(&base, e))?;
+    let status = r.status();
+    let bytes = r.bytes().await.map_err(|e| AppError::new(ErrorCode::Sync, format!("Hub connection dropped: {e}")))?;
+    if !status.is_success() {
+        return Err(error_from(status, &bytes));
+    }
+    let plain = channel::open(&keys.response, &pair_aad(&id, "response"), &bytes)
+        .map_err(|_| AppError::new(ErrorCode::Sync, "The hub's pairing reply could not be verified. Pairing stopped for safety."))?;
+    serde_json::from_slice(&plain).map_err(|e| AppError::new(ErrorCode::Sync, format!("Unexpected hub response: {e}")))
+}
+
+fn pair_aad(pairing_id: &str, dir: &str) -> Vec<u8> {
+    format!("amwapos/2\npair\n{dir}\n{pairing_id}").into_bytes()
 }
 
 pub struct HubClient {
@@ -81,17 +151,21 @@ impl HubClient {
     }
 
     async fn call<B: Serialize, R: DeserializeOwned>(&self, method: &str, path: &str, body: Option<&B>) -> AppResult<R> {
-        let bytes = match body {
-            Some(b) => serde_json::to_vec(b).map_err(|e| AppError::internal(e.to_string()))?,
-            None => vec![],
-        };
+        let (k_req, k_resp) = channel::device_keys(&self.key);
         let ts = chrono::Utc::now().timestamp_millis();
         let nonce = ulid::Ulid::new().to_string();
+        let bytes = match body {
+            Some(b) => {
+                let plain = serde_json::to_vec(b).map_err(|e| AppError::internal(e.to_string()))?;
+                channel::seal(&k_req, &channel::aad(method, path, &self.device_id, ts, &nonce), &plain)
+            }
+            None => vec![],
+        };
         let sig = sync::hmac_hex(&self.key, sync::signing_string(method, path, ts, &nonce, &bytes).as_bytes());
         let url = format!("{}{path}", self.base);
         let rb = match method {
             "GET" => self.http.get(&url),
-            _ => self.http.post(&url).header("content-type", "application/json").body(bytes),
+            _ => self.http.post(&url).header("content-type", "application/octet-stream").body(bytes),
         };
         let resp = rb
             .header("x-amw-device", &self.device_id)
@@ -102,20 +176,28 @@ impl HubClient {
             .await
             .map_err(|e| unreachable(&self.base, e))?;
         let status = resp.status();
+        let sealed = resp.headers().get("x-amw-sealed").is_some();
         let rsig = resp.headers().get("x-amw-signature").and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
         let data = resp.bytes().await.map_err(|e| AppError::new(ErrorCode::Sync, format!("Hub connection dropped: {e}")))?;
-        if !status.is_success() {
-            if let Ok(e) = serde_json::from_slice::<AppError>(&data) {
-                return Err(e);
+        if !sealed {
+            // Only authentication failures are sent in the clear (they carry no data).
+            if !status.is_success() {
+                return Err(error_from(status, &data));
             }
-            return Err(AppError::new(ErrorCode::Sync, format!("Hub returned HTTP {status}.")));
+            return Err(AppError::new(ErrorCode::Sync, "The hub's reply was not encrypted. Synchronization stopped for safety."));
         }
-        // The response must be signed with our device key: a rogue host on the LAN cannot forge it.
+        // The reply must be signed and sealed with our device key: a rogue host on the LAN cannot forge or read it.
         let expect = sync::hmac_hex(&self.key, sync::signing_string("RESPONSE", path, ts, &nonce, &data).as_bytes());
         if !sync::verify_hex_eq(&expect, &rsig) {
             return Err(AppError::new(ErrorCode::Sync, "The hub's response signature is invalid. Synchronization stopped for safety."));
         }
-        serde_json::from_slice(&data).map_err(|e| AppError::new(ErrorCode::Sync, format!("Unexpected hub response: {e}")))
+        let plain = channel::open(&k_resp, &channel::aad("RESPONSE", path, &self.device_id, ts, &nonce), &data)
+            .map_err(|_| AppError::new(ErrorCode::Sync, "The hub's reply could not be decrypted. Synchronization stopped for safety."))?;
+        if !status.is_success() {
+            return Err(serde_json::from_slice::<AppError>(&plain)
+                .unwrap_or_else(|_| AppError::new(ErrorCode::Sync, format!("Hub returned HTTP {status}."))));
+        }
+        serde_json::from_slice(&plain).map_err(|e| AppError::new(ErrorCode::Sync, format!("Unexpected hub response: {e}")))
     }
 
     pub async fn push(&self, changes: Vec<Change>) -> AppResult<PushResponse> {
@@ -160,6 +242,7 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
     let client = HubClient::new(&ss.hub_url, &d.device_id, &key)?;
     let result: AppResult<CycleReport> = async {
         let info = client.info().await?;
+        check_protocol(&info)?;
         if info.schema_version != amwapos_core::db::latest_schema_version() {
             return Err(AppError::new(
                 ErrorCode::Sync,

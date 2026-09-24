@@ -145,15 +145,16 @@ impl Runtime {
                     return Err(AppError::conflict("This installation is already set up."));
                 }
                 let url = client::normalize_url(&arg(&args, "hub_url")?)?;
+                let code = arg(&args, "code")?;
                 let req = PairRequest {
-                    code: arg(&args, "code")?,
+                    code: String::new(),
                     device_name: arg(&args, "device_name")?,
                     device_code: arg(&args, "device_code")?,
                     app_version: amwapos_core::audit::APP_VERSION.into(),
                     schema_version: amwapos_core::db::latest_schema_version(),
                     os_info: Some(format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)),
                 };
-                let resp = client::pair(&url, &req).await?;
+                let resp = client::pair(&url, &code, &req).await?;
                 let core = self.core.clone();
                 let u2 = url.clone();
                 blocking(move || core.terminal_bootstrap(&u2, resp)).await?;

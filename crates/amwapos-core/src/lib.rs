@@ -8,6 +8,7 @@ pub mod audit;
 pub mod auth;
 pub mod backup;
 pub mod catalog;
+pub mod channel;
 pub mod commands;
 pub mod customers;
 pub mod db;

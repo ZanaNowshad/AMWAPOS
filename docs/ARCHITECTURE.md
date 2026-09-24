@@ -65,10 +65,20 @@ The same id with a different payload fails with `idempotency_mismatch`.
   TTL, rate limited).
 - **Capture:** triggers write every change to `sync_outbox` (table, primary key, operation,
   origin). Rows applied from the hub are not re-captured.
-- **Transport:** requests are HMAC-SHA256 signed with a per-device key derived from the hub master
-  secret. Each request has a nonce and a timestamp within ±5 minutes, and responses are signed
-  too. The master secret lives in Windows Credential Manager. The database holds only its
-  fingerprint, so a lost credential is reported instead of being silently replaced.
+- **Transport (sync protocol 2):**
+  - **Pairing:** SPAKE2 over the 8-digit pairing code. Both sides use the SHA-256 of the code as
+    the password, which is what the hub stores. The terminal's pairing request and the hub's
+    reply (device key + snapshot) are sealed with keys derived from the SPAKE2 secret.
+  - **After pairing:** each body is sealed with ChaCha20-Poly1305 under direction-specific keys,
+    derived with HKDF-SHA256 from the per-device key. The associated data binds method, path,
+    device, timestamp and nonce. Requests and replies are also HMAC-signed over the ciphertext,
+    with a nonce cache and a ±5 minute clock window.
+  - **Keys:** the per-device key is derived from the hub master secret, which lives in Windows
+    Credential Manager. The database holds only its fingerprint, so a lost credential is
+    reported instead of being silently replaced.
+  - **Versioning:** the hub refuses any other protocol version with HTTP 426. `/info` reports the
+    version, and terminals check it before pairing and before every sync cycle. Code in
+    `crates/amwapos-core/src/channel.rs`.
 - **Policies:**
   - Hub-owned: the catalogue, prices, users and settings are edited only on the hub.
   - Append-only: sales, refunds, cash and stock movements are appended, and the hub checks that the

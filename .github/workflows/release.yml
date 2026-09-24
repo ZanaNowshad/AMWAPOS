@@ -21,6 +21,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: cargo test --workspace
+      - name: Require embedded WebView2 bootstrapper (offline tills)
+        shell: pwsh
+        run: |
+          $c = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if ($c.bundle.windows.webviewInstallMode.type -ne 'embedBootstrapper') { throw "webviewInstallMode must be embedBootstrapper" }
       - run: npx tauri build --bundles nsis
       # Authenticode signing runs only when a certificate is configured. Unsigned
       # builds are published as such and must not be deployed to stores unreviewed.

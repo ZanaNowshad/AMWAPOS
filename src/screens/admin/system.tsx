@@ -365,7 +365,8 @@ export function SyncPage() {
               </Button>
             ) : null}
             <div className="tiny">
-              Pair terminals on the store's trusted network. After pairing, every request is signed and revocable.
+              Pair one terminal at a time: a new code cancels the previous one, and five wrong entries cancel the code.
+              The code is never sent over the network; all hub traffic is encrypted and each terminal can be revoked.
             </div>
             {has("sync.manage") ? (
               <Button size="sm" variant="ghost" onClick={() => setResetCreds(true)}>
