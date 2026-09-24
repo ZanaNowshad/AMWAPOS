@@ -19,9 +19,9 @@ type Dash = {
   health: { backup: { state: string; summary: string }; sync: { state: string; summary: string } };
 };
 
-function Delta({ now, prev, money }: { now: number | null; prev: number | null; money?: boolean }) {
+function Delta({ now, prev }: { now: number | null; prev: number | null; money?: boolean }) {
   if (now === null || prev === null || prev === undefined) return null;
-  if (prev === 0) return <div className="k-delta muted">Same day last week: {money ? formatMoney(0) : 0}</div>;
+  if (prev === 0) return <div className="k-delta muted">No data for the same day last week</div>;
   const pct = Math.round(((now - prev) * 1000) / Math.abs(prev)) / 10;
   return (
     <div className={`k-delta ${pct >= 0 ? "pos-num" : "neg-num"}`}>

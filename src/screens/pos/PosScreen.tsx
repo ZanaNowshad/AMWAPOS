@@ -103,7 +103,6 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
   const burst = useRef(new BurstDetector());
   const dupGuard = useRef(new DuplicateGuard(0));
   const globalBuf = useRef("");
-  const busyScan = useRef(false);
 
   useEffect(() => {
     setSoundEnabled(config?.pos.scan_sound ?? true);
@@ -181,7 +180,11 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
     return () => clearTimeout(t);
   }, [query]);
 
-  const doScan = useCallback(
+  // Scans are processed strictly in order. A scan is never dropped while a
+  // previous one is in flight, and the field is cleared the moment Enter is
+  // pressed so the next barcode can be typed immediately.
+  const scanQueue = useRef<Promise<void>>(Promise.resolve());
+  const processScan = useCallback(
     async (raw: string) => {
       let code = raw.trim();
       let qty: number | undefined;
@@ -192,8 +195,6 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
         code = m[2];
       }
       if (!dupGuard.current.accept(code)) return;
-      if (busyScan.current) return;
-      busyScan.current = true;
       try {
         const r = await api.pos.scan(code, qty);
         if (r.outcome === "added") {
@@ -209,14 +210,19 @@ export function PosScreen({ shift, onShiftClosed, reloadShift }: { shift: ShiftS
         }
       } catch (e) {
         fail(e);
-      } finally {
-        busyScan.current = false;
-        setQuery("");
-        setResults(null);
-        burst.current.reset();
       }
     },
     [applyCart, fail],
+  );
+  const doScan = useCallback(
+    (raw: string) => {
+      setQuery("");
+      setResults(null);
+      burst.current.reset();
+      scanQueue.current = scanQueue.current.then(() => processScan(raw));
+      return scanQueue.current;
+    },
+    [processScan],
   );
 
   const addProduct = useCallback(

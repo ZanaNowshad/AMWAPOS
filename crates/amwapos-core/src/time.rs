@@ -58,6 +58,14 @@ pub fn local_date_range_utc(from: &str, to: &str, zone: &str) -> AppResult<(Stri
     Ok((fmt(start.with_timezone(&Utc)), fmt(end.with_timezone(&Utc))))
 }
 
+/// "24 Sep 2026 19:42" in the given timezone (falls back to the raw value).
+pub fn display(ts: &str, zone: &str) -> String {
+    match (parse(ts), tz(zone)) {
+        (Ok(t), Ok(z)) => t.with_timezone(&z).format("%d %b %Y %H:%M").to_string(),
+        _ => ts.to_string(),
+    }
+}
+
 pub fn validate_date(s: &str) -> AppResult<()> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .map(|_| ())

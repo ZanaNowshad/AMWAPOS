@@ -487,7 +487,7 @@ impl AppCore {
             component: "Backup".into(),
             state: if last_ok.is_none() || stale { "warning".into() } else { "ok".into() },
             summary: match &last_ok {
-                Some(t) => format!("Last successful backup {t}"),
+                Some(t) => format!("Last successful backup {}", time::display(t, &self.db.read(|c| self.store_timezone(c)).unwrap_or_else(|_| "Asia/Bahrain".into()))),
                 None => "No successful backup yet".into(),
             },
             details: json!({ "last_success_at": last_ok, "last_failure": last_fail, "automatic": cfg.automatic, "interval_hours": cfg.interval_hours, "directory": cfg.directory }),
