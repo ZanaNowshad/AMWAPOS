@@ -1,4 +1,6 @@
 import { WhatsAppSendButton } from "./automation";
+import { AccountTab, AddressesTab } from "./customerAccount";
+import { useFeature } from "../../components/FeatureGate";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageCircle, Plus } from "lucide-react";
@@ -182,7 +184,10 @@ export function CustomerDetailPage() {
   const nav = useNavigate();
   const toast = useToast();
   const { has } = useSession();
-  const [tab, setTab] = useState<"overview" | "purchases" | "deliveries" | "notes">("overview");
+  const [tab, setTab] = useState<"overview" | "purchases" | "deliveries" | "notes" | "addresses" | "account">(
+    "overview",
+  );
+  const credit = useFeature("customer_credit");
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
   const [sale, setSale] = useState<string | null>(null);
@@ -219,10 +224,14 @@ export function CustomerDetailPage() {
           { key: "purchases", label: t("Purchases") },
           { key: "deliveries", label: t("Deliveries") },
           { key: "notes", label: t("Notes") },
+          { key: "addresses", label: t("Addresses") },
+          ...(credit ? [{ key: "account" as const, label: t("Account") }] : []),
         ]}
         value={tab}
         onChange={setTab}
       />
+      {tab === "addresses" ? <AddressesTab customerId={c.customer_id} /> : null}
+      {tab === "account" && credit ? <AccountTab customerId={c.customer_id} /> : null}
       {tab === "overview" ? (
         <div className="grid-2">
           <div className="card card-pad">
@@ -409,7 +418,7 @@ export function DeliveriesPage() {
           {(["pending", "preparing", "dispatched"] as const).map((st) => (
             <div key={st} className="kanban-col">
               <h3 style={{ margin: "4px 4px 10px" }}>
-                {st[0].toUpperCase() + st.slice(1)}{" "}
+                {codeLabel(st)}{" "}
                 <span className="tiny">({data.filter((d) => d.status === st).length})</span>
               </h3>
               {data

@@ -144,6 +144,24 @@ impl AppCore {
         Ok(v)
     }
 
+    /// Record the outcome of an OS step-up (Windows Hello) check.
+    pub fn audit_step_up(&self, token: &str, command: &str, outcome: &str, detail: &str) -> AppResult<()> {
+        let s = self.session(token)?;
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            audit::record(
+                tx,
+                &actor,
+                "security.step_up",
+                "command",
+                Some(command),
+                None,
+                Some(&json!({ "outcome": outcome, "detail": detail })),
+            )?;
+            Ok(())
+        })
+    }
+
     /// Permission and module check for an update action; returns the feed settings.
     pub fn updates_authorize(&self, token: &str, action: &str) -> AppResult<settings::UpdateSettings> {
         let s = self.session(token)?;

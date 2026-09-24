@@ -60,6 +60,8 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("purchasing.manage", "Purchasing", "Manage purchase orders"),
     ("customers.view", "Customers", "Look up customers"),
     ("customers.manage", "Customers", "Create and edit customers"),
+    ("customers.credit", "Customers", "Sell on account, take account payments and set credit limits"),
+    ("customers.credit_override", "Customers", "Approve a sale above a customer's credit limit"),
     ("deliveries.view", "Deliveries", "View deliveries"),
     ("deliveries.manage", "Deliveries", "Create and update deliveries"),
     ("reports.sales", "Reports", "Sales and operational reports"),

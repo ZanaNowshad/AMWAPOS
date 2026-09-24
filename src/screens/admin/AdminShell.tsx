@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import { HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import {
+  Search,
   Activity,
   Barcode,
   Bell,
@@ -48,6 +49,7 @@ import { initials } from "../login/Login";
 import { Logo } from "../../components/Logo";
 import { ConnectionPill } from "../pos/ConnectionPill";
 import { Denied } from "./common";
+import { Modal } from "../../components/ui";
 import { Dashboard } from "./Dashboard";
 import { SalesPage, RefundsPage, ShiftsPage, CashEventsPage } from "./sales";
 import { ProductsPage, ProductEditorPage, CategoriesPage, PricingPage, UnknownBarcodesPage } from "./catalog";
@@ -234,6 +236,69 @@ const EXTRA: { path: string; perm?: string | string[]; element: ComponentType }[
   { path: "profile", perm: undefined, element: ProfilePage },
 ];
 
+function CommandPalette({
+  items,
+  onGo,
+  onClose,
+}: {
+  items: { path: string; label: string; group: string; icon: ComponentType<{ size?: number }> }[];
+  onGo: (path: string) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
+  const norm = (x: string) => x.toLowerCase().normalize("NFKD");
+  const found = items.filter((i) => norm(`${i.label} ${i.group} ${i.path}`).includes(norm(q.trim()))).slice(0, 12);
+  return (
+    <Modal title={t("Go to…")} onClose={onClose} size="sm" closeOnBackdrop>
+      <div className="col gap-8">
+        <input
+          className="input"
+          autoFocus
+          value={q}
+          placeholder={t("Type a page name")}
+          aria-label={t("Search pages")}
+          onChange={(e) => (setQ(e.target.value), setSel(0))}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setSel((s) => Math.min(s + 1, found.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setSel((s) => Math.max(s - 1, 0));
+            } else if (e.key === "Enter" && found[sel]) onGo(found[sel].path);
+          }}
+        />
+        <div role="listbox" aria-label={t("Pages")}>
+          {found.map((i, n) => (
+            <button
+              key={i.path}
+              role="option"
+              aria-selected={n === sel}
+              className={`list-row ${n === sel ? "active" : ""}`}
+              style={{
+                display: "flex",
+                gap: 10,
+                width: "100%",
+                padding: "8px 10px",
+                textAlign: "start",
+                alignItems: "center",
+              }}
+              onMouseEnter={() => setSel(n)}
+              onClick={() => onGo(i.path)}
+            >
+              <i.icon size={16} />
+              <span className="grow">{i.label}</span>
+              <span className="tiny">{i.group}</span>
+            </button>
+          ))}
+          {!found.length ? <div className="empty">{t("No matching page.")}</div> : null}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function AdminShell() {
   return (
     <HashRouter>
@@ -259,6 +324,17 @@ function Shell() {
     return () => window.removeEventListener("mousedown", close);
   }, []);
   const firstAllowed = NAV.flatMap((g) => g.items).find((i) => allowed(i.perm));
+  const [palette, setPalette] = useState(false);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalette((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
   return (
     <div className={`admin ${collapsed ? "collapsed" : ""}`} data-testid="admin">
       <aside className="sidebar">
@@ -302,6 +378,9 @@ function Shell() {
             {t("Admin /")} <strong style={{ color: "var(--text)" }}>{current?.label ?? "…"}</strong>
           </div>
           <div className="grow" />
+          <button className="btn ghost sm" onClick={() => setPalette(true)} title={t("Go to… (Ctrl+K)")}>
+            <Search size={15} /> <span className="kbd">Ctrl K</span>
+          </button>
           <span className="small muted row">
             <Store size={15} /> {config?.business_name} · {status.device?.name}
           </span>
@@ -342,6 +421,17 @@ function Shell() {
             </button>
           ) : null}
         </header>
+        {palette ? (
+          <CommandPalette
+            items={NAV.flatMap((g) =>
+              g.items
+                .filter((i) => allowed(i.perm))
+                .map((i) => ({ path: i.path, label: i.label, group: g.group, icon: i.icon })),
+            )}
+            onClose={() => setPalette(false)}
+            onGo={(p) => (setPalette(false), nav(`/admin/${p}`))}
+          />
+        ) : null}
         <main className="content" id="admin-content">
           <BackupAlert />
           <Routes>

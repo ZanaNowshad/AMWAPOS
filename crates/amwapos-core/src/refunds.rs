@@ -269,6 +269,23 @@ impl AppCore {
                     params![new_id(), rid, t.method, t.amount_minor, t.reference],
                 )?;
             }
+            let to_account: i64 = tenders.iter().filter(|t| t.method == "account").map(|t| t.amount_minor).sum();
+            if to_account > 0 {
+                let cid: Option<String> = tx.query_row("SELECT customer_id FROM sales WHERE sale_id=?1", [&sid], |r| r.get(0))?;
+                let cid = cid.ok_or_else(|| AppError::validation("The original sale has no customer account to refund to."))?;
+                crate::credit::post(
+                    tx,
+                    &s,
+                    &cid,
+                    "refund",
+                    -to_account,
+                    Some("refund"),
+                    Some(&rid),
+                    Some("account"),
+                    None,
+                    &crate::credit::refund_op(&req.operation_id),
+                )?;
+            }
             crate::printing::enqueue(tx, "refund", &rid, None, Some(&s.user_id))?;
             if tenders.iter().any(|t| t.method == "cash") {
                 crate::printing::enqueue_drawer_pulse(tx, Some(&s.user_id), &rid)?;

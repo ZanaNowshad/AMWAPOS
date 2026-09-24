@@ -71,6 +71,8 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("suppliers", &["supplier_id"], Policy::Hub),
     ("customers", &["customer_id"], Policy::Shared),
     ("customer_notes", &["note_id"], Policy::Shared),
+    ("customer_addresses", &["address_id"], Policy::Shared),
+    ("customer_accounts", &["customer_id"], Policy::Shared),
     ("shifts", &["shift_id"], Policy::Shared),
     ("unknown_barcodes", &["barcode"], Policy::Shared),
     ("sales", &["sale_id"], Policy::Append),
@@ -81,6 +83,7 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("refund_tenders", &["refund_tender_id"], Policy::Append),
     ("cash_events", &["cash_event_id"], Policy::Append),
     ("stock_movements", &["movement_id"], Policy::Append),
+    ("customer_ledger", &["entry_id"], Policy::Append),
     ("delivery_orders", &["delivery_id"], Policy::Shared),
     ("delivery_events", &["event_id"], Policy::Shared),
 ];

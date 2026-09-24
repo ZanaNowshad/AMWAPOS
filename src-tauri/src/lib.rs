@@ -5,6 +5,7 @@
 //! (`rpc`) that routes to the transport-neutral command dispatcher. There is no
 //! IPC path to SQL, the file system or a shell.
 
+mod hello;
 mod secrets;
 
 use std::path::PathBuf;
@@ -86,6 +87,7 @@ pub fn run() {
                 Ok(core) => {
                     let rt = Runtime::new(Arc::new(core));
                     rt.set_sidecar_resources(app.path().resource_dir().ok().as_deref());
+                    *rt.step_up.lock().unwrap() = Some(Arc::new(hello::verify));
                     let rt2 = rt.clone();
                     tauri::async_runtime::spawn(async move { rt2.ensure_services() });
                     AppState { rt: Some(rt), startup_error: None }

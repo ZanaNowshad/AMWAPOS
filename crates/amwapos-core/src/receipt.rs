@@ -307,6 +307,8 @@ fn arabic(en: &str) -> Option<&'static str> {
         "Card" => "بطاقة",
         "BenefitPay" => "بنفت",
         "Bank Transfer" => "تحويل بنكي",
+        "Wallet" => "محفظة",
+        "Customer account" => "حساب العميل",
         "REFUND / CREDIT NOTE" => "إشعار دائن",
         "Refund" => "استرجاع",
         "Original receipt" => "الإيصال الأصلي",
@@ -480,6 +482,7 @@ pub fn method_label(m: &str) -> String {
         "benefitpay" => "BenefitPay".into(),
         "bank_transfer" => "Bank Transfer".into(),
         "wallet" => "Wallet".into(),
+        "account" => "Customer account".into(),
         other => other.to_string(),
     }
 }

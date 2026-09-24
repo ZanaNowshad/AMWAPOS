@@ -1066,3 +1066,28 @@ export interface UpdateStatus {
   downloaded: UpdateManifest | null;
   can_install: boolean;
 }
+
+export interface CustomerAddress {
+  address_id: string;
+  label: string;
+  area: string | null;
+  address: string;
+  notes: string | null;
+  is_default: boolean;
+}
+
+export interface CustomerAccountView {
+  credit_enabled: boolean;
+  account: { enabled: boolean; credit_limit_minor: number; balance_minor: number; available_minor: number } | null;
+  ledger: {
+    entry_id: string;
+    kind: "sale" | "payment" | "refund" | "adjustment";
+    amount_minor: number;
+    method: string | null;
+    note: string | null;
+    user: string | null;
+    created_at: string;
+    reference: string | null;
+  }[];
+  addresses: CustomerAddress[];
+}

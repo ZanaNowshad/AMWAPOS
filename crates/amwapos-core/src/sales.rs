@@ -347,6 +347,37 @@ impl AppCore {
             None
         };
 
+        // Customer account tender: module, permission and credit limit.
+        let account_amount: i64 = req.tenders.iter().filter(|t| t.method == "account").map(|t| t.amount_minor).sum();
+        let mut account_over_ok = false;
+        let mut account_approved_by = None;
+        if account_amount > 0 {
+            // Any cashier may charge an enabled account within its limit;
+            // going over the limit needs a manager (below).
+            self.require_feature("customer_credit")?;
+            let (customer, over) = self.db.read(|c| {
+                let cid: Option<String> =
+                    c.query_row("SELECT customer_id FROM carts WHERE cart_id=?1", [&cart_id], |r| r.get(0)).optional()?.flatten();
+                let over = match &cid {
+                    Some(id) => {
+                        let a = crate::credit::account(c, id)?;
+                        a.balance_minor + account_amount > a.credit_limit_minor
+                    }
+                    None => false,
+                };
+                Ok((cid, over))
+            })?;
+            if customer.is_some() && over {
+                account_approved_by = self.authorize(
+                    &s,
+                    "customers.credit_override",
+                    req.approval_token.as_deref(),
+                    "Sale above the customer's credit limit",
+                )?;
+                account_over_ok = true;
+            }
+        }
+        let negative_approved_by = negative_approved_by.or(account_approved_by);
         let tz_currency = self.db.read(|c| Ok((self.store_timezone(c)?, pos_cfg.receipt_auto_print)))?;
         let device = self.require_device()?;
         let actor = self.actor(&s, negative_approved_by.clone());
@@ -460,6 +491,22 @@ impl AppCore {
                         new_id(), sale_id, a.method, a.amount_minor, a.tendered_minor, a.change_minor, a.reference,
                         json!({ "verification": "recorded_tender" }).to_string(), now_s
                     ],
+                )?;
+            }
+            let on_account: i64 = applied.iter().filter(|a| a.method == "account").map(|a| a.amount_minor).sum();
+            if on_account > 0 {
+                let cid = crate::credit::check_sale(tx, customer_id.as_deref(), on_account, account_over_ok)?;
+                crate::credit::post(
+                    tx,
+                    &s,
+                    &cid,
+                    "sale",
+                    on_account,
+                    Some("sale"),
+                    Some(&sale_id),
+                    Some("account"),
+                    None,
+                    &crate::credit::sale_op(&req.operation_id),
                 )?;
             }
             tx.execute(

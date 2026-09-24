@@ -219,6 +219,28 @@ export const api = {
     save: (customer_id: string | null, customer: T.CustomerInput) =>
       call<T.CustomerRow>("customers.save", { customer_id, customer }),
     addNote: (customer_id: string, note: string) => call<void>("customers.add_note", { customer_id, note }),
+    account: (customer_id: string) => call<T.CustomerAccountView>("customers.account", { customer_id }),
+    accountSet: (customer_id: string, enabled: boolean, credit_limit_minor: number) =>
+      call<T.CustomerAccountView>("customers.account_set", { customer_id, enabled, credit_limit_minor }),
+    accountPayment: (a: {
+      customer_id: string;
+      amount_minor: number;
+      method: string;
+      reference?: string | null;
+      operation_id: string;
+    }) => call<{ balance_minor: number }>("customers.account_payment", a),
+    accountAdjust: (customer_id: string, amount_minor: number, note: string, operation_id: string) =>
+      call<{ balance_minor: number }>("customers.account_adjust", { customer_id, amount_minor, note, operation_id }),
+    addressSave: (a: {
+      address_id?: string | null;
+      customer_id: string;
+      label: string;
+      area?: string | null;
+      address: string;
+      notes?: string | null;
+      is_default: boolean;
+    }) => call<T.CustomerAccountView>("customers.address_save", a),
+    addressDelete: (address_id: string) => call<void>("customers.address_delete", { address_id }),
   },
   deliveries: {
     list: (status?: string, include_closed = false) =>

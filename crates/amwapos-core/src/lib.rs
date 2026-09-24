@@ -11,6 +11,7 @@ pub mod backup;
 pub mod catalog;
 pub mod channel;
 pub mod commands;
+pub mod credit;
 pub mod customers;
 pub mod db;
 pub mod error;

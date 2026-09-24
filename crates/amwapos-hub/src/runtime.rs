@@ -15,6 +15,23 @@ use tokio::task::JoinHandle;
 use crate::sidecar::{Sidecar, SidecarPaths};
 use crate::{client, discovery, server};
 
+/// Result of an OS step-up check (Windows Hello) for a sensitive action.
+#[derive(Debug, Clone)]
+pub enum StepUp {
+    Verified,
+    /// No Hello on this computer (or not set up for the Windows user).
+    Unavailable(String),
+    /// The person cancelled or failed the check.
+    Refused(String),
+}
+
+pub type StepUpHook = Arc<dyn Fn(&str) -> StepUp + Send + Sync>;
+
+/// Commands that also need the step-up when the `windows_hello` module is on.
+/// The staff PIN (or manager approval) is always still required.
+pub const STEP_UP_COMMANDS: &[&str] =
+    &["auth.approve", "backup.restore", "ai.proposal_confirm", "customers.account_adjust", "updates.install", "sync.reset_hub_credentials"];
+
 struct HubTasks {
     server: JoinHandle<()>,
     discovery: JoinHandle<()>,
@@ -31,6 +48,8 @@ pub struct Runtime {
     pub sidecar: Arc<Sidecar>,
     /// Signed update checker/installer.
     pub updater: Arc<crate::updater::Updater>,
+    /// OS step-up provider (set by the desktop shell on Windows).
+    pub step_up: Mutex<Option<StepUpHook>>,
     /// Reconnect a linked WhatsApp automatically (off after a manual disconnect).
     wa_autostart: Arc<std::sync::atomic::AtomicBool>,
     /// Override for the hub bind address (tests use 127.0.0.1 and port 0-style ports).
@@ -56,6 +75,7 @@ impl Runtime {
             automation: Mutex::new(None),
             sidecar: Sidecar::new(SidecarPaths::discover(None)),
             updater: crate::updater::Updater::new(),
+            step_up: Mutex::new(None),
             wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: Ipv4Addr::UNSPECIFIED,
             sync_interval: Duration::from_secs(5),
@@ -71,6 +91,7 @@ impl Runtime {
             automation: Mutex::new(None),
             sidecar: Sidecar::new(SidecarPaths::discover(None)),
             updater: crate::updater::Updater::new(),
+            step_up: Mutex::new(None),
             wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: ip,
             sync_interval,
@@ -79,6 +100,37 @@ impl Runtime {
 
     fn hub_port(&self) -> u16 {
         self.core.terminal_sync_settings().map(|s| if s.port == 0 { DEFAULT_PORT } else { s.port }).unwrap_or(DEFAULT_PORT)
+    }
+
+    async fn step_up_check(&self, cmd: &str, token: Option<&str>) -> AppResult<()> {
+        let on = self.core.features().map(|f| f.is_on("windows_hello")).unwrap_or(false);
+        if !on {
+            return Ok(());
+        }
+        let hook = self.step_up.lock().unwrap().clone();
+        let msg = format!("AMWAPOS: confirm {}", cmd.replace(['.', '_'], " "));
+        let result = match hook {
+            Some(h) => tokio::task::spawn_blocking(move || h(&msg)).await.unwrap_or_else(|e| StepUp::Refused(e.to_string())),
+            None => StepUp::Unavailable("Windows Hello is not available in this build.".into()),
+        };
+        let (outcome, detail, ok) = match &result {
+            StepUp::Verified => ("verified", String::new(), true),
+            StepUp::Unavailable(d) => ("unavailable", d.clone(), true),
+            StepUp::Refused(d) => ("refused", d.clone(), false),
+        };
+        if let Some(t) = token {
+            let (c, t, cmd2) = (self.core.clone(), t.to_string(), cmd.to_string());
+            let _ = blocking(move || c.audit_step_up(&t, &cmd2, outcome, &detail)).await;
+        }
+        if ok {
+            Ok(())
+        } else {
+            Err(AppError::new(
+                amwapos_core::ErrorCode::Forbidden,
+                "Windows Hello verification was not completed. The action was not performed.",
+            )
+            .with_details(json!({ "kind": "step_up_failed" })))
+        }
     }
 
     /// Point the supervisor at the installed sidecar (Tauri resource folder).
@@ -182,6 +234,9 @@ impl Runtime {
     /// Route a command. Network-backed commands are handled here; all others
     /// go to the core dispatcher.
     pub async fn dispatch(self: &Arc<Self>, cmd: &str, token: Option<String>, args: Value) -> AppResult<Value> {
+        if STEP_UP_COMMANDS.contains(&cmd) {
+            self.step_up_check(cmd, token.as_deref()).await?;
+        }
         match cmd {
             "sync.discover" => {
                 let found = discovery::discover(Duration::from_millis(1500))

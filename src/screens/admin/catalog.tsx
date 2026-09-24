@@ -1412,7 +1412,7 @@ export function UnknownBarcodesPage() {
       <div className="filters">
         {["open", "resolved", "dismissed", "all"].map((s) => (
           <button key={s} className={`filter-chip ${status === s ? "active" : ""}`} onClick={() => setStatus(s)}>
-            {s[0].toUpperCase() + s.slice(1)}
+            {s === "open" ? t("Open") : s === "resolved" ? t("Resolved") : s === "dismissed" ? t("Dismissed") : t("All")}
           </button>
         ))}
       </div>

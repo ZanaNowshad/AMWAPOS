@@ -93,7 +93,7 @@ export function AdjustDialog({
         <div className="row">
           {(["increase", "decrease", "set"] as const).map((m) => (
             <button key={m} className={`filter-chip ${mode === m ? "active" : ""}`} onClick={() => setMode(m)}>
-              {m === "set" ? t("Set count") : m[0].toUpperCase() + m.slice(1)}
+              {m === "set" ? t("Set count") : m === "increase" ? t("Increase") : t("Decrease")}
             </button>
           ))}
         </div>

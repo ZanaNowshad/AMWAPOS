@@ -10,4 +10,4 @@ pub mod server;
 pub mod sidecar;
 pub mod updater;
 
-pub use runtime::Runtime;
+pub use runtime::{Runtime, StepUp};

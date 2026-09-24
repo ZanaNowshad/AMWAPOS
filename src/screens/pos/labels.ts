@@ -11,6 +11,8 @@ export function methodLabel(m: string): string {
       return t("Wallet");
     case "bank_transfer":
       return t("Bank Transfer");
+    case "account":
+      return t("Customer account");
     default:
       return m;
   }

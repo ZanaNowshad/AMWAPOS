@@ -90,6 +90,8 @@ impl Default for PaymentSettings {
                 t("bank_transfer", "Bank Transfer", false, false),
                 // A manual wallet (e.g. a mobile wallet) recorded like any other tender; no live settlement.
                 t("wallet", "Wallet", false, false),
+                // Customer account (sell on credit). Needs the customer_credit module.
+                t("account", "Customer account", false, false),
             ],
         }
     }
