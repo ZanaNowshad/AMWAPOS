@@ -208,14 +208,15 @@ impl AppCore {
         let rep = self.report_run(token, key, p)?;
         let digits = self.db.read(|c| self.currency(c))?.1;
         let mut w = csv::WriterBuilder::new().from_writer(vec![]);
-        w.write_record(rep.columns.iter().map(|c| c.label.as_str())).map_err(|e| AppError::internal(e.to_string()))?;
+        w.write_record(rep.columns.iter().map(|c| crate::validate::csv_safe_cell(c.label.clone())))
+            .map_err(|e| AppError::internal(e.to_string()))?;
         let fmt = |c: &Column, v: &Value| -> String {
             match (c.kind.as_str(), v) {
                 (_, Value::Null) => String::new(),
                 ("money", Value::Number(n)) => format_decimal(n.as_i64().unwrap_or(0), digits),
                 ("qty", Value::Number(n)) => format_decimal(n.as_i64().unwrap_or(0), 3),
                 ("percent_bp", Value::Number(n)) => format_decimal(n.as_i64().unwrap_or(0), 2),
-                (_, Value::String(s)) => s.clone(),
+                (_, Value::String(s)) => crate::validate::csv_safe_cell(s.clone()),
                 (_, other) => other.to_string(),
             }
         };

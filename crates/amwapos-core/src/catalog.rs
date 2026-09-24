@@ -1312,14 +1312,14 @@ impl AppCore {
             while let Some(r) = rows.next()? {
                 let price: Option<i64> = r.get(5)?;
                 let mut rec = vec![
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, String>(4)?,
+                    crate::validate::csv_safe_cell(r.get::<_, String>(0)?),
+                    crate::validate::csv_safe_cell(r.get::<_, String>(1)?),
+                    crate::validate::csv_safe_cell(r.get::<_, String>(2)?),
+                    crate::validate::csv_safe_cell(r.get::<_, String>(3)?),
+                    crate::validate::csv_safe_cell(r.get::<_, String>(4)?),
                     price.map(|p| crate::money::format_decimal(p, digits)).unwrap_or_default(),
-                    r.get::<_, String>(6)?,
-                    r.get::<_, String>(7)?,
+                    crate::validate::csv_safe_cell(r.get::<_, String>(6)?),
+                    crate::validate::csv_safe_cell(r.get::<_, String>(7)?),
                     (r.get::<_, i64>(8)? == 1).to_string(),
                     (r.get::<_, i64>(9)? == 1).to_string(),
                     crate::money::format_decimal(r.get::<_, i64>(10)?, 3),

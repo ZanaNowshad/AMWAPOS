@@ -178,7 +178,8 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
             return Err(AppError::validation("Import at most 200,000 rows at a time."));
         }
         let rec = rec.map_err(|e| AppError::validation(format!("Row {row_no}: {e}")))?;
-        let get = |f: &str| idx.get(f).and_then(|i| rec.get(*i)).map(|v| v.trim().to_string()).unwrap_or_default();
+        let get =
+            |f: &str| idx.get(f).and_then(|i| rec.get(*i)).map(|v| validate::csv_unescape_cell(v.trim()).to_string()).unwrap_or_default();
         if rec.iter().all(|v| v.trim().is_empty()) {
             continue;
         }

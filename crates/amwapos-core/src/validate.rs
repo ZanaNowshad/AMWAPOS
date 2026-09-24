@@ -93,3 +93,46 @@ mod tests {
         assert_eq!(fts_query("حليب").unwrap(), "\"حليب\"*");
     }
 }
+
+/// Neutralize spreadsheet formula injection in an exported text cell: a value
+/// starting with `=`, `+`, `-`, `@`, TAB or CR is prefixed with `'` so Excel
+/// shows it as text. Plain numbers (e.g. "-1.500") are left alone.
+pub fn csv_safe_cell(s: String) -> String {
+    let risky = matches!(s.chars().next(), Some('=' | '+' | '-' | '@' | '\t' | '\r'));
+    let numeric = s.strip_prefix(['-', '+']).is_some_and(|r| !r.is_empty() && r.chars().all(|c| c.is_ascii_digit() || c == '.'));
+    if risky && !numeric {
+        format!("'{s}")
+    } else {
+        s
+    }
+}
+
+/// Inverse of [`csv_safe_cell`] for re-imported exports.
+pub fn csv_unescape_cell(s: &str) -> &str {
+    match s.strip_prefix('\'') {
+        Some(rest) if matches!(rest.chars().next(), Some('=' | '+' | '-' | '@' | '\t' | '\r')) => rest,
+        _ => s,
+    }
+}
+
+#[cfg(test)]
+mod csv_tests {
+    use super::*;
+
+    #[test]
+    fn formula_cells_are_neutralized_and_round_trip() {
+        for (raw, out) in [
+            ("=HYPERLINK(\"x\")", "'=HYPERLINK(\"x\")"),
+            ("+cmd", "'+cmd"),
+            ("@SUM(A1)", "'@SUM(A1)"),
+            ("-", "'-"),
+            ("-1.500", "-1.500"),
+            ("Milk 1L", "Milk 1L"),
+            ("", ""),
+        ] {
+            let safe = csv_safe_cell(raw.to_string());
+            assert_eq!(safe, out);
+            assert_eq!(csv_unescape_cell(&safe), raw);
+        }
+    }
+}
