@@ -166,6 +166,12 @@ pub struct ProductCreate {
     pub opening_stock_milli: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BulkPrice {
+    pub product_id: String,
+    pub amount_minor: i64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProductUpdate {
     pub product_id: String,
@@ -912,6 +918,40 @@ impl AppCore {
             Ok(())
         })?;
         self.product_get(token, &pid)
+    }
+
+    /// Apply many price changes atomically (previewed in the UI first).
+    pub fn product_bulk_price(&self, token: &str, changes: Vec<BulkPrice>, reason: Option<String>, operation_id: &str) -> AppResult<serde_json::Value> {
+        let s = self.session(token)?;
+        s.require("prices.manage")?;
+        self.require_back_office_writable()?;
+        if changes.is_empty() || changes.len() > 20000 {
+            return Err(AppError::validation("Select between 1 and 20,000 products."));
+        }
+        let reason = clean_opt(&reason, "Reason", 200)?;
+        let actor = self.actor(&s, None);
+        let payload = json!({ "changes": changes, "reason": reason });
+        self.db.write(|tx| {
+            if let crate::idempotency::Check::Replay { result } = crate::idempotency::check(tx, operation_id, "prices.bulk", &payload)? {
+                return Ok(result);
+            }
+            let hash = crate::idempotency::payload_hash("prices.bulk", &payload)?;
+            let now = time::now_str();
+            let mut changed = 0;
+            for c in &changes {
+                let pid = validate::id(&c.product_id, "Product")?;
+                validate::money_non_negative(c.amount_minor, "Price")?;
+                if current_price(tx, &pid)? == Some(c.amount_minor) {
+                    continue;
+                }
+                set_price(tx, &s, &pid, c.amount_minor, reason.as_deref(), &now, &actor)?;
+                changed += 1;
+            }
+            let result = json!({ "changed": changed });
+            audit::record(tx, &actor, "price.bulk_changed", "product", None, None, Some(&json!({ "changed": changed, "reason": reason })))?;
+            crate::idempotency::complete(tx, operation_id, "prices.bulk", Some(&s.user_id), Some(&s.device_id), &hash, None, &result)?;
+            Ok(result)
+        })
     }
 
     // ---- categories ----

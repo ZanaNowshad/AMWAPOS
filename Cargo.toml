@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/amwapos-core", "crates/amwapos-hub"]
+members = ["crates/amwapos-core", "crates/amwapos-hub", "crates/amwapos-devserver"]
 
 [workspace.package]
 version = "0.1.0"

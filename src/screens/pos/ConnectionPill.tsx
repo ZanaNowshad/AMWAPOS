@@ -1,0 +1,48 @@
+import { useEffect, useState } from "react";
+import { api, getToken } from "../../api";
+
+/** Compact local/sync status. Informational only — checkout never depends on it. */
+export function ConnectionPill() {
+  const [st, setSt] = useState<Record<string, unknown> | null>(null);
+  const [online, setOnline] = useState(navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    let alive = true;
+    const poll = () => {
+      if (!getToken()) return;
+      api.sync
+        .status()
+        .then((s) => alive && setSt(s))
+        .catch(() => {});
+    };
+    poll();
+    const t = setInterval(poll, 15000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  const mode = (st?.mode as string) ?? "standalone";
+  if (mode === "terminal") {
+    const pending = Number(st?.pending ?? 0);
+    const err = st?.last_error as string | null;
+    const blocked = st?.blocked_reason as string | null;
+    const cls = blocked || err ? "err" : pending > 0 ? "warn" : "ok";
+    const text = blocked ? "Sync paused" : err ? "Hub disconnected" : pending > 0 ? `${pending} pending` : "Synced";
+    return (
+      <span className={`status-pill ${cls}`} title={blocked ?? err ?? "Local checkout is always available. Changes sync automatically."}>
+        <span className="dot" aria-hidden /> {text}
+      </span>
+    );
+  }
+  return (
+    <span className="status-pill" title="Local checkout is available. Online services will resume automatically.">
+      <span className="dot" aria-hidden style={{ color: online ? "#22c55e" : "#94a3b8" }} /> {online ? (mode === "hub" ? "Hub" : "Local") : "Offline"}
+    </span>
+  );
+}

@@ -80,6 +80,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "reason")?,
             opt(&args, "effective_from")?,
         )),
+        "products.bulk_price" => out(core.product_bulk_price(tk()?, req(&args, "changes")?, opt(&args, "reason")?, &req::<String>(&args, "operation_id")?)),
         "products.cost_update" => out(core.product_cost_update(tk()?, &req::<String>(&args, "product_id")?, req(&args, "cost_minor")?, opt(&args, "reason")?)),
         "products.export_csv" => out(core.products_export_csv(tk()?, opt(&args, "include_archived")?.unwrap_or(false))),
         "products.import_preview" => out(core.products_import_preview(tk()?, all(&args)?)),

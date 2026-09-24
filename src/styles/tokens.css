@@ -1,0 +1,86 @@
+/* AMWAPOS design tokens — see the UI/UX visual specification §1–3. */
+:root {
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --text: #172033;
+  --text-2: #667085;
+  --text-3: #98a2b3;
+  --border: #dde3ea;
+  --border-strong: #c4cdd8;
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #eaf1ff;
+  --brand-dark: #0f1c2e;
+  --brand-dark-2: #16263d;
+  --success: #16a34a;
+  --success-soft: #e8f7ee;
+  --warning: #d97706;
+  --warning-soft: #fdf3e2;
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --info: #0284c7;
+  --info-soft: #e6f4fb;
+  --focus: 0 0 0 3px rgba(37, 99, 235, 0.35);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.18);
+  --backdrop: rgba(15, 28, 46, 0.42);
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-card: 12px;
+  --radius-modal: 14px;
+  --font: "Inter Variable", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --row-h: 46px;
+  --control-h: 38px;
+  --pos-control-h: 48px;
+  --dur: 150ms;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg: #0b1320;
+  --surface: #121c2c;
+  --surface-2: #162235;
+  --surface-hover: #1b2940;
+  --text: #e8edf5;
+  --text-2: #a3afc2;
+  --text-3: #7384a0;
+  --border: #25344b;
+  --border-strong: #33455f;
+  --brand: #3b82f6;
+  --brand-hover: #60a5fa;
+  --brand-soft: #172b4d;
+  --success: #22c55e;
+  --success-soft: #0f2e1d;
+  --warning: #f59e0b;
+  --warning-soft: #33250c;
+  --danger: #f87171;
+  --danger-soft: #3a1717;
+  --info: #38bdf8;
+  --info-soft: #0f2a3a;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+
+[data-density="compact"] {
+  --row-h: 38px;
+  --control-h: 34px;
+}
+
+[data-cashier-font="large"] .pos-root {
+  font-size: 16px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+}
