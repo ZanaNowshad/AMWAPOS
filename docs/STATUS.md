@@ -7,7 +7,7 @@ Classes:
 - **BLOCKED:** needs something outside the repository.
 
 Evidence was re-run on 2026-09-24:
-- `cargo test --workspace`: 30 + 7 + 15 + 6 + 1 tests pass; the perf test runs on demand.
+- `cargo test --workspace`: 30 + 7 + 15 + 3 + 6 + 1 tests pass; the perf test runs on demand.
 - `clippy -D warnings`: clean.
 - `vitest`: 12 pass.
 - Playwright: 2 pass.
@@ -30,7 +30,7 @@ Evidence was re-run on 2026-09-24:
 | CSV product import | VERIFIED COMPLETE | Preview/apply tests, duplicate isolation, scientific-notation guard, 100k import |
 | Backup / verified restore / safety backup / schedule | VERIFIED COMPLETE | Round-trip and tamper tests; E2E backup. On Windows, scheduled backups run only while the app is open. |
 | Multi-terminal LAN sync (pairing, signing, offline queue, dead letters, hub identity, version check) | FUNCTIONALLY COMPLETE WITH LIMITATIONS | Sync convergence tests and the signed HTTP test. Traffic is authenticated but not encrypted (no TLS). Not yet tested on real store Wi-Fi hardware. |
-| Printing (ESC/POS network, Windows spooler, file) | FUNCTIONALLY COMPLETE WITH LIMITATIONS | Receipt layout is unit-tested and a failure never undoes a sale. **Arabic text prints as `?`** (no raster rendering yet). Not tested on a physical printer or drawer. |
+| Printing (ESC/POS network, Windows spooler, file) | FUNCTIONALLY COMPLETE WITH LIMITATIONS | `tests/printing.rs`: receipt content and 80 mm width, COPY reprint, a failed printer keeps the sale and retry works, ESC/POS init/cut. **Arabic text prints as `?`** (no raster rendering yet). Not tested on a physical printer or drawer. |
 | Barcode scanner (HID wedge) | FUNCTIONALLY COMPLETE WITH LIMITATIONS | Burst detection and scan queue are tested in vitest and E2E (typed at 5 ms/char). Physical scanner untested. |
 | Cashier Mode / Admin Mode UI per visual spec | FUNCTIONALLY COMPLETE WITH LIMITATIONS | All admin sections exist. Screenshots were reviewed at 1366×768. Arabic UI (RTL) is not implemented. |
 | Performance targets (100k products) | VERIFIED COMPLETE | P95 scan 0.56 ms, search 14.9 ms, cart 0.43 ms, commit 5.6 ms |
