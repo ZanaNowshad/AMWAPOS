@@ -1,0 +1,8 @@
+{
+  "source": "tessdata_best (integerized) via npm @tesseract.js-data/{eng,ara}@1.0.0, 4.0.0_best_int",
+  "license": "Apache-2.0 (Google tesseract-ocr/tessdata_best)",
+  "models": {
+    "eng": { "sha256": "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91" },
+    "ara": { "sha256": "f4746c44b02342dd5b3d4f0198000f47d7c49f1a229e63e0f436c0592dcd9639" }
+  }
+}

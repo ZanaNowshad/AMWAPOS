@@ -9,12 +9,13 @@
   ; Access to business functions is controlled by AMWAPOS staff PINs and roles.
   CreateDirectory "$COMMONAPPDATA\AMWAPOS\data"
   nsExec::Exec 'icacls "$COMMONAPPDATA\AMWAPOS" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*S-1-5-32-545:(OI)(CI)M"'
-  ; Allow paired terminals to reach the hub API (TCP 47800) and discovery (UDP 47801)
-  ; on private networks only. Narrow rules bound to the AMWAPOS executable.
+  ; One inbound rule only: the hub API (TCP 47800), private networks, bound to
+  ; the AMWAPOS executable. Terminals join by entering the hub address shown on
+  ; the hub's Sync page. The WhatsApp/OCR sidecar listens on 127.0.0.1 only and
+  ; needs no rule. The UDP discovery rule of earlier versions is removed.
   nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Hub"'
   nsExec::Exec 'netsh advfirewall firewall add rule name="AMWAPOS Hub" dir=in action=allow program="$INSTDIR\amwapos.exe" protocol=TCP localport=47800 profile=private enable=yes'
   nsExec::Exec 'netsh advfirewall firewall delete rule name="AMWAPOS Discovery"'
-  nsExec::Exec 'netsh advfirewall firewall add rule name="AMWAPOS Discovery" dir=in action=allow program="$INSTDIR\amwapos.exe" protocol=UDP localport=47801 profile=private enable=yes'
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

@@ -26,6 +26,13 @@ jobs:
         run: |
           $c = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           if ($c.bundle.windows.webviewInstallMode.type -ne 'embedBootstrapper') { throw "webviewInstallMode must be embedBootstrapper" }
+      - name: Bundle the WhatsApp/OCR sidecar (Node runtime + production modules)
+        shell: pwsh
+        run: |
+          npm ci --omit=dev --prefix sidecar
+          New-Item -ItemType Directory -Force src-tauri/resources/node | Out-Null
+          Copy-Item (Get-Command node).Source src-tauri/resources/node/node.exe
+          node --version
       - run: npx tauri build --bundles nsis
       # Authenticode signing runs only when a certificate is configured. Unsigned
       # builds are published as such and must not be deployed to stores unreviewed.

@@ -63,14 +63,14 @@ pub struct Bitmap {
 }
 
 impl Bitmap {
-    fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         let width = width.div_ceil(8) * 8;
         Self { width, height, bits: vec![0; width / 8 * height] }
     }
     pub fn get(&self, x: usize, y: usize) -> bool {
         self.bits[y * self.width / 8 + x / 8] & (0x80 >> (x % 8)) != 0
     }
-    fn set(&mut self, x: usize, y: usize) {
+    pub fn set(&mut self, x: usize, y: usize) {
         self.bits[y * self.width / 8 + x / 8] |= 0x80 >> (x % 8);
     }
     /// Number of black dots (used by tests).

@@ -94,6 +94,49 @@ impl ReceiptDoc {
         out
     }
 
+    /// The whole receipt as one image (every line rasterized), used for PDF
+    /// copies. Same layout and fonts as the printed receipt.
+    pub fn to_bitmap(&self) -> raster::Bitmap {
+        let w = self.width_chars;
+        let px = w * raster::DOTS_PER_CHAR;
+        let (_, line_h) = raster::metrics(false);
+        let mut parts: Vec<raster::Bitmap> = vec![raster::Bitmap::new(px, 16)];
+        for blk in &self.blocks {
+            match blk {
+                Block::Text { text, align, bold, large } => {
+                    for line in raster::wrap(text, px, *bold, *large) {
+                        let place = match align {
+                            Align::Center => raster::Place::Center,
+                            Align::Right => raster::Place::Right,
+                            Align::Left if raster::is_rtl(&line) => raster::Place::Right,
+                            Align::Left => raster::Place::Left,
+                        };
+                        parts.push(raster::render(px, &[(&line, place)], *bold, *large));
+                    }
+                }
+                Block::Pair { left, right, bold, large } => {
+                    let (size, _) = raster::metrics(*large);
+                    let room = px as f32 - raster::measure(right, size, *bold) - raster::DOTS_PER_CHAR as f32;
+                    let left = raster::fit(left, room.max(0.0), *bold, *large);
+                    parts.push(raster::render(px, &[(&left, raster::Place::Left), (right, raster::Place::Right)], *bold, *large));
+                }
+                Block::Rule => {
+                    let mut bm = raster::Bitmap::new(px, line_h / 2);
+                    let y = line_h / 4;
+                    for x in 0..bm.width {
+                        if (x / 6) % 2 == 0 {
+                            bm.set(x, y);
+                        }
+                    }
+                    parts.push(bm);
+                }
+                Block::Feed { lines } => parts.push(raster::Bitmap::new(px, line_h * *lines as usize)),
+            }
+        }
+        parts.push(raster::Bitmap::new(px, 24));
+        raster::Bitmap::stack(&parts)
+    }
+
     /// ESC/POS encoding. ASCII lines use the printer's text mode; any line
     /// with Arabic or other non-ASCII text is shaped and sent as a raster
     /// image (`raster`), so it prints correctly on any ESC/POS printer.

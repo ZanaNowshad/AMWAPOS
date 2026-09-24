@@ -18,3 +18,9 @@ pub fn next_seq(conn: &Connection, name: &str) -> AppResult<i64> {
     )?;
     Ok(conn.query_row("SELECT value FROM sequences WHERE name = ?1", params![name], |r| r.get(0))?)
 }
+
+/// Standard base64 (files handed to the UI for download or preview).
+pub fn b64(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}

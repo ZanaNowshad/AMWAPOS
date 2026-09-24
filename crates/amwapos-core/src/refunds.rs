@@ -293,6 +293,7 @@ impl AppCore {
         let mut result = result;
         if !result.replayed {
             self.print_pending_for(&result.refund_id);
+            self.receipt_pdf_after_commit("refund", &result.refund_id);
         }
         result.print = self.db.read(|c| crate::printing::latest_job_outcome(c, "refund", &result.refund_id)).unwrap_or(None);
         Ok(result)

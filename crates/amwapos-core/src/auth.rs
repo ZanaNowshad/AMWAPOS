@@ -77,7 +77,10 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("diagnostics.view", "System", "View diagnostics"),
     ("ai.use", "Automation", "Use the AI assistant (read-only)"),
     ("ai.mutate", "Automation", "Approve AI-proposed changes"),
-    ("whatsapp.manage", "Automation", "Manage WhatsApp"),
+    ("whatsapp.manage", "Automation", "Link WhatsApp, read conversations and send messages"),
+    ("whatsapp.send", "Automation", "Send receipts and delivery updates on WhatsApp"),
+    ("payments.review", "Automation", "Review payment screenshots"),
+    ("ocr.scan", "Automation", "Scan supplier invoices"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -106,6 +109,7 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "customers.view",
         "customers.manage",
         "deliveries.view",
+        "whatsapp.send",
     ];
     let accountant = vec![
         "admin.access",
@@ -129,8 +133,9 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "suppliers.manage",
         "purchasing.manage",
         "barcodes.resolve",
+        "ocr.scan",
     ];
-    let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view"];
+    let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view", "whatsapp.send"];
     vec![
         (ROLE_OWNER, "Owner", "Full access", all),
         (ROLE_MANAGER, "Manager", "Store operations and overrides", manager),

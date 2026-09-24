@@ -27,6 +27,8 @@ hkdf = "0.12"
 rustybuzz = "0.20"
 unicode-bidi = "0.3"
 ab_glyph_rasterizer = "0.1"
+flate2 = "1"
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Printing", "Win32_Graphics_Gdi"] }

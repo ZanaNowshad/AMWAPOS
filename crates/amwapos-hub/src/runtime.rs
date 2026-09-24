@@ -12,6 +12,7 @@ use amwapos_core::{AppCore, AppError, AppResult};
 use serde_json::{json, Value};
 use tokio::task::JoinHandle;
 
+use crate::sidecar::{Sidecar, SidecarPaths};
 use crate::{client, discovery, server};
 
 struct HubTasks {
@@ -25,6 +26,11 @@ pub struct Runtime {
     hub: Mutex<Option<HubTasks>>,
     sync_loop: Mutex<Option<JoinHandle<()>>>,
     maintenance: Mutex<Option<JoinHandle<()>>>,
+    automation: Mutex<Option<JoinHandle<()>>>,
+    /// WhatsApp/OCR sidecar supervisor.
+    pub sidecar: Arc<Sidecar>,
+    /// Reconnect a linked WhatsApp automatically (off after a manual disconnect).
+    wa_autostart: Arc<std::sync::atomic::AtomicBool>,
     /// Override for the hub bind address (tests use 127.0.0.1 and port 0-style ports).
     pub bind_ip: Ipv4Addr,
     pub sync_interval: Duration,
@@ -45,6 +51,9 @@ impl Runtime {
             hub: Mutex::new(None),
             sync_loop: Mutex::new(None),
             maintenance: Mutex::new(None),
+            automation: Mutex::new(None),
+            sidecar: Sidecar::new(SidecarPaths::discover(None)),
+            wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: Ipv4Addr::UNSPECIFIED,
             sync_interval: Duration::from_secs(5),
         })
@@ -56,6 +65,9 @@ impl Runtime {
             hub: Mutex::new(None),
             sync_loop: Mutex::new(None),
             maintenance: Mutex::new(None),
+            automation: Mutex::new(None),
+            sidecar: Sidecar::new(SidecarPaths::discover(None)),
+            wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: ip,
             sync_interval,
         })
@@ -63,6 +75,15 @@ impl Runtime {
 
     fn hub_port(&self) -> u16 {
         self.core.terminal_sync_settings().map(|s| if s.port == 0 { DEFAULT_PORT } else { s.port }).unwrap_or(DEFAULT_PORT)
+    }
+
+    /// Point the supervisor at the installed sidecar (Tauri resource folder).
+    pub fn set_sidecar_resources(&self, resource_dir: Option<&std::path::Path>) {
+        self.sidecar.set_paths(SidecarPaths::discover(resource_dir));
+    }
+
+    fn automation_wanted(&self) -> bool {
+        self.core.features().map(|f| f.is_on("whatsapp") || f.is_on("ocr")).unwrap_or(false)
     }
 
     /// Start or stop services to match the current device mode. Idempotent.
@@ -105,6 +126,14 @@ impl Runtime {
             let mut g = self.sync_loop.lock().unwrap();
             if g.as_ref().map(|h| h.is_finished()).unwrap_or(true) {
                 *g = Some(client::spawn_sync_loop(self.core.clone(), self.sync_interval));
+            }
+        }
+        // WhatsApp / OCR automation (sidecar) when either module is on.
+        {
+            let mut g = self.automation.lock().unwrap();
+            let running = g.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
+            if self.automation_wanted() && !running {
+                *g = Some(tokio::spawn(crate::automation::run(self.core.clone(), self.sidecar.clone(), self.wa_autostart.clone())));
             }
         }
         // Maintenance: scheduled backups.
@@ -182,6 +211,58 @@ impl Runtime {
                 Ok(
                     json!({ "addresses": discovery::local_addresses().into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port, "running": running }),
                 )
+            }
+            "sidecar.status" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let c = self.core.clone();
+                let features = blocking(move || {
+                    let s = c.session(&t)?;
+                    if !(s.has("whatsapp.manage") || s.has("ocr.scan") || s.has("payments.review") || s.has("diagnostics.view")) {
+                        s.require("whatsapp.manage")?;
+                    }
+                    c.features()
+                })
+                .await?;
+                let mut st = self.sidecar.status().await;
+                st["features"] = json!({ "whatsapp": features.is_on("whatsapp"), "ocr": features.is_on("ocr"), "payment_reviews": features.is_on("payment_reviews") });
+                st["autostart"] = json!(self.wa_autostart.load(std::sync::atomic::Ordering::Relaxed));
+                Ok(st)
+            }
+            "whatsapp.connect" | "whatsapp.disconnect" | "whatsapp.unlink" | "sidecar.restart" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let action = cmd.split('.').nth(1).unwrap_or_default().to_string();
+                let c = self.core.clone();
+                let a2 = action.clone();
+                blocking(move || if a2 == "restart" { c.session(&t)?.require("settings.manage") } else { c.wa_link_action(&t, &a2) })
+                    .await?;
+                use std::sync::atomic::Ordering;
+                let long = Duration::from_secs(20);
+                let r = match action.as_str() {
+                    "connect" => {
+                        self.wa_autostart.store(true, Ordering::Relaxed);
+                        self.sidecar.ensure(&self.core).await?;
+                        self.ensure_services();
+                        self.sidecar.call("/whatsapp/start", Some(json!({})), long).await?
+                    }
+                    "disconnect" => {
+                        self.wa_autostart.store(false, Ordering::Relaxed);
+                        self.sidecar.call("/whatsapp/stop", Some(json!({})), long).await.unwrap_or(Value::Null)
+                    }
+                    "unlink" => {
+                        self.wa_autostart.store(false, Ordering::Relaxed);
+                        self.sidecar.ensure(&self.core).await?;
+                        self.sidecar.call("/whatsapp/logout", Some(json!({})), long).await?
+                    }
+                    _ => {
+                        self.sidecar.stop().await;
+                        if self.automation_wanted() {
+                            self.sidecar.ensure(&self.core).await?;
+                        }
+                        self.ensure_services();
+                        Value::Null
+                    }
+                };
+                Ok(r)
             }
             _ => {
                 let core = self.core.clone();

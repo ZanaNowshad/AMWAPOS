@@ -255,7 +255,53 @@ impl FeatureFlags {
     }
 }
 
+/// One message template in English and Arabic. Placeholders in braces, e.g.
+/// `{customer}`, `{receipt}`, `{total}`; unknown placeholders are left as is.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct MessageTemplate {
+    pub en: String,
+    pub ar: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct WhatsAppSettings {
+    /// Language used when the customer has no preference.
+    pub default_lang: String,
+    /// Attach the PDF receipt when sending a receipt message.
+    pub attach_pdf: bool,
+    /// Mark inbound messages as read on the phone when opened in AMWAPOS.
+    pub send_read_receipts: bool,
+    pub receipt: MessageTemplate,
+    pub dispatch: MessageTemplate,
+    pub reminder: MessageTemplate,
+}
+
+impl Default for WhatsAppSettings {
+    fn default() -> Self {
+        Self {
+            default_lang: "en".into(),
+            attach_pdf: true,
+            send_read_receipts: true,
+            receipt: MessageTemplate {
+                en: "Thank you for shopping at {business}.\nReceipt {receipt}\nTotal: {total}\nDate: {date}".into(),
+                ar: "شكراً لتسوقك من {business}.\nالإيصال {receipt}\nالإجمالي: {total}\nالتاريخ: {date}".into(),
+            },
+            dispatch: MessageTemplate {
+                en: "Hello {customer}, your order {delivery} from {business} is on its way.\nAmount due: {amount}".into(),
+                ar: "مرحباً {customer}، طلبك {delivery} من {business} في الطريق إليك.\nالمبلغ المستحق: {amount}".into(),
+            },
+            reminder: MessageTemplate {
+                en: "Hello {customer}, this is a reminder from {business}: {amount} is due for order {delivery}. Thank you.".into(),
+                ar: "مرحباً {customer}، تذكير من {business}: المبلغ {amount} مستحق للطلب {delivery}. شكراً لك.".into(),
+            },
+        }
+    }
+}
+
 pub const KEY_FEATURES: &str = "features";
+pub const KEY_WHATSAPP: &str = "whatsapp";
 pub const KEY_POS: &str = "pos";
 pub const KEY_SHIFT: &str = "shift";
 pub const KEY_PAYMENTS: &str = "payments";
@@ -268,8 +314,19 @@ pub const KEY_APPEARANCE: &str = "local.appearance";
 pub const KEY_DEVICE: &str = "local.device";
 pub const KEY_SETUP_COMPLETE: &str = "local.setup_complete";
 
-pub const EDITABLE_KEYS: &[&str] =
-    &[KEY_POS, KEY_SHIFT, KEY_PAYMENTS, KEY_RECEIPT, KEY_SECURITY, KEY_INVENTORY, KEY_PRINTER, KEY_BACKUP, KEY_APPEARANCE, KEY_FEATURES];
+pub const EDITABLE_KEYS: &[&str] = &[
+    KEY_POS,
+    KEY_SHIFT,
+    KEY_PAYMENTS,
+    KEY_RECEIPT,
+    KEY_SECURITY,
+    KEY_INVENTORY,
+    KEY_PRINTER,
+    KEY_BACKUP,
+    KEY_APPEARANCE,
+    KEY_FEATURES,
+    KEY_WHATSAPP,
+];
 
 pub fn get<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> AppResult<T> {
     let v: Option<String> = conn.query_row("SELECT value_json FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()?;
@@ -317,6 +374,18 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
         }
         KEY_SHIFT => roundtrip::<ShiftSettings>(value)?,
         KEY_FEATURES => roundtrip::<FeatureFlags>(value)?,
+        KEY_WHATSAPP => {
+            let w: WhatsAppSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            if !["en", "ar"].contains(&w.default_lang.as_str()) {
+                return Err(AppError::validation("Default message language must be English or Arabic."));
+            }
+            for t in [&w.receipt, &w.dispatch, &w.reminder] {
+                if t.en.trim().is_empty() || t.ar.trim().is_empty() || t.en.len() > 2000 || t.ar.len() > 2000 {
+                    return Err(AppError::validation("Every message template needs English and Arabic text (up to 2000 characters)."));
+                }
+            }
+            serde_json::to_value(w)?
+        }
         KEY_PAYMENTS => {
             let p: PaymentSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if !p.tenders.iter().any(|t| t.enabled) {

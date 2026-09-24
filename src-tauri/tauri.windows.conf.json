@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/node/node.exe": "node/node.exe",
+      "../sidecar/package.json": "sidecar/package.json",
+      "../sidecar/src/": "sidecar/src/",
+      "../sidecar/models/": "sidecar/models/",
+      "../sidecar/node_modules/": "sidecar/node_modules/"
+    }
+  }
+}

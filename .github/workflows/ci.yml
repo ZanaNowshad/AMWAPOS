@@ -31,6 +31,8 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm test
+      - name: Sidecar tests (loopback-only server, token, single instance, offline OCR)
+        run: npm ci --prefix sidecar && npm test --prefix sidecar
       - run: npx vite build
 
   rust:
@@ -50,6 +52,8 @@ jobs:
       - run: mkdir -p dist && echo '<!doctype html>' > dist/index.html
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Sidecar modules (the supervisor test runs the real sidecar)
+        run: npm ci --prefix sidecar
       - run: cargo test --workspace
 
   audit:
@@ -61,6 +65,7 @@ jobs:
         with:
           node-version: 22
       - run: npm audit --omit=dev --audit-level=high
+      - run: npm audit --omit=dev --audit-level=high --prefix sidecar
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-audit --locked
       - run: cargo audit
@@ -105,6 +110,13 @@ jobs:
         run: |
           $c = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           if ($c.bundle.windows.webviewInstallMode.type -ne 'embedBootstrapper') { throw "webviewInstallMode must be embedBootstrapper" }
+      - name: Bundle the WhatsApp/OCR sidecar (Node runtime + production modules)
+        shell: pwsh
+        run: |
+          npm ci --omit=dev --prefix sidecar
+          New-Item -ItemType Directory -Force src-tauri/resources/node | Out-Null
+          Copy-Item (Get-Command node).Source src-tauri/resources/node/node.exe
+          node --version
       - run: npx tauri build --bundles nsis
       - name: Installer hashes
         shell: pwsh

@@ -268,6 +268,37 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "diagnostics.export" => out(core.diagnostics_export(tk()?)),
         "backup.list" => out(core.backups_list(tk()?)),
         "backup.health" => out(core.backup_health(tk()?)),
+        // receipts as PDF
+        "receipts.pdf" => out(core.receipt_pdf(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "ref_id")?)),
+        // WhatsApp (link state and sending are handled by the runtime + sidecar)
+        "whatsapp.queue" => out(core.wa_queue(tk()?, all(&args)?)),
+        "whatsapp.outbox" => out(core.wa_outbox_list(tk()?, opt(&args, "status")?, opt(&args, "limit")?)),
+        "whatsapp.outbox_action" => {
+            out(core.wa_outbox_action(tk()?, &req::<String>(&args, "message_id")?, &req::<String>(&args, "action")?))
+        }
+        "whatsapp.conversations" => out(core.wa_conversations(tk()?)),
+        "whatsapp.thread" => out(core.wa_thread(tk()?, &req::<String>(&args, "chat")?)),
+        "whatsapp.media" => out(core.wa_media(tk()?, req(&args, "seq")?)),
+        "whatsapp.mark_read" => out(core.wa_mark_read(tk()?, &req::<String>(&args, "chat")?)),
+        "whatsapp.summary" => out(core.wa_summary(tk()?)),
+        // payment screenshot reviews
+        "payreviews.list" => out(core.pr_list(tk()?, opt(&args, "status")?)),
+        "payreviews.get" => out(core.pr_get(tk()?, &req::<String>(&args, "review_id")?)),
+        "payreviews.upload" => {
+            out(core.pr_upload(tk()?, &req::<String>(&args, "path")?, opt(&args, "expected_minor")?, opt(&args, "delivery_id")?))
+        }
+        "payreviews.set_expected" => {
+            out(core.pr_set_expected(tk()?, &req::<String>(&args, "review_id")?, opt(&args, "expected_minor")?, opt(&args, "delivery_id")?))
+        }
+        "payreviews.decide" => out(core.pr_decide(tk()?, all(&args)?)),
+        // invoice scans (OCR → review → draft purchase order)
+        "invoicescan.import" => out(core.inv_import(tk()?, &req::<String>(&args, "path")?, opt(&args, "supplier_id")?)),
+        "invoicescan.list" => out(core.inv_list(tk()?, opt(&args, "status")?)),
+        "invoicescan.get" => out(core.inv_get(tk()?, &req::<String>(&args, "scan_id")?)),
+        "invoicescan.update_line" => out(core.inv_update_line(tk()?, all(&args)?)),
+        "invoicescan.confirm" => out(core.inv_confirm(tk()?, &req::<String>(&args, "scan_id")?, &req::<String>(&args, "supplier_id")?)),
+        "invoicescan.reject" => out(core.inv_reject(tk()?, &req::<String>(&args, "scan_id")?, &req::<String>(&args, "reason")?)),
+        "ocr.retry" => out(core.ocr_retry(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "id")?)),
         "backup.create" => out(core.backup_create(tk()?, opt(&args, "directory")?)),
         "backup.inspect" => out(core.backup_inspect(tk()?, &req::<String>(&args, "path")?)),
         "backup.restore" => {

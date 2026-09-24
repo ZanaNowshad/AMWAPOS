@@ -85,6 +85,7 @@ pub fn run() {
             let state = match AppCore::open(&dir, Arc::new(secrets::OsSecretStore)) {
                 Ok(core) => {
                     let rt = Runtime::new(Arc::new(core));
+                    rt.set_sidecar_resources(app.path().resource_dir().ok().as_deref());
                     let rt2 = rt.clone();
                     tauri::async_runtime::spawn(async move { rt2.ensure_services() });
                     AppState { rt: Some(rt), startup_error: None }
