@@ -19,6 +19,7 @@ rand.workspace = true
 hex.workspace = true
 csv.workspace = true
 fs4.workspace = true
+hmac.workspace = true
 tracing.workspace = true
 
 [target.'cfg(windows)'.dependencies]
