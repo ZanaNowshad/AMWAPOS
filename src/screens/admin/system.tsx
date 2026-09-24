@@ -31,6 +31,8 @@ import { formatMoney, formatPercent, parseMoney, parsePercent } from "../../lib/
 import { formatDateTime, formatShort, relative, todayLocal } from "../../lib/time";
 import { Banner, Button, Checkbox, Chip, Field, Modal, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Drawer, Pager, download, useAction, useLoad } from "./common";
+import { t, tb } from "../../i18n";
+import { codeLabel } from "../../i18n/codes";
 
 // ---------------- Devices ----------------
 
@@ -45,8 +47,8 @@ export function DevicesPage() {
   return (
     <div>
       <PageHeader
-        title="Devices"
-        subtitle="Terminals registered to this store. Revoking a terminal blocks its hub access immediately."
+        title={t("Devices")}
+        subtitle={t("Terminals registered to this store. Revoking a terminal blocks its hub access immediately.")}
       />
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <DataTable<DeviceRow>
@@ -57,23 +59,24 @@ export function DevicesPage() {
         columns={[
           {
             key: "n",
-            label: "Terminal Name",
+            label: t("Terminal Name"),
             render: (r) => (
               <span>
-                {r.name} {r.is_this_device ? <Chip tone="brand">This computer</Chip> : null}
+                {r.name} {r.is_this_device ? <Chip tone="brand">{t("This computer")}</Chip> : null}
               </span>
             ),
           },
-          { key: "c", label: "Code", render: (r) => <span className="mono">{r.device_code}</span> },
-          { key: "id", label: "Device ID", render: (r) => <span className="mono">{r.device_id.slice(-8)}</span> },
-          { key: "m", label: "Mode", render: (r) => r.mode },
-          { key: "b", label: "Branch", render: (r) => r.branch_name ?? "—" },
-          { key: "l", label: "Last Seen", render: (r) => (r.is_this_device ? "now" : relative(r.last_seen_at)) },
-          { key: "v", label: "Version", render: (r) => r.app_version ?? "—" },
+          { key: "c", label: t("Code"), render: (r) => <span className="mono">{r.device_code}</span> },
+          { key: "id", label: t("Device ID"), render: (r) => <span className="mono">{r.device_id.slice(-8)}</span> },
+          { key: "m", label: t("Mode"), render: (r) => r.mode },
+          { key: "b", label: t("Branch"), render: (r) => r.branch_name ?? "—" },
+          { key: "l", label: t("Last Seen"), render: (r) => (r.is_this_device ? "now" : relative(r.last_seen_at)) },
+          { key: "v", label: t("Version"), render: (r) => r.app_version ?? "—" },
           {
             key: "a",
-            label: "Status",
-            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip tone="danger">Revoked</Chip>),
+            label: t("Status"),
+            render: (r) =>
+              r.active ? <Chip tone="success">{t("Active")}</Chip> : <Chip tone="danger">{t("Revoked")}</Chip>,
           },
         ]}
       />
@@ -81,42 +84,47 @@ export function DevicesPage() {
         <Drawer title={open.name} onClose={() => setOpen(null)}>
           <div className="col gap-16">
             <dl className="kv">
-              <dt>Full device ID</dt>
+              <dt>{t("Full device ID")}</dt>
               <dd className="mono">{open.device_id}</dd>
-              <dt>Mode</dt>
-              <dd>{open.mode}</dd>
-              <dt>Registered</dt>
+              <dt>{t("Mode")}</dt>
+              <dd>{codeLabel(open.mode)}</dd>
+              <dt>{t("Registered")}</dt>
               <dd>{formatDateTime(open.activated_at)}</dd>
-              <dt>Version</dt>
+              <dt>{t("Version")}</dt>
               <dd>{open.app_version ?? "—"}</dd>
-              <dt>Last heartbeat</dt>
+              <dt>{t("Last heartbeat")}</dt>
               <dd>{formatDateTime(open.last_seen_at)}</dd>
-              <dt>Pending changes</dt>
+              <dt>{t("Pending changes")}</dt>
               <dd>{open.pending_count ?? "—"}</dd>
-              <dt>Last error</dt>
+              <dt>{t("Last error")}</dt>
               <dd>{open.last_error ?? "—"}</dd>
             </dl>
             {has("devices.manage") ? (
               <>
                 <div className="row" style={{ alignItems: "flex-end" }}>
-                  <TextInput label="Rename" value={name} onChange={(e) => setName(e.target.value)} fieldClass="grow" />
+                  <TextInput
+                    label={t("Rename")}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    fieldClass="grow"
+                  />
                   <Button
                     onClick={async () => {
                       const r = await act.run(() => api.devices.rename(open.device_id, name));
                       if (r) {
-                        toast("success", "Terminal renamed");
+                        toast("success", t("Terminal renamed"));
                         void reload();
                       }
                     }}
                   >
-                    Save
+                    {t("Save")}
                   </Button>
                 </div>
                 <div className="divider" />
-                <div className="tiny">Sensitive actions</div>
+                <div className="tiny">{t("Sensitive actions")}</div>
                 {open.active ? (
                   <Button variant="danger-outline" disabled={open.is_this_device} onClick={() => setRevoke(open)}>
-                    Revoke terminal
+                    {t("Revoke terminal")}
                   </Button>
                 ) : (
                   <Button
@@ -126,7 +134,7 @@ export function DevicesPage() {
                       void reload();
                     }}
                   >
-                    Re-activate terminal
+                    {t("Re-activate terminal")}
                   </Button>
                 )}
               </>
@@ -137,8 +145,8 @@ export function DevicesPage() {
       ) : null}
       {revoke ? (
         <Confirm
-          title="Revoke terminal"
-          confirmLabel="Revoke"
+          title={t("Revoke terminal")}
+          confirmLabel={t("Revoke")}
           danger
           busy={act.busy}
           error={act.error}
@@ -152,8 +160,10 @@ export function DevicesPage() {
             }
           }}
         >
-          {revoke.name} will no longer be able to synchronize with the hub. Its local records are kept and it can be
-          re-activated later.
+          {t(
+            "{0} will no longer be able to synchronize with the hub. Its local records are kept and it can be re-activated later.",
+            revoke.name,
+          )}
         </Confirm>
       ) : null}
     </div>
@@ -176,8 +186,8 @@ export function SyncPage() {
   const [resetCreds, setResetCreds] = useState(false);
   const act = useAction();
   useEffect(() => {
-    const t = setInterval(() => void st.reload(), 10000);
-    return () => clearInterval(t);
+    const tv = setInterval(() => void st.reload(), 10000);
+    return () => clearInterval(tv);
   }, [st]);
   const s = st.data as Record<string, unknown> | null;
   if (!s) return st.error ? <Banner tone="danger">{st.error}</Banner> : <Skeleton />;
@@ -196,8 +206,10 @@ export function SyncPage() {
   return (
     <div>
       <PageHeader
-        title="Sync / Hub"
-        subtitle="Terminals keep selling when the network is down. Changes synchronize automatically when the hub is reachable."
+        title={t("Sync / Hub")}
+        subtitle={t(
+          "Terminals keep selling when the network is down. Changes synchronize automatically when the hub is reachable.",
+        )}
         actions={
           mode === "terminal" ? (
             <Button
@@ -205,11 +217,11 @@ export function SyncPage() {
               loading={act.busy}
               onClick={async () => {
                 const r = await act.run(() => api.sync.runNow());
-                if (r) toast("success", "Synchronized", `${r.pushed} sent · ${r.pulled} received`);
+                if (r) toast("success", t("Synchronized"), `${r.pushed} sent · ${r.pulled} received`);
                 void st.reload();
               }}
             >
-              Sync now
+              {t("Sync now")}
             </Button>
           ) : null
         }
@@ -218,11 +230,11 @@ export function SyncPage() {
       {s.blocked_reason ? (
         <Banner
           tone="danger"
-          title="Synchronization paused"
+          title={t("Synchronization paused")}
           action={
             has("sync.manage") ? (
               <Button size="sm" onClick={async () => (await act.run(() => api.sync.unblock(true)), void st.reload())}>
-                I have checked the hub — resume
+                {t("I have checked the hub — resume")}
               </Button>
             ) : null
           }
@@ -232,7 +244,7 @@ export function SyncPage() {
       ) : null}
       <div className="kpis" style={{ margin: "16px 0" }}>
         <div className="card kpi">
-          <div className="k-label">Mode</div>
+          <div className="k-label">{t("Mode")}</div>
           <div className="k-value" style={{ textTransform: "capitalize" }}>
             {mode}
           </div>
@@ -240,17 +252,17 @@ export function SyncPage() {
         {mode === "terminal" ? (
           <>
             <div className="card kpi">
-              <div className="k-label">Pending changes</div>
+              <div className="k-label">{t("Pending changes")}</div>
               <div className="k-value">{String(s.pending)}</div>
             </div>
             <div className="card kpi">
-              <div className="k-label">Last successful sync</div>
+              <div className="k-label">{t("Last successful sync")}</div>
               <div className="k-value" style={{ fontSize: 16 }}>
                 {relative(s.last_success_at as string | null)}
               </div>
             </div>
             <div className="card kpi">
-              <div className="k-label">Hub</div>
+              <div className="k-label">{t("Hub")}</div>
               <div className="k-value" style={{ fontSize: 14 }}>
                 {String(s.hub_url)}
               </div>
@@ -258,25 +270,26 @@ export function SyncPage() {
           </>
         ) : null}
         <div className="card kpi">
-          <div className="k-label">Unresolved changes</div>
+          <div className="k-label">{t("Unresolved changes")}</div>
           <div className={`k-value ${Number(s.dead_letters) > 0 ? "neg-num" : ""}`}>{String(s.dead_letters)}</div>
         </div>
       </div>
       {mode === "terminal" && s.last_error ? (
-        <Banner tone="warning" title="Last sync attempt failed">
+        <Banner tone="warning" title={t("Last sync attempt failed")}>
           {String(s.last_error)} ({relative(s.last_error_at as string)})
         </Banner>
       ) : null}
       {mode === "standalone" && has("sync.manage") ? (
         <div className="card card-pad col gap-16">
-          <h3>Use this computer as the store hub</h3>
+          <h3>{t("Use this computer as the store hub")}</h3>
           <div className="muted">
-            Other tills can then pair with this computer over the store network. This computer keeps working exactly as
-            before; catalogue and settings are managed here.
+            {t(
+              "Other tills can then pair with this computer over the store network. This computer keeps working exactly as before; catalogue and settings are managed here.",
+            )}
           </div>
           <div>
             <Button variant="primary" icon={<Server size={16} />} onClick={() => setEnable(true)}>
-              Enable hub mode
+              {t("Enable hub mode")}
             </Button>
           </div>
         </div>
@@ -285,18 +298,18 @@ export function SyncPage() {
         <div className="grid-3" style={{ marginBottom: 16 }}>
           <div className="card">
             <div className="card-head">
-              <h3>Connected terminals</h3>
+              <h3>{t("Connected terminals")}</h3>
             </div>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Device</th>
-                  <th>Status</th>
-                  <th>Last Seen</th>
-                  <th className="num">Pending</th>
-                  <th>Last Push</th>
-                  <th>Last Pull</th>
-                  <th>Version</th>
+                  <th>{t("Device")}</th>
+                  <th>{t("Status")}</th>
+                  <th>{t("Last Seen")}</th>
+                  <th className="num">{t("Pending")}</th>
+                  <th>{t("Last Push")}</th>
+                  <th>{t("Last Pull")}</th>
+                  <th>{t("Version")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -320,19 +333,21 @@ export function SyncPage() {
             {devices.some((d) => d.status === "version_mismatch") ? (
               <div className="card-body">
                 <Banner tone="danger">
-                  A terminal runs a different AMWAPOS version than the hub (hub {String(s.app_version)}). It will not
-                  synchronize until both run the same version.
+                  {t(
+                    "A terminal runs a different AMWAPOS version than the hub (hub {0}). It will not synchronize until both run the same version.",
+                    String(s.app_version),
+                  )}
                 </Banner>
               </div>
             ) : null}
           </div>
           <div className="card card-pad col gap-16">
-            <h3>Pair a terminal</h3>
+            <h3>{t("Pair a terminal")}</h3>
             <div className="small muted">
-              On the new till choose “Join an existing hub” and enter this address and code.
+              {t("On the new till choose “Join an existing hub” and enter this address and code.")}
             </div>
             <div>
-              <div className="tiny">Hub address</div>
+              <div className="tiny">{t("Hub address")}</div>
               {(addr.data?.addresses ?? []).map((a) => (
                 <div key={a} className="mono" style={{ fontWeight: 600 }}>
                   {a}
@@ -340,13 +355,13 @@ export function SyncPage() {
               ))}
               {addr.data && !addr.data.running ? (
                 <Banner tone="warning">
-                  The hub service is not running. Restart AMWAPOS or check that port {addr.data.port} is free.
+                  {t("The hub service is not running. Restart AMWAPOS or check that port {0} is free.", addr.data.port)}
                 </Banner>
               ) : null}
             </div>
             {code ? (
               <div className="banner info col" style={{ alignItems: "flex-start" }}>
-                <div className="tiny">Pairing code (single use, expires {formatShort(code.expires_at)})</div>
+                <div className="tiny">{t("Pairing code (single use, expires {0})", formatShort(code.expires_at))}</div>
                 <div className="mono" style={{ fontSize: 30, fontWeight: 700, letterSpacing: "0.15em" }}>
                   {code.code}
                 </div>
@@ -361,16 +376,17 @@ export function SyncPage() {
                   if (r) setCode(r);
                 }}
               >
-                Generate pairing code
+                {t("Generate pairing code")}
               </Button>
             ) : null}
             <div className="tiny">
-              Pair one terminal at a time: a new code cancels the previous one, and five wrong entries cancel the code.
-              The code is never sent over the network; all hub traffic is encrypted and each terminal can be revoked.
+              {t(
+                "Pair one terminal at a time: a new code cancels the previous one, and five wrong entries cancel the code. The code is never sent over the network; all hub traffic is encrypted and each terminal can be revoked.",
+              )}
             </div>
             {has("sync.manage") ? (
               <Button size="sm" variant="ghost" onClick={() => setResetCreds(true)}>
-                Reset hub credentials…
+                {t("Reset hub credentials…")}
               </Button>
             ) : null}
           </div>
@@ -379,17 +395,17 @@ export function SyncPage() {
       {(dead.data ?? []).length ? (
         <div className="card">
           <div className="card-head">
-            <h3>Changes that could not be applied</h3>
+            <h3>{t("Changes that could not be applied")}</h3>
           </div>
           <table className="table">
             <thead>
               <tr>
-                <th>When</th>
-                <th>Direction</th>
-                <th>From</th>
-                <th>Record</th>
-                <th>Problem</th>
-                <th className="num">Attempts</th>
+                <th>{t("When")}</th>
+                <th>{t("Direction")}</th>
+                <th>{t("From")}</th>
+                <th>{t("Record")}</th>
+                <th>{t("Problem")}</th>
+                <th className="num">{t("Attempts")}</th>
                 <th />
               </tr>
             </thead>
@@ -397,7 +413,7 @@ export function SyncPage() {
               {(dead.data ?? []).map((d) => (
                 <tr key={String(d.dead_id)}>
                   <td>{formatShort(String(d.created_at))}</td>
-                  <td>{String(d.direction)}</td>
+                  <td>{codeLabel(String(d.direction))}</td>
                   <td>{String(d.origin ?? "—")}</td>
                   <td className="mono small">{String(d.table)}</td>
                   <td className="small">{String(d.error)}</td>
@@ -411,7 +427,7 @@ export function SyncPage() {
                         void st.reload()
                       )}
                     >
-                      Retry
+                      {t("Retry")}
                     </Button>
                   </td>
                 </tr>
@@ -422,8 +438,8 @@ export function SyncPage() {
       ) : null}
       {resetCreds ? (
         <Confirm
-          title="Reset hub credentials"
-          confirmLabel="Reset credentials"
+          title={t("Reset hub credentials")}
+          confirmLabel={t("Reset credentials")}
           danger
           busy={act.busy}
           error={act.error}
@@ -432,20 +448,20 @@ export function SyncPage() {
             const r = await act.run(() => api.sync.resetHubCredentials());
             if (r) {
               setResetCreds(false);
-              toast("success", "Hub credentials replaced. Pair every terminal again.");
+              toast("success", t("Hub credentials replaced. Pair every terminal again."));
               void st.reload();
             }
           }}
         >
-          Use this only when the hub reports its credential is missing or does not match. Every paired terminal will
-          stop syncing until it is paired again; their unsynced sales stay safe on the terminal and upload after
-          re-pairing.
+          {t(
+            "Use this only when the hub reports its credential is missing or does not match. Every paired terminal will stop syncing until it is paired again; their unsynced sales stay safe on the terminal and upload after re-pairing.",
+          )}
         </Confirm>
       ) : null}
       {enable ? (
         <Confirm
-          title="Enable hub mode"
-          confirmLabel="Enable hub"
+          title={t("Enable hub mode")}
+          confirmLabel={t("Enable hub")}
           busy={act.busy}
           error={act.error}
           onCancel={() => setEnable(false)}
@@ -453,13 +469,15 @@ export function SyncPage() {
             const r = await act.run(() => api.sync.enableHub());
             if (r) {
               setEnable(false);
-              toast("success", "Hub mode enabled");
+              toast("success", t("Hub mode enabled"));
               void st.reload();
             }
           }}
         >
-          This computer will accept connections from paired terminals on the store network (TCP port {String(s.port)}).
-          Make sure the Windows firewall allows AMWAPOS on private networks.
+          {t(
+            "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows AMWAPOS on private networks.",
+            String(s.port),
+          )}
         </Confirm>
       ) : null}
     </div>
@@ -499,12 +517,12 @@ export function ImportPage() {
     if (p) setPreview(p);
     return p;
   };
-  const steps = ["Upload", "Column Mapping", "Validation", "Preview", "Results"];
+  const steps = [t("Upload"), t("Column Mapping"), t("Validation"), t("Preview"), t("Results")];
   return (
     <div>
       <PageHeader
-        title="Import products"
-        subtitle="CSV import with explicit review. Nothing is changed until you press Apply Import."
+        title={t("Import products")}
+        subtitle={t("CSV import with explicit review. Nothing is changed until you press Apply Import.")}
       />
       <div className="row" style={{ marginBottom: 16 }}>
         {steps.map((s, i) => (
@@ -527,13 +545,14 @@ export function ImportPage() {
           }}
         >
           <Upload size={28} color="var(--brand)" />
-          <h3 style={{ margin: "10px 0 4px" }}>Drop a CSV file or choose one</h3>
+          <h3 style={{ margin: "10px 0 4px" }}>{t("Drop a CSV file or choose one")}</h3>
           <div className="small muted">
-            Columns such as Name, Barcode, Price, Cost, Category, SKU and Stock are detected automatically. Separate
-            multiple barcodes with |.
+            {t(
+              "Columns such as Name, Barcode, Price, Cost, Category, SKU and Stock are detected automatically. Separate multiple barcodes with |.",
+            )}
           </div>
           <label className="btn primary" style={{ marginTop: 16 }}>
-            Choose file
+            {t("Choose file")}
             <input
               type="file"
               accept=".csv,text/csv,.txt"
@@ -542,13 +561,13 @@ export function ImportPage() {
             />
           </label>
           <div style={{ marginTop: 12 }}>
-            <Checkbox label="Update existing products with the same SKU" checked={update} onChange={setUpdate} />
+            <Checkbox label={t("Update existing products with the same SKU")} checked={update} onChange={setUpdate} />
           </div>
         </div>
       ) : null}
       {step === 2 && preview && mapping ? (
         <div className="card card-pad col gap-16">
-          <h3>Map columns — {fileName}</h3>
+          <h3>{t("Map columns — {0}", fileName)}</h3>
           <div className="form-grid">
             {preview.fields.map((f) => (
               <Field key={f.key} label={f.label} required={f.key === "name"}>
@@ -557,7 +576,7 @@ export function ImportPage() {
                   value={mapping[f.key] ?? ""}
                   onChange={(e) => setMapping({ ...mapping, [f.key]: e.target.value })}
                 >
-                  <option value="">— not imported —</option>
+                  <option value="">{t("— not imported —")}</option>
                   {preview.columns.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -568,7 +587,7 @@ export function ImportPage() {
             ))}
           </div>
           <div className="row">
-            <Button onClick={() => setStep(1)}>Back</Button>
+            <Button onClick={() => setStep(1)}>{t("Back")}</Button>
             <Button
               variant="primary"
               className="right"
@@ -578,7 +597,7 @@ export function ImportPage() {
                 if (p) setStep(3);
               }}
             >
-              Validate
+              {t("Validate")}
             </Button>
           </div>
         </div>
@@ -587,10 +606,10 @@ export function ImportPage() {
         <div className="stack-16">
           <div className="kpis">
             {[
-              ["Valid (create)", preview.creates, "success"],
-              ["Valid (update)", preview.updates, "success"],
-              ["Rows with warnings", preview.warnings, "warning"],
-              ["Rows with errors", preview.errors, "danger"],
+              [t("Valid (create)"), preview.creates, "success"],
+              [t("Valid (update)"), preview.updates, "success"],
+              [t("Rows with warnings"), preview.warnings, "warning"],
+              [t("Rows with errors"), preview.errors, "danger"],
             ].map(([l, v]) => (
               <div key={String(l)} className="card kpi">
                 <div className="k-label">{l}</div>
@@ -603,18 +622,18 @@ export function ImportPage() {
             rows={preview.rows.filter((r) => r.errors.length || r.warnings.length)}
             rowKey={(r) => String(r.row)}
             maxHeight="50vh"
-            empty={<div className="empty">No problems found.</div>}
+            empty={<div className="empty">{t("No problems found.")}</div>}
             columns={[
-              { key: "r", label: "Row", num: true, render: (r) => r.row },
-              { key: "n", label: "Name", render: (r) => r.name || "—" },
+              { key: "r", label: t("Row"), num: true, render: (r) => r.row },
+              { key: "n", label: t("Name"), render: (r) => r.name || "—" },
               {
                 key: "b",
-                label: "Barcodes",
+                label: t("Barcodes"),
                 render: (r) => <span className="mono small">{r.barcodes.join(" | ")}</span>,
               },
               {
                 key: "p",
-                label: "Problem",
+                label: t("Problem"),
                 render: (r) => (
                   <div className="col small" style={{ gap: 2 }}>
                     {r.errors.map((e) => (
@@ -633,9 +652,13 @@ export function ImportPage() {
             ]}
           />
           <div className="row">
-            <Button onClick={() => setStep(2)}>Back</Button>
+            <Button onClick={() => setStep(2)}>{t("Back")}</Button>
             {preview.errors > 0 ? (
-              <Checkbox label={`Skip the ${preview.errors} row(s) with errors`} checked={skip} onChange={setSkip} />
+              <Checkbox
+                label={t("Skip the {0} row(s) with errors", preview.errors)}
+                checked={skip}
+                onChange={setSkip}
+              />
             ) : null}
             <Button
               variant="primary"
@@ -643,24 +666,24 @@ export function ImportPage() {
               disabled={preview.errors > 0 && !skip}
               onClick={() => setStep(4)}
             >
-              Continue
+              {t("Continue")}
             </Button>
           </div>
         </div>
       ) : null}
       {step === 4 && preview ? (
         <div className="card card-pad col gap-16">
-          <h3>Preview</h3>
+          <h3>{t("Preview")}</h3>
           <dl className="kv">
-            <dt>Creates</dt>
+            <dt>{t("Creates")}</dt>
             <dd>{preview.creates}</dd>
-            <dt>Updates</dt>
+            <dt>{t("Updates")}</dt>
             <dd>{preview.updates}</dd>
-            <dt>Skipped</dt>
+            <dt>{t("Skipped")}</dt>
             <dd>{skip ? preview.errors : 0}</dd>
-            <dt>Barcodes added</dt>
+            <dt>{t("Barcodes added")}</dt>
             <dd>{preview.barcodes_added}</dd>
-            <dt>New categories</dt>
+            <dt>{t("New categories")}</dt>
             <dd>{preview.new_categories.join(", ") || "—"}</dd>
           </dl>
           <DataTable
@@ -669,21 +692,25 @@ export function ImportPage() {
             columns={[
               {
                 key: "a",
-                label: "Action",
-                render: (r) => <Chip tone={r.action === "create" ? "success" : "info"}>{r.action}</Chip>,
+                label: t("Action"),
+                render: (r) => (
+                  <Chip tone={r.action === "create" ? "success" : "info"}>
+                    {r.action === "create" ? t("Creates") : t("Updated")}
+                  </Chip>
+                ),
               },
-              { key: "n", label: "Name", render: (r) => r.name },
-              { key: "s", label: "SKU", render: (r) => r.sku ?? "auto" },
+              { key: "n", label: t("Name"), render: (r) => r.name },
+              { key: "s", label: t("SKU"), render: (r) => r.sku ?? t("auto") },
               {
                 key: "b",
-                label: "Barcodes",
+                label: t("Barcodes"),
                 render: (r) => <span className="mono small">{r.barcodes.join(" | ")}</span>,
               },
-              { key: "p", label: "Price", num: true, render: (r) => formatMoney(r.price_minor) },
+              { key: "p", label: t("Price"), num: true, render: (r) => formatMoney(r.price_minor) },
             ]}
           />
           <div className="row">
-            <Button onClick={() => setStep(3)}>Back</Button>
+            <Button onClick={() => setStep(3)}>{t("Back")}</Button>
             <Button
               variant="primary"
               className="right"
@@ -701,11 +728,11 @@ export function ImportPage() {
                 if (r) {
                   setResult(r);
                   setStep(5);
-                  toast("success", "Import completed");
+                  toast("success", t("Import completed"));
                 }
               }}
             >
-              Apply Import
+              {t("Apply Import")}
             </Button>
           </div>
         </div>
@@ -713,25 +740,25 @@ export function ImportPage() {
       {step === 5 && result ? (
         <div className="card card-pad col gap-16">
           <div className="row">
-            <CheckCircle2 color="var(--success)" /> <h3>Import completed</h3>
+            <CheckCircle2 color="var(--success)" /> <h3>{t("Import completed")}</h3>
           </div>
           <dl className="kv">
-            <dt>Products created</dt>
+            <dt>{t("Products created")}</dt>
             <dd>{result.created}</dd>
-            <dt>Products updated</dt>
+            <dt>{t("Products updated")}</dt>
             <dd>{result.updated}</dd>
-            <dt>Rows skipped</dt>
+            <dt>{t("Rows skipped")}</dt>
             <dd>{result.skipped}</dd>
-            <dt>Barcodes added</dt>
+            <dt>{t("Barcodes added")}</dt>
             <dd>{result.barcodes_added}</dd>
-            <dt>Categories created</dt>
+            <dt>{t("Categories created")}</dt>
             <dd>{result.categories_created}</dd>
-            <dt>Duration</dt>
+            <dt>{t("Duration")}</dt>
             <dd>{result.duration_ms} ms</dd>
           </dl>
           <div>
             <Button onClick={() => (setStep(1), setCsv(""), setPreview(null), setOpId(newOperationId()))}>
-              Import another file
+              {t("Import another file")}
             </Button>
           </div>
         </div>
@@ -768,7 +795,7 @@ export function BackupsPage() {
   return (
     <div>
       <PageHeader
-        title="Backups"
+        title={t("Backups")}
         actions={
           <Button
             variant="primary"
@@ -779,73 +806,73 @@ export function BackupsPage() {
               if (r) {
                 toast(
                   "success",
-                  "Backup created and verified",
+                  t("Backup created and verified"),
                   `${r.file_name} · ${((r.size_bytes ?? 0) / 1048576).toFixed(1)} MB in ${r.duration_ms} ms`,
                 );
                 void reload();
               }
             }}
           >
-            Backup Now
+            {t("Backup Now")}
           </Button>
         }
       />
       {act.error && !restoring ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="kpis" style={{ marginBottom: 16 }}>
         <div className="card kpi">
-          <div className="k-label">Last successful backup</div>
+          <div className="k-label">{t("Last successful backup")}</div>
           <div className="k-value" style={{ fontSize: 16 }}>
-            {data.last_success_at ? formatDateTime(String(data.last_success_at)) : "Never"}
+            {data.last_success_at ? formatDateTime(String(data.last_success_at)) : t("Never")}
           </div>
         </div>
         <div className="card kpi">
-          <div className="k-label">Next automatic backup</div>
+          <div className="k-label">{t("Next automatic backup")}</div>
           <div className="k-value" style={{ fontSize: 16 }}>
             {data.next_due_at
               ? formatDateTime(String(data.next_due_at))
               : (data.settings as { automatic: boolean }).automatic
-                ? "Within the next minute"
-                : "Disabled"}
+                ? t("Within the next minute")
+                : t("Disabled")}
           </div>
         </div>
         <div className="card kpi">
-          <div className="k-label">Folder</div>
+          <div className="k-label">{t("Folder")}</div>
           <div className="k-value mono" style={{ fontSize: 12.5, wordBreak: "break-all" }}>
             {String(data.directory)}
           </div>
           <div className="k-delta muted">
-            {data.free_bytes ? `${(Number(data.free_bytes) / 1073741824).toFixed(1)} GB free` : ""}
+            {data.free_bytes ? t("{0} GB free", (Number(data.free_bytes) / 1073741824).toFixed(1)) : ""}
           </div>
         </div>
       </div>
       <DataTable<BackupRow>
         rows={backups}
         rowKey={(r) => r.path + r.created_at}
-        empty={<div className="empty">No backups yet. Create one now.</div>}
+        empty={<div className="empty">{t("No backups yet. Create one now.")}</div>}
         columns={[
-          { key: "d", label: "Date", render: (r) => formatDateTime(r.created_at), sort: (r) => r.created_at },
-          { key: "k", label: "Type", render: (r) => r.kind },
+          { key: "d", label: t("Date"), render: (r) => formatDateTime(r.created_at), sort: (r) => r.created_at },
+          { key: "k", label: t("Type"), render: (r) => r.kind },
           {
             key: "s",
-            label: "Size",
+            label: t("Size"),
             num: true,
             render: (r) => (r.size_bytes ? `${(r.size_bytes / 1048576).toFixed(1)} MB` : "—"),
           },
           {
             key: "st",
-            label: "Status",
+            label: t("Status"),
             render: (r) =>
               r.status === "completed" ? (
                 r.exists ? (
-                  <Chip tone="success">Verified</Chip>
+                  <Chip tone="success">{t("Verified")}</Chip>
                 ) : (
-                  <Chip tone="warning">File missing</Chip>
+                  <Chip tone="warning">{t("File missing")}</Chip>
                 )
               ) : (
-                <Chip tone="danger">Failed</Chip>
+                <Chip tone="danger">{t("Failed")}</Chip>
               ),
           },
-          { key: "f", label: "File", render: (r) => <span className="mono small">{r.file_name || r.error}</span> },
+          { key: "f", label: t("File"), render: (r) => <span className="mono small">{r.file_name || r.error}</span> },
           {
             key: "a",
             label: "",
@@ -853,7 +880,7 @@ export function BackupsPage() {
             render: (r) =>
               has("backup.restore") && r.exists && r.status === "completed" ? (
                 <Button size="sm" icon={<RotateCcw size={14} />} onClick={() => void inspect(r.path)}>
-                  Restore
+                  {t("Restore")}
                 </Button>
               ) : null,
           },
@@ -862,30 +889,30 @@ export function BackupsPage() {
       {has("backup.restore") ? (
         <div className="card card-pad row" style={{ marginTop: 16, alignItems: "flex-end" }}>
           <TextInput
-            label="Restore from another file (full path)"
+            label={t("Restore from another file (full path)")}
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             fieldClass="grow"
-            placeholder="E:\\AMWAPOS backups\\AMWAPOS-MAIN-manual-20260924-190000.amwbak"
+            placeholder={t("E:\\\\AMWAPOS backups\\\\AMWAPOS-MAIN-manual-20260924-190000.amwbak")}
           />
           <Button disabled={!custom.trim()} onClick={() => void inspect(custom.trim())}>
-            Inspect
+            {t("Inspect")}
           </Button>
         </div>
       ) : null}
       {restoring ? (
         <Modal
-          title="Restore backup"
+          title={t("Restore backup")}
           size="lg"
           onClose={() => (setRestoring(null), act.setError(null))}
           footer={
             restored ? (
               <Button variant="primary" className="right" onClick={() => void logout()}>
-                Sign in again
+                {t("Sign in again")}
               </Button>
             ) : (
               <>
-                <Button onClick={() => setRestoring(null)}>Cancel</Button>
+                <Button onClick={() => setRestoring(null)}>{t("Cancel")}</Button>
                 <Button
                   variant="danger"
                   className="right"
@@ -896,7 +923,7 @@ export function BackupsPage() {
                     if (r) setRestored(r);
                   }}
                 >
-                  Restore
+                  {t("Restore")}
                 </Button>
               </>
             )
@@ -904,13 +931,15 @@ export function BackupsPage() {
         >
           {restored ? (
             <div className="col gap-16">
-              <Banner tone="success" title="Restore completed">
-                Restored in {String(restored.duration_ms)} ms. Record counts{" "}
-                {restored.counts_verified ? "match the backup" : "differ (the backup was upgraded to this version)"}. A
-                safety backup of the replaced data was saved to{" "}
+              <Banner tone="success" title={t("Restore completed")}>
+                {t("Restored in {0} ms. Record counts", String(restored.duration_ms))}{" "}
+                {restored.counts_verified
+                  ? t("match the backup")
+                  : t("differ (the backup was upgraded to this version)")}
+                {t(". A safety backup of the replaced data was saved to")}{" "}
                 <span className="mono">{String(restored.safety_backup)}</span>.
               </Banner>
-              <div className="small">Everyone must sign in again.</div>
+              <div className="small">{t("Everyone must sign in again.")}</div>
             </div>
           ) : !insp ? (
             act.error ? (
@@ -920,40 +949,39 @@ export function BackupsPage() {
             )
           ) : (
             <div className="col gap-16">
-              <Banner tone="warning" title="This replaces all current data on this computer">
-                Every sale, product and setting recorded after this backup was made will be replaced. A safety backup of
-                the current data is taken automatically first.
+              <Banner tone="warning" title={t("This replaces all current data on this computer")}>
+                {t(
+                  "Every sale, product and setting recorded after this backup was made will be replaced. A safety backup of the current data is taken automatically first.",
+                )}
               </Banner>
               <dl className="kv">
-                <dt>File</dt>
+                <dt>{t("File")}</dt>
                 <dd className="mono small">{insp.path}</dd>
-                <dt>Business</dt>
+                <dt>{t("Business")}</dt>
                 <dd>{insp.business_name ?? "—"}</dd>
-                <dt>Created</dt>
+                <dt>{t("Created")}</dt>
                 <dd>{formatDateTime(insp.created_at)}</dd>
-                <dt>Integrity</dt>
+                <dt>{t("Integrity")}</dt>
                 <dd>
                   {insp.integrity === "ok" ? (
-                    <Chip tone="success">OK</Chip>
+                    <Chip tone="success">{t("OK")}</Chip>
                   ) : (
                     <Chip tone="danger">{insp.integrity}</Chip>
                   )}
                 </dd>
-                <dt>Checksum</dt>
+                <dt>{t("Checksum")}</dt>
                 <dd>
                   {insp.checksum_matches === null ? (
-                    "No manifest"
+                    t("No manifest")
                   ) : insp.checksum_matches ? (
-                    <Chip tone="success">Matches</Chip>
+                    <Chip tone="success">{t("Matches")}</Chip>
                   ) : (
-                    <Chip tone="danger">Mismatch</Chip>
+                    <Chip tone="danger">{t("Mismatch")}</Chip>
                   )}
                 </dd>
-                <dt>Schema</dt>
-                <dd>
-                  {insp.schema_version} (this version: {insp.current_schema_version})
-                </dd>
-                <dt>Records</dt>
+                <dt>{t("Schema")}</dt>
+                <dd>{t("{0} (this version: {1})", insp.schema_version, insp.current_schema_version)}</dd>
+                <dt>{t("Records")}</dt>
                 <dd className="small">
                   {Object.entries(insp.record_counts)
                     .filter(([, v]) => v > 0)
@@ -968,12 +996,16 @@ export function BackupsPage() {
               ))}
               {!insp.same_business ? (
                 <Checkbox
-                  label={`I understand this backup belongs to a different business (${insp.business_name}).`}
+                  label={t("I understand this backup belongs to a different business ({0}).", insp.business_name)}
                   checked={ack}
                   onChange={setAck}
                 />
               ) : null}
-              <TextInput label='Type "RESTORE" to confirm' value={typed} onChange={(e) => setTyped(e.target.value)} />
+              <TextInput
+                label={t('Type "RESTORE" to confirm')}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value)}
+              />
               {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
             </div>
           )}
@@ -1008,13 +1040,13 @@ export function AuditPage() {
   return (
     <div>
       <PageHeader
-        title="Audit"
-        subtitle="Tamper-evident log of every sensitive action. Entries cannot be edited or deleted."
+        title={t("Audit")}
+        subtitle={t("Tamper-evident log of every sensitive action. Entries cannot be edited or deleted.")}
       />
       {verify.data ? (
         <Banner
           tone={verify.data.valid ? "success" : "danger"}
-          title={verify.data.valid ? "Audit chain verified" : "Audit chain broken"}
+          title={verify.data.valid ? t("Audit chain verified") : t("Audit chain broken")}
         >
           {verify.data.message}
         </Banner>
@@ -1024,7 +1056,7 @@ export function AuditPage() {
         <input
           className="input"
           style={{ width: 180 }}
-          placeholder="Action (e.g. price)"
+          placeholder={t("Action (e.g. price)")}
           value={event}
           onChange={(e) => (setEvent(e.target.value), setOffset(0))}
         />
@@ -1033,9 +1065,9 @@ export function AuditPage() {
           style={{ width: 160 }}
           value={entity}
           onChange={(e) => (setEntity(e.target.value), setOffset(0))}
-          aria-label="Entity"
+          aria-label={t("Entity")}
         >
-          <option value="">All entities</option>
+          <option value="">{t("All entities")}</option>
           {[
             "sale",
             "refund",
@@ -1065,12 +1097,12 @@ export function AuditPage() {
         rowKey={(r) => r.audit_id}
         onRowClick={setOpen}
         columns={[
-          { key: "t", label: "Time", render: (r) => formatShort(r.created_at) },
-          { key: "u", label: "User", render: (r) => r.user_name ?? "System" },
-          { key: "a", label: "Action", render: (r) => <span className="mono small">{r.event_type}</span> },
-          { key: "e", label: "Entity", render: (r) => r.entity_type },
-          { key: "ap", label: "Approved by", render: (r) => r.approver_name ?? "—" },
-          { key: "d", label: "Device", render: (r) => r.device_name ?? "—" },
+          { key: "t", label: t("Time"), render: (r) => formatShort(r.created_at) },
+          { key: "u", label: t("User"), render: (r) => r.user_name ?? t("System") },
+          { key: "a", label: t("Action"), render: (r) => <span className="mono small">{r.event_type}</span> },
+          { key: "e", label: t("Entity"), render: (r) => r.entity_type },
+          { key: "ap", label: t("Approved by"), render: (r) => r.approver_name ?? "—" },
+          { key: "d", label: t("Device"), render: (r) => r.device_name ?? "—" },
         ]}
       />
       {data ? <Pager total={data.total} limit={100} offset={offset} onChange={setOffset} /> : null}
@@ -1078,22 +1110,22 @@ export function AuditPage() {
         <Drawer title={open.event_type} onClose={() => setOpen(null)}>
           <div className="col gap-16">
             <dl className="kv">
-              <dt>Time</dt>
+              <dt>{t("Time")}</dt>
               <dd>{formatDateTime(open.created_at)}</dd>
-              <dt>User</dt>
-              <dd>{open.user_name ?? "System"}</dd>
-              <dt>Approved by</dt>
+              <dt>{t("User")}</dt>
+              <dd>{open.user_name ?? t("System")}</dd>
+              <dt>{t("Approved by")}</dt>
               <dd>{open.approver_name ?? "—"}</dd>
-              <dt>Device</dt>
+              <dt>{t("Device")}</dt>
               <dd>{open.device_name ?? "—"}</dd>
-              <dt>Entity</dt>
+              <dt>{t("Entity")}</dt>
               <dd className="mono small">
                 {open.entity_type} {open.entity_id}
               </dd>
             </dl>
             <AuditDiff before={open.before} after={open.after} />
             <details className="tech">
-              <summary>Technical details</summary>
+              <summary>{t("Technical details")}</summary>
               <pre>
                 {JSON.stringify(
                   {
@@ -1118,15 +1150,15 @@ function AuditDiff({ before, after }: { before: unknown; after: unknown }) {
   const b = (before && typeof before === "object" ? before : {}) as Record<string, unknown>;
   const a = (after && typeof after === "object" ? after : {}) as Record<string, unknown>;
   const keys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]));
-  if (!keys.length) return <div className="small muted">No field changes recorded.</div>;
+  if (!keys.length) return <div className="small muted">{t("No field changes recorded.")}</div>;
   const show = (v: unknown) => (v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
   return (
     <table className="table">
       <thead>
         <tr>
-          <th>Field</th>
-          <th>Before</th>
-          <th>After</th>
+          <th>{t("Field")}</th>
+          <th>{t("Before")}</th>
+          <th>{t("After")}</th>
         </tr>
       </thead>
       <tbody>
@@ -1165,24 +1197,24 @@ type Section =
 export function SettingsPage() {
   const [section, setSection] = useState<Section>("business");
   const sections: [Section, string][] = [
-    ["business", "Business"],
-    ["tax", "Tax"],
-    ["pos", "POS"],
-    ["shift", "Shifts & cash"],
-    ["payments", "Payments"],
-    ["receipt", "Receipts"],
-    ["printer", "Printers"],
-    ["inventory", "Inventory"],
-    ["security", "Security"],
-    ["backup", "Backups"],
-    ["appearance", "Appearance"],
-    ["about", "About"],
+    ["business", t("Business")],
+    ["tax", t("Tax")],
+    ["pos", t("POS")],
+    ["shift", t("Shifts & cash")],
+    ["payments", t("Payments")],
+    ["receipt", t("Receipts")],
+    ["printer", t("Printers")],
+    ["inventory", t("Inventory")],
+    ["security", t("Security")],
+    ["backup", t("Backups")],
+    ["appearance", t("Appearance")],
+    ["about", t("About")],
   ];
   return (
     <div>
-      <PageHeader title="Settings" />
+      <PageHeader title={t("Settings")} />
       <div className="settings-layout">
-        <nav className="subnav" aria-label="Settings sections">
+        <nav className="subnav" aria-label={t("Settings sections")}>
           {sections.map(([k, l]) => (
             <button key={k} className={section === k ? "active" : ""} onClick={() => setSection(k)}>
               {l}
@@ -1214,7 +1246,7 @@ function SaveBar({ onSave, busy, error }: { onSave: () => void; busy: boolean; e
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <div>
         <Button variant="primary" onClick={onSave} loading={busy}>
-          Save changes
+          {t("Save changes")}
         </Button>
       </div>
     </div>
@@ -1232,44 +1264,44 @@ function BusinessSettings() {
     <div className="card card-pad">
       <div className="form-grid">
         <TextInput
-          label="Business name"
+          label={t("Business name")}
           required
           value={String(data.name ?? "")}
           onChange={(e) => set("name", e.target.value)}
         />
         <TextInput
-          label="Arabic name"
+          label={t("Arabic name")}
           dir="rtl"
           value={String(data.name_ar ?? "")}
           onChange={(e) => set("name_ar", e.target.value)}
         />
         <TextInput
-          label="CR number"
+          label={t("CR number")}
           value={String(data.cr_number ?? "")}
           onChange={(e) => set("cr_number", e.target.value)}
         />
         <TextInput
-          label="VAT number"
+          label={t("VAT number")}
           value={String(data.vat_number ?? "")}
           onChange={(e) => set("vat_number", e.target.value)}
         />
-        <TextInput label="Phone" value={String(data.phone ?? "")} onChange={(e) => set("phone", e.target.value)} />
+        <TextInput label={t("Phone")} value={String(data.phone ?? "")} onChange={(e) => set("phone", e.target.value)} />
         <TextInput
-          label="Timezone"
+          label={t("Timezone")}
           value={String(data.timezone ?? "")}
           onChange={(e) => set("timezone", e.target.value)}
         />
         <TextInput
-          label="Address"
+          label={t("Address")}
           value={String(data.address ?? "")}
           onChange={(e) => set("address", e.target.value)}
           fieldClass="span-2"
         />
         <TextInput
-          label="Currency"
+          label={t("Currency")}
           value={String(data.currency ?? "")}
           disabled
-          hint="The currency is locked after the first sale."
+          hint={t("The currency is locked after the first sale.")}
         />
       </div>
       <SaveBar
@@ -1278,7 +1310,7 @@ function BusinessSettings() {
         onSave={async () => {
           const r = await act.run(() => api.business.update(data));
           if (r) {
-            toast("success", "Business details saved");
+            toast("success", t("Business details saved"));
             await reloadConfig();
           }
         }}
@@ -1298,22 +1330,23 @@ function TaxSettings() {
   return (
     <div className="col gap-16">
       <Banner tone="info">
-        Tax rules are versioned. To change a rate, create a new rule and move products to it; past sales keep the rate
-        they were sold with.
+        {t(
+          "Tax rules are versioned. To change a rate, create a new rule and move products to it; past sales keep the rate they were sold with.",
+        )}
       </Banner>
       <DataTable<TaxRuleRow>
         rows={data}
         rowKey={(r) => r.tax_rule_id}
         columns={[
-          { key: "n", label: "Name", render: (r) => r.name },
-          { key: "r", label: "Rate", num: true, render: (r) => formatPercent(r.rate_bp) },
-          { key: "i", label: "Prices", render: (r) => (r.inclusive ? "Include VAT" : "Exclude VAT") },
-          { key: "p", label: "Products", num: true, render: (r) => r.product_count },
-          { key: "f", label: "Since", render: (r) => formatShort(r.effective_from) },
+          { key: "n", label: t("Name"), render: (r) => r.name },
+          { key: "r", label: t("Rate"), num: true, render: (r) => formatPercent(r.rate_bp) },
+          { key: "i", label: t("Prices"), render: (r) => (r.inclusive ? t("Include VAT") : t("Exclude VAT")) },
+          { key: "p", label: t("Products"), num: true, render: (r) => r.product_count },
+          { key: "f", label: t("Since"), render: (r) => formatShort(r.effective_from) },
           {
             key: "s",
-            label: "Status",
-            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>),
+            label: t("Status"),
+            render: (r) => (r.active ? <Chip tone="success">{t("Active")}</Chip> : <Chip>{t("Inactive")}</Chip>),
           },
           {
             key: "a",
@@ -1324,26 +1357,31 @@ function TaxSettings() {
                 size="sm"
                 onClick={async () => (await act.run(() => api.tax.setActive(r.tax_rule_id, !r.active)), void reload())}
               >
-                {r.active ? "Deactivate" : "Activate"}
+                {r.active ? t("Deactivate") : t("Activate")}
               </Button>
             ),
           },
         ]}
       />
       <div className="card card-pad col gap-16">
-        <h3>New tax rule</h3>
+        <h3>{t("New tax rule")}</h3>
         <div className="form-grid">
-          <TextInput label="Name" value={name} onChange={(e) => setName(e.target.value)} placeholder="VAT 10%" />
-          <TextInput label="Rate (%)" value={rate} onChange={(e) => setRate(e.target.value)} className="num" />
-          <Checkbox label="Prices include this tax" checked={incl} onChange={setIncl} />
-          <Field label="Replace existing rule (moves its products)">
+          <TextInput
+            label={t("Name")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("VAT 10%")}
+          />
+          <TextInput label={t("Rate (%)")} value={rate} onChange={(e) => setRate(e.target.value)} className="num" />
+          <Checkbox label={t("Prices include this tax")} checked={incl} onChange={setIncl} />
+          <Field label={t("Replace existing rule (moves its products)")}>
             <select className="select" value={replace} onChange={(e) => setReplace(e.target.value)}>
-              <option value="">Do not replace</option>
+              <option value="">{t("Do not replace")}</option>
               {(data ?? [])
-                .filter((t) => t.active)
-                .map((t) => (
-                  <option key={t.tax_rule_id} value={t.tax_rule_id}>
-                    {t.name} ({t.product_count} products)
+                .filter((tv) => tv.active)
+                .map((tv) => (
+                  <option key={tv.tax_rule_id} value={tv.tax_rule_id}>
+                    {t("{0} ({1} products)", tv.name, tv.product_count)}
                   </option>
                 ))}
             </select>
@@ -1357,7 +1395,7 @@ function TaxSettings() {
             onClick={async () => {
               const r = await act.run(() => api.tax.create(name, parsePercent(rate)!, incl, replace || null));
               if (r) {
-                toast("success", "Tax rule created");
+                toast("success", t("Tax rule created"));
                 setName("");
                 setRate("");
                 setReplace("");
@@ -1365,7 +1403,7 @@ function TaxSettings() {
               }
             }}
           >
-            Create rule
+            {t("Create rule")}
           </Button>
         </div>
       </div>
@@ -1375,36 +1413,40 @@ function TaxSettings() {
 
 const DESCRIPTIONS: Record<string, Record<string, string>> = {
   pos: {
-    allow_negative_stock: "Allow selling tracked items when recorded stock is zero or below without manager approval.",
-    allow_custom_item: "Allow custom (non-catalogue) items at the till.",
-    cashier_max_discount_bp: "Largest discount (basis points, 1000 = 10%) a cashier can give without manager approval.",
-    idle_lock_minutes: "Lock the terminal after this many idle minutes (0 = never). The current sale is kept.",
-    receipt_auto_print: "Print a receipt automatically after every sale.",
-    return_to_scan_seconds: "Seconds before the success screen returns to a new sale (0 = wait for the cashier).",
-    scan_sound: "Play a short tone on scans and errors.",
-    duplicate_scan_window_ms: "Ignore an identical barcode scanned again within this many milliseconds (0 = off).",
+    allow_negative_stock: t(
+      "Allow selling tracked items when recorded stock is zero or below without manager approval.",
+    ),
+    allow_custom_item: t("Allow custom (non-catalogue) items at the till."),
+    cashier_max_discount_bp: t(
+      "Largest discount (basis points, 1000 = 10%) a cashier can give without manager approval.",
+    ),
+    idle_lock_minutes: t("Lock the terminal after this many idle minutes (0 = never). The current sale is kept."),
+    receipt_auto_print: t("Print a receipt automatically after every sale."),
+    return_to_scan_seconds: t("Seconds before the success screen returns to a new sale (0 = wait for the cashier)."),
+    scan_sound: t("Play a short tone on scans and errors."),
+    duplicate_scan_window_ms: t("Ignore an identical barcode scanned again within this many milliseconds (0 = off)."),
   },
   shift: {
-    blind_close: "Hide the expected drawer amount from cashiers until they have counted.",
-    variance_approval_minor: "Cash differences above this amount (minor units) need manager acknowledgement.",
-    paid_out_approval_minor: "Paid-outs above this amount (minor units) need manager approval (0 = off).",
+    blind_close: t("Hide the expected drawer amount from cashiers until they have counted."),
+    variance_approval_minor: t("Cash differences above this amount (minor units) need manager acknowledgement."),
+    paid_out_approval_minor: t("Paid-outs above this amount (minor units) need manager approval (0 = off)."),
   },
   inventory: {
-    costing_method: "Costing method used for margins. v1 supports weighted average only.",
-    require_adjust_reason: "Require a reason for manual stock adjustments.",
-    stocktake_blind_default: "New stocktakes hide expected quantities while counting.",
+    costing_method: t("Costing method used for margins. v1 supports weighted average only."),
+    require_adjust_reason: t("Require a reason for manual stock adjustments."),
+    stocktake_blind_default: t("New stocktakes hide expected quantities while counting."),
   },
   security: {
-    pin_min_length: "Minimum PIN length.",
-    pin_max_length: "Maximum PIN length.",
-    max_failed_attempts: "Incorrect PINs before an account is locked.",
-    lockout_minutes: "How long a locked account stays locked.",
+    pin_min_length: t("Minimum PIN length."),
+    pin_max_length: t("Maximum PIN length."),
+    max_failed_attempts: t("Incorrect PINs before an account is locked."),
+    lockout_minutes: t("How long a locked account stays locked."),
   },
   "local.backup": {
-    directory: "Folder for backups. Prefer a second disk or USB drive.",
-    automatic: "Create verified backups automatically.",
-    interval_hours: "Hours between automatic backups.",
-    keep: "Number of automatic backups to keep.",
+    directory: t("Folder for backups. Prefer a second disk or USB drive."),
+    automatic: t("Create verified backups automatically."),
+    interval_hours: t("Hours between automatic backups."),
+    keep: t("Number of automatic backups to keep."),
   },
 };
 
@@ -1434,7 +1476,7 @@ function JsonSettings({ k }: { k: string }) {
                 disabled={key === "costing_method"}
               />
               {help ? (
-                <div className="tiny" style={{ marginLeft: 24 }}>
+                <div className="tiny" style={{ marginInlineStart: 24 }}>
                   {help}
                 </div>
               ) : null}
@@ -1474,7 +1516,7 @@ function JsonSettings({ k }: { k: string }) {
         onSave={async () => {
           const r = await act.run(() => api.settings.save(k, data));
           if (r) {
-            toast("success", "Settings saved");
+            toast("success", t("Settings saved"));
             setData(r);
             await reloadConfig();
           }
@@ -1505,36 +1547,37 @@ function PaymentSettings() {
   return (
     <div className="card card-pad col gap-16">
       <Banner tone="info">
-        Card, BenefitPay and bank transfers are recorded as tenders. AMWAPOS does not verify settlement until an
-        authorised payment-provider integration is added.
+        {t(
+          "Card, BenefitPay and bank transfers are recorded as tenders. AMWAPOS does not verify settlement until an authorised payment-provider integration is added.",
+        )}
       </Banner>
       <table className="table">
         <thead>
           <tr>
-            <th>Method</th>
-            <th>Label</th>
-            <th>Enabled</th>
-            <th>Requires reference</th>
+            <th>{t("Method")}</th>
+            <th>{t("Label")}</th>
+            <th>{t("Enabled")}</th>
+            <th>{t("Requires reference")}</th>
           </tr>
         </thead>
         <tbody>
-          {data.tenders.map((t, i) => (
-            <tr key={t.method}>
-              <td className="mono">{t.method}</td>
+          {data.tenders.map((tv, i) => (
+            <tr key={tv.method}>
+              <td className="mono">{tv.method}</td>
               <td>
                 <input
                   className="input"
-                  value={t.label}
+                  value={tv.label}
                   onChange={(e) =>
                     setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })
                   }
-                  aria-label={`${t.method} label`}
+                  aria-label={t("{0} label", tv.method)}
                 />
               </td>
               <td>
                 <Checkbox
                   label=""
-                  checked={t.enabled}
+                  checked={tv.enabled}
                   onChange={(v) =>
                     setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, enabled: v } : x)) })
                   }
@@ -1543,7 +1586,7 @@ function PaymentSettings() {
               <td>
                 <Checkbox
                   label=""
-                  checked={t.requires_reference}
+                  checked={tv.requires_reference}
                   onChange={(v) =>
                     setData({ tenders: data.tenders.map((x, j) => (j === i ? { ...x, requires_reference: v } : x)) })
                   }
@@ -1559,7 +1602,7 @@ function PaymentSettings() {
         onSave={async () => {
           const r = await act.run(() => api.settings.save("payments", data));
           if (r) {
-            toast("success", "Payment methods saved");
+            toast("success", t("Payment methods saved"));
             await reloadConfig();
           }
         }}
@@ -1606,27 +1649,27 @@ function ReceiptSettings() {
     const c = (s: string) => " ".repeat(Math.max(0, Math.floor((w - s.length) / 2))) + s;
     const pair = (l: string, r: string) => l + " ".repeat(Math.max(1, w - l.length - r.length)) + r;
     const b = biz.data ?? {};
-    const t = (en: string) => (data.language === "bilingual" && RECEIPT_AR[en] ? `${en} / ${RECEIPT_AR[en]}` : en);
+    const rl = (en: string) => (data.language === "bilingual" && RECEIPT_AR[en] ? `${en} / ${RECEIPT_AR[en]}` : en);
     const lines = [
       c(String(b.name ?? config?.business_name ?? "")),
-      ...(data.show_cr_number && b.cr_number ? [c(`${t("CR")}: ${b.cr_number}`)] : []),
-      ...(data.show_vat_number && b.vat_number ? [c(`${t("VAT No")}: ${b.vat_number}`)] : []),
+      ...(data.show_cr_number && b.cr_number ? [c(`${rl("CR")}: ${b.cr_number}`)] : []),
+      ...(data.show_vat_number && b.vat_number ? [c(`${rl("VAT No")}: ${b.vat_number}`)] : []),
       ...data.header_lines.map(c),
       "-".repeat(w),
-      c(t(data.title)),
-      pair(`${t("Receipt")}: T01-0000123`, "24 Sep 2026 19:42"),
-      ...(data.show_cashier ? [pair(`${t("Cashier")}: Sara`, "Till 1")] : []),
+      c(rl(data.title)),
+      pair(`${rl("Receipt")}: T01-0000123`, "24 Sep 2026 19:42"),
+      ...(data.show_cashier ? [pair(`${rl("Cashier")}: Sara`, "Till 1")] : []),
       "-".repeat(w),
       "Coca-Cola Original 330ml",
       ...(data.language === "bilingual" ? ["كوكاكولا 330 مل"] : []),
       pair("  2 x 0.250", "0.500"),
       ...(data.show_barcode ? ["  6291100001234"] : []),
       "-".repeat(w),
-      pair(t("Subtotal"), "0.500"),
-      pair(`${t("VAT")} 10% (incl.)`, "0.045"),
-      pair(t("TOTAL"), "BHD 0.500"),
-      pair(t("Cash"), "1.000"),
-      pair(t("Change"), "0.500"),
+      pair(rl("Subtotal"), "0.500"),
+      pair(`${rl("VAT")} 10% (incl.)`, "0.045"),
+      pair(rl("TOTAL"), "BHD 0.500"),
+      pair(rl("Cash"), "1.000"),
+      pair(rl("Change"), "0.500"),
       "-".repeat(w),
       ...data.footer_lines.map(c),
     ];
@@ -1636,8 +1679,12 @@ function ReceiptSettings() {
   return (
     <div className="grid-2">
       <div className="card card-pad col gap-16">
-        <TextInput label="Title" value={data.title} onChange={(e) => setData({ ...data, title: e.target.value })} />
-        <Field label="Header lines">
+        <TextInput
+          label={t("Title")}
+          value={data.title}
+          onChange={(e) => setData({ ...data, title: e.target.value })}
+        />
+        <Field label={t("Header lines")}>
           <textarea
             className="textarea"
             value={data.header_lines.join("\n")}
@@ -1646,7 +1693,7 @@ function ReceiptSettings() {
             }
           />
         </Field>
-        <Field label="Footer lines">
+        <Field label={t("Footer lines")}>
           <textarea
             className="textarea"
             value={data.footer_lines.join("\n")}
@@ -1656,46 +1703,46 @@ function ReceiptSettings() {
           />
         </Field>
         <Checkbox
-          label="Show VAT number"
+          label={t("Show VAT number")}
           checked={data.show_vat_number}
           onChange={(v) => setData({ ...data, show_vat_number: v })}
         />
         <Checkbox
-          label="Show CR number"
+          label={t("Show CR number")}
           checked={data.show_cr_number}
           onChange={(v) => setData({ ...data, show_cr_number: v })}
         />
         <Checkbox
-          label="Show cashier"
+          label={t("Show cashier")}
           checked={data.show_cashier}
           onChange={(v) => setData({ ...data, show_cashier: v })}
         />
         <Checkbox
-          label="Show barcodes"
+          label={t("Show barcodes")}
           checked={data.show_barcode}
           onChange={(v) => setData({ ...data, show_barcode: v })}
         />
         <Field
-          label="Receipt language"
-          hint="Arabic text (store name, product Arabic names, header and footer lines) always prints correctly."
+          label={t("Receipt language")}
+          hint={t("Arabic text (store name, product Arabic names, header and footer lines) always prints correctly.")}
         >
           <select
             className="select"
             value={data.language ?? "en"}
             onChange={(e) => setData({ ...data, language: e.target.value as ReceiptCfg["language"] })}
           >
-            <option value="en">English labels</option>
-            <option value="bilingual">English / Arabic labels</option>
+            <option value="en">{t("English labels")}</option>
+            <option value="bilingual">{t("English / Arabic labels")}</option>
           </select>
         </Field>
-        <Field label="Paper width">
+        <Field label={t("Paper width")}>
           <select
             className="select"
             value={data.paper_width_mm}
             onChange={(e) => setData({ ...data, paper_width_mm: Number(e.target.value) })}
           >
-            <option value={80}>80 mm</option>
-            <option value={58}>58 mm</option>
+            <option value={80}>{t("80 mm")}</option>
+            <option value={58}>{t("58 mm")}</option>
           </select>
         </Field>
         <SaveBar
@@ -1703,13 +1750,13 @@ function ReceiptSettings() {
           error={act.error}
           onSave={async () => {
             const r = await act.run(() => api.settings.save("receipt", data));
-            if (r) toast("success", "Receipt settings saved");
+            if (r) toast("success", t("Receipt settings saved"));
           }}
         />
       </div>
       <div>
         <div className="tiny" style={{ marginBottom: 8 }}>
-          Live preview
+          {t("Live preview")}
         </div>
         <div className="receipt-stage">
           <div className="receipt-paper" style={{ width: "fit-content" }}>
@@ -1741,25 +1788,25 @@ function PrinterSettings() {
   return (
     <div className="card card-pad col gap-16">
       <div className="form-grid">
-        <Field label="Printer connection">
+        <Field label={t("Printer connection")}>
           <select className="select" value={data.mode} onChange={(e) => setData({ ...data, mode: e.target.value })}>
-            <option value="none">No printer</option>
-            <option value="windows">Windows printer (spooler, RAW)</option>
-            <option value="network">Network printer (ESC/POS TCP 9100)</option>
-            <option value="file">File (testing)</option>
+            <option value="none">{t("No printer")}</option>
+            <option value="windows">{t("Windows printer (spooler, RAW)")}</option>
+            <option value="network">{t("Network printer (ESC/POS TCP 9100)")}</option>
+            <option value="file">{t("File (testing)")}</option>
           </select>
         </Field>
         {data.mode === "windows" ? (
           <Field
-            label="Windows printer"
-            hint={isDesktop() ? undefined : "Printer list is available in the desktop app."}
+            label={t("Windows printer")}
+            hint={isDesktop() ? undefined : t("Printer list is available in the desktop app.")}
           >
             <select
               className="select"
               value={data.target}
               onChange={(e) => setData({ ...data, target: e.target.value })}
             >
-              <option value="">Choose…</option>
+              <option value="">{t("Choose…")}</option>
               {(printers.data ?? []).map((p) => (
                 <option key={p}>{p}</option>
               ))}
@@ -1768,32 +1815,32 @@ function PrinterSettings() {
           </Field>
         ) : data.mode !== "none" ? (
           <TextInput
-            label={data.mode === "network" ? "Printer address" : "Output file"}
+            label={data.mode === "network" ? t("Printer address") : t("Output file")}
             value={data.target}
             onChange={(e) => setData({ ...data, target: e.target.value })}
-            placeholder={data.mode === "network" ? "192.168.1.50:9100" : "C:\\AMWAPOS\\printer.txt"}
+            placeholder={data.mode === "network" ? "192.168.1.50:9100" : t("C:\\AMWAPOS\\printer.txt")}
           />
         ) : (
           <div />
         )}
-        <Field label="Paper size">
+        <Field label={t("Paper size")}>
           <select
             className="select"
             value={data.paper_width_mm}
             onChange={(e) => setData({ ...data, paper_width_mm: Number(e.target.value) })}
           >
-            <option value={80}>80 mm</option>
-            <option value={58}>58 mm</option>
+            <option value={80}>{t("80 mm")}</option>
+            <option value={58}>{t("58 mm")}</option>
           </select>
         </Field>
         <div className="col">
           <Checkbox
-            label="Cut paper after each receipt"
+            label={t("Cut paper after each receipt")}
             checked={data.cut}
             onChange={(v) => setData({ ...data, cut: v })}
           />
           <Checkbox
-            label="Open cash drawer (printer kick) on cash sales"
+            label={t("Open cash drawer (printer kick) on cash sales")}
             checked={data.drawer_pulse}
             onChange={(v) => setData({ ...data, drawer_pulse: v })}
           />
@@ -1801,8 +1848,9 @@ function PrinterSettings() {
       </div>
       {status ? <Banner tone={status.tone}>{status.text}</Banner> : null}
       <Banner tone="info">
-        Arabic text prints as a high-resolution image line, so it works on any ESC/POS printer. The test page includes
-        an Arabic line — check it prints joined and right-to-left.
+        {t(
+          "Arabic text prints as a high-resolution image line, so it works on any ESC/POS printer. The test page includes an Arabic line — check it prints joined and right-to-left.",
+        )}
       </Banner>
       <div className="row">
         <Button
@@ -1812,12 +1860,12 @@ function PrinterSettings() {
             if (r)
               setStatus(
                 r.status === "printed"
-                  ? { tone: "success", text: "Test page sent to the printer." }
-                  : { tone: "danger", text: r.message ?? "Printer not verified." },
+                  ? { tone: "success", text: t("Test page sent to the printer.") }
+                  : { tone: "danger", text: r.message ?? t("Printer not verified.") },
               );
           }}
         >
-          Test Print
+          {t("Test Print")}
         </Button>
         <Button
           onClick={async () => {
@@ -1826,12 +1874,12 @@ function PrinterSettings() {
             if (r)
               setStatus(
                 r.status === "printed"
-                  ? { tone: "success", text: "Drawer pulse sent." }
-                  : { tone: "danger", text: r.message ?? "Drawer not verified." },
+                  ? { tone: "success", text: t("Drawer pulse sent.") }
+                  : { tone: "danger", text: r.message ?? t("Drawer not verified.") },
               );
           }}
         >
-          Test cash drawer
+          {t("Test cash drawer")}
         </Button>
         <Button
           variant="primary"
@@ -1840,12 +1888,12 @@ function PrinterSettings() {
           onClick={async () => {
             const r = await act.run(() => api.settings.save("local.printer", data));
             if (r) {
-              toast("success", "Printer settings saved");
+              toast("success", t("Printer settings saved"));
               await reloadConfig();
             }
           }}
         >
-          Save changes
+          {t("Save changes")}
         </Button>
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -1865,35 +1913,35 @@ function AppearanceSettings() {
   return (
     <div className="card card-pad col gap-16">
       <div className="form-grid">
-        <Field label="Theme">
+        <Field label={t("Theme")}>
           <select
             className="select"
             value={data.theme || "light"}
             onChange={(e) => setData({ ...data, theme: e.target.value })}
           >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-            <option value="system">System</option>
+            <option value="light">{t("Light")}</option>
+            <option value="dark">{t("Dark")}</option>
+            <option value="system">{t("System")}</option>
           </select>
         </Field>
-        <Field label="Density">
+        <Field label={t("Density")}>
           <select
             className="select"
             value={data.density || "comfortable"}
             onChange={(e) => setData({ ...data, density: e.target.value })}
           >
-            <option value="comfortable">Comfortable</option>
-            <option value="compact">Compact</option>
+            <option value="comfortable">{t("Comfortable")}</option>
+            <option value="compact">{t("Compact")}</option>
           </select>
         </Field>
-        <Field label="Cashier font size">
+        <Field label={t("Cashier font size")}>
           <select
             className="select"
             value={data.cashier_font || "normal"}
             onChange={(e) => setData({ ...data, cashier_font: e.target.value })}
           >
-            <option value="normal">Normal</option>
-            <option value="large">Large</option>
+            <option value="normal">{t("Normal")}</option>
+            <option value="large">{t("Large")}</option>
           </select>
         </Field>
       </div>
@@ -1903,7 +1951,7 @@ function AppearanceSettings() {
         onSave={async () => {
           const r = await act.run(() => api.settings.save("local.appearance", data));
           if (r) {
-            toast("success", "Appearance saved");
+            toast("success", t("Appearance saved"));
             await reloadConfig();
           }
         }}
@@ -1917,16 +1965,16 @@ function AboutSettings() {
   return (
     <div className="card card-pad">
       <dl className="kv">
-        <dt>Product</dt>
-        <dd>AMWAPOS — Retail Operations System</dd>
-        <dt>Version</dt>
+        <dt>{t("Product")}</dt>
+        <dd>{t("AMWAPOS — Retail Operations System")}</dd>
+        <dt>{t("Version")}</dt>
         <dd>{status.app_version}</dd>
-        <dt>Schema</dt>
+        <dt>{t("Schema")}</dt>
         <dd>{status.schema_version}</dd>
-        <dt>Data folder</dt>
+        <dt>{t("Data folder")}</dt>
         <dd className="mono small">{status.data_dir}</dd>
-        <dt>Runtime</dt>
-        <dd>{isDesktop() ? "Desktop (Tauri)" : "Browser development bridge"}</dd>
+        <dt>{t("Runtime")}</dt>
+        <dd>{isDesktop() ? t("Desktop (Tauri)") : t("Browser development bridge")}</dd>
       </dl>
     </div>
   );
@@ -1945,11 +1993,11 @@ export function DiagnosticsPage() {
   return (
     <div>
       <PageHeader
-        title="Diagnostics"
+        title={t("Diagnostics")}
         actions={
           <>
             <Button icon={<ShieldCheck size={16} />} onClick={() => (setFull(true), void reload())} loading={loading}>
-              Run Health Check
+              {t("Run Health Check")}
             </Button>
             <Button
               icon={<Copy size={16} />}
@@ -1961,11 +2009,11 @@ export function DiagnosticsPage() {
                     JSON.stringify(r, null, 2),
                     "application/json",
                   );
-                  toast("success", "Diagnostics exported", "Secrets and customer details are not included.");
+                  toast("success", t("Diagnostics exported"), t("Secrets and customer details are not included."));
                 }
               }}
             >
-              Export Diagnostics
+              {t("Export Diagnostics")}
             </Button>
           </>
         }
@@ -1980,9 +2028,9 @@ export function DiagnosticsPage() {
             <details key={d.component} className="card card-pad">
               <summary className="row" style={{ cursor: "pointer", listStyle: "none" }}>
                 <Icon size={18} color={STATE_COLOR[d.state]} aria-label={d.state} />
-                <strong style={{ width: 140 }}>{d.component}</strong>
-                <span className="grow">{d.summary}</span>
-                <span className="tiny">{d.state}</span>
+                <strong style={{ width: 140 }}>{tb(d.component)}</strong>
+                <span className="grow">{tb(d.summary)}</span>
+                <span className="tiny">{codeLabel(d.state)}</span>
               </summary>
               <pre className="mono small" style={{ marginTop: 10, whiteSpace: "pre-wrap" }}>
                 {JSON.stringify(d.details, null, 2)}
@@ -2001,21 +2049,21 @@ export function UpdatesPage() {
   const { status } = useSession();
   return (
     <div>
-      <PageHeader title="Updates" />
+      <PageHeader title={t("Updates")} />
       <div className="card card-pad col gap-16">
         <dl className="kv">
-          <dt>Current version</dt>
+          <dt>{t("Current version")}</dt>
           <dd>{status.app_version}</dd>
-          <dt>Database schema</dt>
+          <dt>{t("Database schema")}</dt>
           <dd>{status.schema_version}</dd>
         </dl>
-        <Banner tone="info" title="Updates are installed from signed installers">
-          Automatic update checks require the publisher's update-signing key, which has not been configured for this
-          build. Install new versions with the signed AMWAPOS installer; your data is kept, a safety backup is taken
-          before any database upgrade, and unsigned updates are never installed.
+        <Banner tone="info" title={t("Updates are installed from signed installers")}>
+          {t(
+            "Automatic update checks require the publisher's update-signing key, which has not been configured for this build. Install new versions with the signed AMWAPOS installer; your data is kept, a safety backup is taken before any database upgrade, and unsigned updates are never installed.",
+          )}
         </Banner>
         <div className="small muted">
-          Do not update while a sale is in progress. Update the hub and all terminals to the same version.
+          {t("Do not update while a sale is in progress. Update the hub and all terminals to the same version.")}
         </div>
       </div>
     </div>

@@ -171,7 +171,7 @@
 }
 .wizard-steps {
   background: var(--surface);
-  border-right: 1px solid var(--border);
+  border-inline-end: 1px solid var(--border);
   padding: 28px 20px;
   display: flex;
   flex-direction: column;
@@ -235,7 +235,7 @@
   gap: 12px;
 }
 .choice-card {
-  text-align: left;
+  text-align: start;
   padding: 16px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-card);
@@ -341,19 +341,19 @@
 .scan-box .input {
   height: 52px;
   font-size: 17px;
-  padding-left: 46px;
+  padding-inline-start: 46px;
   border-width: 1.5px;
   background: var(--surface);
 }
 .scan-box .scan-icon {
   position: absolute;
-  left: 15px;
+  inset-inline-start: 15px;
   top: 16px;
   color: var(--text-2);
 }
 .scan-box .clear {
   position: absolute;
-  right: 8px;
+  inset-inline-end: 8px;
   top: 8px;
 }
 .pos-panel {
@@ -389,7 +389,7 @@
   padding: 10px;
   display: flex;
   flex-direction: column;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   gap: 4px;
 }
@@ -430,7 +430,7 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   min-width: 100px;
-  text-align: right;
+  text-align: end;
 }
 .quick-actions {
   display: grid;
@@ -692,7 +692,7 @@
   color: #fff;
 }
 .sb-link .badge {
-  margin-left: auto;
+  margin-inline-start: auto;
   font-size: 11px;
   background: #b45309;
   color: #fff;
@@ -741,7 +741,7 @@
 }
 .menu {
   position: absolute;
-  right: 0;
+  inset-inline-end: 0;
   top: calc(100% + 6px);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -761,7 +761,7 @@
   padding: 9px 10px;
   border-radius: 6px;
   cursor: pointer;
-  text-align: left;
+  text-align: start;
   color: var(--text);
 }
 .menu button:hover {
@@ -780,7 +780,7 @@
 .drawer {
   position: fixed;
   top: 0;
-  right: 0;
+  inset-inline-end: 0;
   bottom: 0;
   width: 560px;
   max-width: 100vw;
@@ -891,7 +891,7 @@
   top: 0;
 }
 .subnav button {
-  text-align: left;
+  text-align: start;
   border: 0;
   background: none;
   padding: 8px 12px;

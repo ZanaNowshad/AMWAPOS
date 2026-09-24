@@ -8,6 +8,7 @@ import { formatDate, formatShort, todayLocal } from "../../lib/time";
 import { Banner, Button, PageHeader, Skeleton } from "../../components/ui";
 import { DateRange, download, useAction, useLoad } from "./common";
 import { BarChart } from "./charts";
+import { t, tb } from "../../i18n";
 
 export function ReportsHome() {
   const nav = useNavigate();
@@ -15,7 +16,10 @@ export function ReportsHome() {
   const groups = Array.from(new Set((data ?? []).map((r) => r.group)));
   return (
     <div>
-      <PageHeader title="Reports" subtitle="All figures come from recorded transactions. Export any report to CSV." />
+      <PageHeader
+        title={t("Reports")}
+        subtitle={t("All figures come from recorded transactions. Export any report to CSV.")}
+      />
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {!data ? <Skeleton /> : null}
       <div className="stack-24">
@@ -28,8 +32,8 @@ export function ReportsHome() {
                 .map((r) => (
                   <button key={r.key} className="choice-card" onClick={() => nav(`/admin/reports/${r.key}`)}>
                     <FileBarChart2 size={20} color="var(--brand)" />
-                    <h3>{r.title}</h3>
-                    <div className="small muted">{r.description}</div>
+                    <h3>{tb(r.title)}</h3>
+                    <div className="small muted">{tb(r.description)}</div>
                   </button>
                 ))}
             </div>
@@ -96,12 +100,12 @@ export function ReportViewer() {
         <Button
           variant="ghost"
           icon={<ArrowLeft size={18} />}
-          aria-label="Back"
+          aria-label={t("Back")}
           onClick={() => nav("/admin/reports")}
         />
         <div className="grow">
-          <div className="tiny">Reports</div>
-          <h1>{report?.title ?? "Report"}</h1>
+          <div className="tiny">{t("Reports")}</div>
+          <h1>{report?.title ?? t("Report")}</h1>
         </div>
         <Button
           icon={<Download size={16} />}
@@ -111,10 +115,10 @@ export function ReportViewer() {
             if (csv) download(`${key}-${params.from}-${params.to}.csv`, csv);
           }}
         >
-          Export CSV
+          {t("Export CSV")}
         </Button>
         <Button icon={<Printer size={16} />} disabled={!report} onClick={() => window.print()}>
-          Print
+          {t("Print")}
         </Button>
       </div>
       <div className="card card-pad filters" style={{ marginBottom: 16 }}>
@@ -131,18 +135,18 @@ export function ReportViewer() {
             style={{ width: 150 }}
             value={params.group_by}
             onChange={(e) => setParams({ ...params, group_by: e.target.value })}
-            aria-label="Group by"
+            aria-label={t("Group by")}
           >
-            <option value="hour">By hour</option>
-            <option value="day">By day</option>
-            <option value="weekday">By weekday</option>
-            <option value="cashier">By cashier</option>
-            <option value="device">By terminal</option>
+            <option value="hour">{t("By hour")}</option>
+            <option value="day">{t("By day")}</option>
+            <option value="weekday">{t("By weekday")}</option>
+            <option value="cashier">{t("By cashier")}</option>
+            <option value="device">{t("By terminal")}</option>
           </select>
         ) : null}
         {key === "dead_stock" ? (
           <label className="row small">
-            No sales in the last
+            {t("No sales in the last")}
             <input
               className="input num"
               style={{ width: 80 }}
@@ -153,7 +157,7 @@ export function ReportViewer() {
           </label>
         ) : null}
         <Button variant="primary" icon={<Play size={15} />} onClick={() => run()} loading={act.busy}>
-          Run
+          {t("Run")}
         </Button>
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -164,10 +168,10 @@ export function ReportViewer() {
           <div className="kpis">
             {report.kpis.map((k) => (
               <div key={k.label} className="card kpi">
-                <div className="k-label">{k.label}</div>
+                <div className="k-label">{tb(k.label)}</div>
                 <div className="k-value">{fmtKpi(k.kind, k.value)}</div>
                 {k.previous !== null ? (
-                  <div className="k-delta muted">Previous period: {fmtKpi(k.kind, k.previous)}</div>
+                  <div className="k-delta muted">{t("Previous period: {0}", fmtKpi(k.kind, k.previous))}</div>
                 ) : null}
               </div>
             ))}
@@ -175,7 +179,7 @@ export function ReportViewer() {
           {report.series && report.series.length > 1 ? (
             <div className="card card-pad">
               <BarChart
-                label={report.title}
+                label={tb(report.title)}
                 data={report.series.map((s) => ({ label: String(s.label), value: Number(s.value) }))}
               />
             </div>
@@ -195,7 +199,7 @@ export function ReportViewer() {
                         key={c.key}
                         className={c.kind !== "text" && c.kind !== "datetime" && c.kind !== "date" ? "num" : ""}
                       >
-                        {c.label}
+                        {tb(c.label)}
                       </th>
                     ))}
                   </tr>
@@ -230,7 +234,7 @@ export function ReportViewer() {
                   </tfoot>
                 ) : null}
               </table>
-              {report.rows.length === 0 ? <div className="empty">No data for this period.</div> : null}
+              {report.rows.length === 0 ? <div className="empty">{t("No data for this period.")}</div> : null}
             </div>
           </div>
         </div>
@@ -264,25 +268,25 @@ export function AnalyticsPage() {
     const deadValue = dead.kpis.find((k) => k.label === "Value tied up")?.value ?? 0;
     if (dead.rows.length) {
       out.push({
-        title: "Dead stock",
+        title: t("Dead stock"),
         evidence: `${dead.rows.length} stocked product(s) had no sales in 60 days.`,
         impact: `${formatMoney(deadValue)} tied up at average cost.`,
-        confidence: "High — based on recorded sales and stock levels.",
-        action: "Promote, return to supplier or stop reordering the top items.",
+        confidence: t("High — based on recorded sales and stock levels."),
+        action: t("Promote, return to supplier or stop reordering the top items."),
         link: "/admin/reports/dead_stock",
       });
     }
     const negative = margin.rows.filter((r) => Number(r.profit) < 0);
     if (negative.length) {
       out.push({
-        title: "Sold below cost",
+        title: t("Sold below cost"),
         evidence: `${negative.length} product(s) had negative gross profit in the last 30 days (e.g. ${negative
           .slice(0, 3)
           .map((r) => r.name)
           .join(", ")}).`,
         impact: `${formatMoney(negative.reduce((a, r) => a + Number(r.profit), 0))} gross profit.`,
-        confidence: "Medium — depends on the accuracy of recorded costs.",
-        action: "Review selling prices and recent supplier costs for these products.",
+        confidence: t("Medium — depends on the accuracy of recorded costs."),
+        action: t("Review selling prices and recent supplier costs for these products."),
         link: "/admin/reports/margin",
       });
     }
@@ -293,14 +297,14 @@ export function AnalyticsPage() {
     );
     if (risk.length) {
       out.push({
-        title: "Stockout risk",
+        title: t("Stockout risk"),
         evidence: `${risk.length} selling product(s) are at or below their reorder point (e.g. ${risk
           .slice(0, 3)
           .map((r) => r.name)
           .join(", ")}).`,
-        impact: "Lost sales when shelves are empty.",
-        confidence: "High — based on current stock and 30-day sales.",
-        action: "Create purchase orders for these items.",
+        impact: t("Lost sales when shelves are empty."),
+        confidence: t("High — based on current stock and 30-day sales."),
+        action: t("Create purchase orders for these items."),
         link: "/admin/inventory",
       });
     }
@@ -311,11 +315,11 @@ export function AnalyticsPage() {
     for (const [u, v] of byUser) {
       if (totalRef > 0 && v * 100 >= totalRef * 60 && refunds.rows.length >= 5) {
         out.push({
-          title: "Refund concentration",
+          title: t("Refund concentration"),
           evidence: `${u} processed ${Math.round((v * 100) / totalRef)}% of refund value in 30 days.`,
           impact: `${formatMoney(v)} refunded.`,
-          confidence: "Low — may reflect shift patterns rather than a problem.",
-          action: "Review the refund list and approvals for this user.",
+          confidence: t("Low — may reflect shift patterns rather than a problem."),
+          action: t("Review the refund list and approvals for this user."),
           link: "/admin/refunds",
         });
       }
@@ -325,30 +329,30 @@ export function AnalyticsPage() {
   return (
     <div>
       <PageHeader
-        title="Analytics"
-        subtitle="Operational insights with the evidence behind them. Computed locally from your records."
+        title={t("Analytics")}
+        subtitle={t("Operational insights with the evidence behind them. Computed locally from your records.")}
       />
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {!data ? <Skeleton /> : null}
-      {data && data.length === 0 ? <div className="empty">No issues detected in the last 30 days.</div> : null}
+      {data && data.length === 0 ? <div className="empty">{t("No issues detected in the last 30 days.")}</div> : null}
       <div className="grid-2">
         {(data ?? []).map((i) => (
           <div key={i.title + i.evidence} className="card card-pad col">
-            <h3>{i.title}</h3>
+            <h3>{tb(i.title)}</h3>
             <dl className="kv">
-              <dt>Evidence</dt>
-              <dd>{i.evidence}</dd>
-              <dt>Impact</dt>
-              <dd>{i.impact}</dd>
-              <dt>Confidence</dt>
-              <dd>{i.confidence}</dd>
-              <dt>Suggested action</dt>
-              <dd>{i.action}</dd>
+              <dt>{t("Evidence")}</dt>
+              <dd>{tb(i.evidence)}</dd>
+              <dt>{t("Impact")}</dt>
+              <dd>{tb(i.impact)}</dd>
+              <dt>{t("Confidence")}</dt>
+              <dd>{tb(i.confidence)}</dd>
+              <dt>{t("Suggested action")}</dt>
+              <dd>{tb(i.action)}</dd>
             </dl>
             {i.link ? (
               <div>
                 <Button size="sm" onClick={() => nav(i.link!)}>
-                  Open
+                  {t("Open")}
                 </Button>
               </div>
             ) : null}

@@ -99,7 +99,7 @@ h3 {
   min-width: 0;
 }
 .right {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 .gap-16 {
   gap: 16px;
@@ -265,7 +265,7 @@ h3 {
   border-color: var(--danger);
 }
 .input.num {
-  text-align: right;
+  text-align: end;
 }
 .input.lg {
   height: 52px;
@@ -300,7 +300,7 @@ h3 {
   align-items: center;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-right: 0;
+  border-inline-end: 0;
   border-radius: var(--radius) 0 0 var(--radius);
   background: var(--surface-2);
   color: var(--text-2);
@@ -409,7 +409,7 @@ table.table {
   top: 0;
   z-index: 1;
   background: var(--surface-2);
-  text-align: left;
+  text-align: start;
   font-size: 12px;
   font-weight: 650;
   color: var(--text-2);
@@ -435,7 +435,7 @@ table.table {
 }
 .table th.num,
 .table td.num {
-  text-align: right;
+  text-align: end;
 }
 .table tbody tr.clickable {
   cursor: pointer;
@@ -573,7 +573,7 @@ table.table {
 .toasts {
   position: fixed;
   top: 16px;
-  right: 16px;
+  inset-inline-end: 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -781,4 +781,51 @@ details.tech pre {
   border-radius: 6px;
   overflow: auto;
   max-height: 240px;
+}
+
+/* ---------- Right-to-left (Arabic) ---------- */
+/* Direction-carrying icons point the other way in RTL. */
+[dir="rtl"] .lucide-arrow-left,
+[dir="rtl"] .lucide-arrow-right,
+[dir="rtl"] .lucide-chevron-left,
+[dir="rtl"] .lucide-chevron-right,
+[dir="rtl"] .lucide-log-out,
+[dir="rtl"] .lucide-log-in,
+[dir="rtl"] .lucide-undo-2,
+[dir="rtl"] .lucide-corner-down-left {
+  transform: scaleX(-1);
+}
+/* Amounts, quantities, barcodes and codes are typed left-to-right. */
+[dir="rtl"] input[inputmode="decimal"],
+[dir="rtl"] input[inputmode="numeric"],
+[dir="rtl"] input[type="number"],
+[dir="rtl"] input.num,
+[dir="rtl"] .mono {
+  direction: ltr;
+  text-align: end;
+}
+[dir="rtl"] input[type="password"] {
+  direction: ltr;
+}
+/* Numbers in tables and totals keep their digit order and sit at the end. */
+[dir="rtl"] .num {
+  unicode-bidi: isolate;
+}
+/* Charts are drawn left-to-right (time runs left to right). */
+[dir="rtl"] .chart,
+[dir="rtl"] svg.chart {
+  direction: ltr;
+}
+/* Receipt previews: each line takes its own direction, like the printer output. */
+.receipt-paper {
+  unicode-bidi: plaintext;
+}
+[dir="rtl"] .drawer {
+  animation-name: slidein-rtl;
+}
+@keyframes slidein-rtl {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
 }

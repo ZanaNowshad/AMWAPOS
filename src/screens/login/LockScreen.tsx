@@ -4,6 +4,7 @@ import { useSession } from "../../state/session";
 import { explain } from "../../lib/errors";
 import { Button } from "../../components/ui";
 import { PinEntry, initials } from "./Login";
+import { t } from "../../i18n";
 
 export function LockScreen() {
   const { session, unlock, switchUser } = useSession();
@@ -22,17 +23,17 @@ export function LockScreen() {
     }
   };
   return (
-    <div className="lock-overlay" role="dialog" aria-modal="true" aria-label="Terminal locked">
+    <div className="lock-overlay" role="dialog" aria-modal="true" aria-label={t("Terminal locked")}>
       <div className="lock-card">
         <div className="col" style={{ alignItems: "center", marginBottom: 12 }}>
           <Lock size={22} color="var(--text-2)" />
           <span className="avatar">{initials(session.display_name)}</span>
           <strong>{session.display_name}</strong>
-          <span className="tiny">Terminal locked · the current sale is kept</span>
+          <span className="tiny">{t("Terminal locked · the current sale is kept")}</span>
         </div>
-        <PinEntry title="Enter your PIN to unlock" onSubmit={submit} busy={busy} error={error} />
+        <PinEntry title={t("Enter your PIN to unlock")} onSubmit={submit} busy={busy} error={error} />
         <Button variant="ghost" block style={{ marginTop: 8 }} onClick={() => void switchUser()}>
-          Switch User
+          {t("Switch User")}
         </Button>
       </div>
     </div>

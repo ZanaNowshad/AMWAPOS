@@ -1,4 +1,5 @@
 import type { AppErrorShape } from "./types";
+import { t, tb } from "../i18n";
 
 /** Error thrown by every API call. Mirrors the Rust AppError. */
 export class ApiError extends Error implements AppErrorShape {
@@ -7,7 +8,8 @@ export class ApiError extends Error implements AppErrorShape {
   retryable: boolean;
   details?: Record<string, unknown>;
   constructor(e: AppErrorShape) {
-    super(e.message);
+    // Backend messages are English; show them in the UI language.
+    super(tb(e.message));
     this.code = e.code;
     this.data_changed = e.data_changed;
     this.retryable = e.retryable;
@@ -39,7 +41,7 @@ function asApiError(e: unknown): ApiError {
   const msg = e instanceof Error ? e.message : String(e);
   return new ApiError({
     code: "transport",
-    message: `The application backend did not respond (${msg}). No change was confirmed.`,
+    message: t("The application backend did not respond ({0}). No change was confirmed.", msg),
     data_changed: false,
     retryable: true,
   });

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, getToken } from "../../api";
+import { t } from "../../i18n";
 
 /** Compact local/sync status. Informational only — checkout never depends on it. */
 export function ConnectionPill() {
@@ -19,10 +20,10 @@ export function ConnectionPill() {
         .catch(() => {});
     };
     poll();
-    const t = setInterval(poll, 15000);
+    const tv = setInterval(poll, 15000);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(tv);
       window.removeEventListener("online", on);
       window.removeEventListener("offline", off);
     };
@@ -33,20 +34,26 @@ export function ConnectionPill() {
     const err = st?.last_error as string | null;
     const blocked = st?.blocked_reason as string | null;
     const cls = blocked || err ? "err" : pending > 0 ? "warn" : "ok";
-    const text = blocked ? "Sync paused" : err ? "Hub disconnected" : pending > 0 ? `${pending} pending` : "Synced";
+    const text = blocked
+      ? t("Sync paused")
+      : err
+        ? t("Hub disconnected")
+        : pending > 0
+          ? `${pending} pending`
+          : t("Synced");
     return (
       <span
         className={`status-pill ${cls}`}
-        title={blocked ?? err ?? "Local checkout is always available. Changes sync automatically."}
+        title={blocked ?? err ?? t("Local checkout is always available. Changes sync automatically.")}
       >
         <span className="dot" aria-hidden /> {text}
       </span>
     );
   }
   return (
-    <span className="status-pill" title="Local checkout is available. Online services will resume automatically.">
+    <span className="status-pill" title={t("Local checkout is available. Online services will resume automatically.")}>
       <span className="dot" aria-hidden style={{ color: online ? "#22c55e" : "#94a3b8" }} />{" "}
-      {online ? (mode === "hub" ? "Hub" : "Local") : "Offline"}
+      {online ? (mode === "hub" ? t("Hub") : t("Local")) : t("Offline")}
     </span>
   );
 }

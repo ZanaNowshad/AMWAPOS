@@ -22,6 +22,8 @@ import {
   TextInput,
 } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Pager, useAction, useLoad } from "./common";
+import { t } from "../../i18n";
+import { codeLabel } from "../../i18n/codes";
 
 export function AdjustDialog({
   product,
@@ -55,12 +57,12 @@ export function AdjustDialog({
     (product.allow_decimal_quantity || q % 1000 === 0);
   return (
     <Modal
-      title={`Adjust stock — ${product.name}`}
+      title={t("Adjust stock — {0}", product.name)}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button
             variant="primary"
             className="right"
@@ -77,12 +79,12 @@ export function AdjustDialog({
                 }),
               );
               if (r) {
-                toast("success", `Stock adjusted to ${formatQty(r.after_milli)}`);
+                toast("success", t("Stock adjusted to {0}", formatQty(r.after_milli)));
                 onDone();
               }
             }}
           >
-            Apply Adjustment
+            {t("Apply Adjustment")}
           </Button>
         </>
       }
@@ -91,37 +93,37 @@ export function AdjustDialog({
         <div className="row">
           {(["increase", "decrease", "set"] as const).map((m) => (
             <button key={m} className={`filter-chip ${mode === m ? "active" : ""}`} onClick={() => setMode(m)}>
-              {m === "set" ? "Set count" : m[0].toUpperCase() + m.slice(1)}
+              {m === "set" ? t("Set count") : m[0].toUpperCase() + m.slice(1)}
             </button>
           ))}
         </div>
         <TextInput
-          label={mode === "set" ? "Counted quantity" : "Quantity"}
+          label={mode === "set" ? t("Counted quantity") : t("Quantity")}
           className="num"
           inputMode="decimal"
           value={qty}
           onChange={(e) => setQty(e.target.value)}
           autoFocus
         />
-        <Field label="Reason" required>
+        <Field label={t("Reason")} required>
           <select className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
-            <option value="">Select reason…</option>
+            <option value="">{t("Select reason…")}</option>
             {[
-              "Damaged",
-              "Expired",
-              "Theft / loss",
-              "Count correction",
-              "Supplier return",
-              "Internal use",
-              "Found stock",
-              "Other",
+              t("Damaged"),
+              t("Expired"),
+              t("Theft / loss"),
+              t("Count correction"),
+              t("Supplier return"),
+              t("Internal use"),
+              t("Found stock"),
+              t("Other"),
             ].map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
         </Field>
         <div className="banner">
-          Before: <strong>{formatQty(product.stock_milli)}</strong> → After:{" "}
+          {t("Before:")} <strong>{formatQty(product.stock_milli)}</strong> {t("→ After:")}{" "}
           <strong>{after === null ? "—" : formatQty(after)}</strong> {product.unit}
         </div>
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -155,13 +157,13 @@ export function InventoryPage() {
   return (
     <div>
       <PageHeader
-        title="Inventory"
+        title={t("Inventory")}
         actions={
           <>
-            {has("inventory.receive") ? <Button onClick={() => nav("/admin/receiving")}>Receive</Button> : null}
+            {has("inventory.receive") ? <Button onClick={() => nav("/admin/receiving")}>{t("Receive")}</Button> : null}
             {has("stocktake.manage") ? (
               <Button variant="primary" icon={<ClipboardCheck size={16} />} onClick={() => nav("/admin/stocktake")}>
-                Stocktake
+                {t("Stocktake")}
               </Button>
             ) : null}
           </>
@@ -169,15 +171,15 @@ export function InventoryPage() {
       />
       <div className="kpis" style={{ marginBottom: 16 }}>
         {[
-          ["Total SKUs", counts.data?.all, ""],
-          ["Low Stock", counts.data?.low, "low"],
-          ["Out of Stock", counts.data?.out, "out"],
-          ["Negative Stock", counts.data?.neg, "negative"],
+          [t("Total SKUs"), counts.data?.all, ""],
+          [t("Low Stock"), counts.data?.low, "low"],
+          [t("Out of Stock"), counts.data?.out, "out"],
+          [t("Negative Stock"), counts.data?.neg, "negative"],
         ].map(([label, v, key]) => (
           <button
             key={String(label)}
             className="card kpi"
-            style={{ textAlign: "left", cursor: "pointer" }}
+            style={{ textAlign: "start", cursor: "pointer" }}
             onClick={() => (setStock(String(key)), setOffset(0))}
           >
             <div className="k-label">{label}</div>
@@ -189,18 +191,18 @@ export function InventoryPage() {
         <input
           className="input"
           style={{ width: 280 }}
-          placeholder="Search name, SKU or barcode…"
+          placeholder={t("Search name, SKU or barcode…")}
           value={q}
           onChange={(e) => (setQ(e.target.value), setOffset(0))}
-          aria-label="Search"
+          aria-label={t("Search")}
         />
         {[
-          ["", "All"],
-          ["attention", "Needs reorder"],
-          ["low", "Low"],
-          ["out", "Out"],
-          ["negative", "Negative"],
-          ["in_stock", "In stock"],
+          ["", t("All")],
+          ["attention", t("Needs reorder")],
+          ["low", t("Low")],
+          ["out", t("Out")],
+          ["negative", t("Negative")],
+          ["in_stock", t("In stock")],
         ].map(([k, l]) => (
           <button
             key={k}
@@ -218,12 +220,12 @@ export function InventoryPage() {
         rowKey={(r) => r.product_id}
         onRowClick={(r) => nav(`/admin/products/${r.product_id}`)}
         columns={[
-          { key: "p", label: "Product", render: (r) => r.name, sort: (r) => r.name },
-          { key: "s", label: "SKU", render: (r) => <span className="mono">{r.sku}</span> },
-          { key: "b", label: "Barcode", render: (r) => <span className="mono">{r.primary_barcode ?? "—"}</span> },
+          { key: "p", label: t("Product"), render: (r) => r.name, sort: (r) => r.name },
+          { key: "s", label: t("SKU"), render: (r) => <span className="mono">{r.sku}</span> },
+          { key: "b", label: t("Barcode"), render: (r) => <span className="mono">{r.primary_barcode ?? "—"}</span> },
           {
             key: "q",
-            label: "Stock",
+            label: t("Stock"),
             num: true,
             render: (r) =>
               r.track_inventory ? (
@@ -233,11 +235,11 @@ export function InventoryPage() {
               ),
             sort: (r) => r.stock_milli,
           },
-          { key: "r", label: "Reorder", num: true, render: (r) => formatQty(r.reorder_point_milli) },
+          { key: "r", label: t("Reorder"), num: true, render: (r) => formatQty(r.reorder_point_milli) },
           ...(has("products.view_cost")
-            ? [{ key: "c", label: "Avg Cost", num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} /> }]
+            ? [{ key: "c", label: t("Avg Cost"), num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} /> }]
             : []),
-          { key: "st", label: "Status", render: (r) => <StockStatus status={r.stock_status} /> },
+          { key: "st", label: t("Status"), render: (r) => <StockStatus status={r.stock_status} /> },
           {
             key: "a",
             label: "",
@@ -245,7 +247,7 @@ export function InventoryPage() {
             render: (r) =>
               has("inventory.adjust") && r.track_inventory ? (
                 <Button size="sm" onClick={(e) => (e.stopPropagation(), setAdjust(r))}>
-                  Adjust
+                  {t("Adjust")}
                 </Button>
               ) : null,
           },
@@ -275,8 +277,8 @@ export function MovementsPage() {
   return (
     <div>
       <PageHeader
-        title="Stock Movements"
-        subtitle="The append-only ledger behind every stock level. Movements cannot be edited or deleted."
+        title={t("Stock Movements")}
+        subtitle={t("The append-only ledger behind every stock level. Movements cannot be edited or deleted.")}
       />
       <div className="filters">
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b), setOffset(0))} />
@@ -285,9 +287,9 @@ export function MovementsPage() {
           style={{ width: 160 }}
           value={kind}
           onChange={(e) => (setKind(e.target.value), setOffset(0))}
-          aria-label="Movement type"
+          aria-label={t("Movement type")}
         >
-          <option value="">All types</option>
+          <option value="">{t("All types")}</option>
           {["sale", "refund", "receive", "adjust", "stocktake", "opening"].map((k) => (
             <option key={k} value={k}>
               {k}
@@ -301,12 +303,12 @@ export function MovementsPage() {
         loading={loading}
         rowKey={(r) => r.movement_id}
         columns={[
-          { key: "t", label: "Time", render: (r) => formatShort(r.created_at) },
-          { key: "p", label: "Product", render: (r) => r.product_name },
-          { key: "k", label: "Type", render: (r) => <Chip>{r.kind}</Chip> },
+          { key: "t", label: t("Time"), render: (r) => formatShort(r.created_at) },
+          { key: "p", label: t("Product"), render: (r) => r.product_name },
+          { key: "k", label: t("Type"), render: (r) => <Chip>{codeLabel(r.kind)}</Chip> },
           {
             key: "q",
-            label: "Qty Change",
+            label: t("Qty Change"),
             num: true,
             render: (r) => (
               <span className={r.qty_delta_milli > 0 ? "pos-num" : "neg-num"}>
@@ -315,12 +317,16 @@ export function MovementsPage() {
               </span>
             ),
           },
-          { key: "b", label: "Balance", num: true, render: (r) => formatQty(r.balance_after_milli) },
-          { key: "s", label: "Source", render: (r) => <span className="mono">{r.source_ref ?? r.source_type}</span> },
-          { key: "r", label: "Reason", render: (r) => r.reason ?? "—" },
-          { key: "u", label: "User", render: (r) => r.user_name ?? "—" },
+          { key: "b", label: t("Balance"), num: true, render: (r) => formatQty(r.balance_after_milli) },
+          {
+            key: "s",
+            label: t("Source"),
+            render: (r) => <span className="mono">{r.source_ref ?? r.source_type}</span>,
+          },
+          { key: "r", label: t("Reason"), render: (r) => r.reason ?? "—" },
+          { key: "u", label: t("User"), render: (r) => r.user_name ?? "—" },
         ]}
-        empty={<div className="empty">No movements in this period.</div>}
+        empty={<div className="empty">{t("No movements in this period.")}</div>}
       />
       {data ? <Pager total={data.total} limit={100} offset={offset} onChange={setOffset} /> : null}
     </div>
@@ -340,10 +346,10 @@ export function StocktakesPage() {
   return (
     <div>
       <PageHeader
-        title="Stocktake"
+        title={t("Stocktake")}
         actions={
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-            New Stocktake
+            {t("New Stocktake")}
           </Button>
         }
       />
@@ -353,14 +359,14 @@ export function StocktakesPage() {
         loading={loading}
         rowKey={(r) => r.stocktake_id}
         onRowClick={(r) => nav(`/admin/stocktake/${r.stocktake_id}`)}
-        empty={<div className="empty">No stocktakes yet. Start one to count stock with a scanner.</div>}
+        empty={<div className="empty">{t("No stocktakes yet. Start one to count stock with a scanner.")}</div>}
         columns={[
-          { key: "n", label: "Stocktake", render: (r) => `${r.stocktake_number} · ${r.name}` },
-          { key: "s", label: "Scope", render: (r) => r.scope_type },
-          { key: "c", label: "Created", render: (r) => formatShort(r.created_at) },
+          { key: "n", label: t("Stocktake"), render: (r) => `${r.stocktake_number} · ${r.name}` },
+          { key: "s", label: t("Scope"), render: (r) => r.scope_type },
+          { key: "c", label: t("Created"), render: (r) => formatShort(r.created_at) },
           {
             key: "st",
-            label: "Status",
+            label: t("Status"),
             render: (r) => (
               <Chip
                 tone={
@@ -373,23 +379,23 @@ export function StocktakesPage() {
                         : "info"
                 }
               >
-                {r.status}
+                {codeLabel(r.status)}
               </Chip>
             ),
           },
-          { key: "e", label: "Products", num: true, render: (r) => r.line_count },
-          { key: "cc", label: "Counted", num: true, render: (r) => r.counted_count },
-          { key: "v", label: "Variances", num: true, render: (r) => r.variance_lines },
+          { key: "e", label: t("Products"), num: true, render: (r) => r.line_count },
+          { key: "cc", label: t("Counted"), num: true, render: (r) => r.counted_count },
+          { key: "v", label: t("Variances"), num: true, render: (r) => r.variance_lines },
         ]}
       />
       {creating ? (
         <Modal
-          title="New stocktake"
+          title={t("New stocktake")}
           size="sm"
           onClose={() => setCreating(false)}
           footer={
             <>
-              <Button onClick={() => setCreating(false)}>Cancel</Button>
+              <Button onClick={() => setCreating(false)}>{t("Cancel")}</Button>
               <Button
                 variant="primary"
                 className="right"
@@ -409,22 +415,27 @@ export function StocktakesPage() {
                   }
                 }}
               >
-                Create
+                {t("Create")}
               </Button>
             </>
           }
         >
           <div className="col gap-16">
-            <TextInput label="Name" value={name} onChange={(e) => setName(e.target.value)} />
-            <Field label="Scope">
+            <TextInput label={t("Name")} value={name} onChange={(e) => setName(e.target.value)} />
+            <Field label={t("Scope")}>
               <select className="select" value={scope} onChange={(e) => setScope(e.target.value)}>
-                <option value="all">All inventory</option>
-                <option value="category">Category</option>
+                <option value="all">{t("All inventory")}</option>
+                <option value="category">{t("Category")}</option>
               </select>
             </Field>
             {scope === "category" ? (
-              <select className="select" value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Category">
-                <option value="">Choose category…</option>
+              <select
+                className="select"
+                value={cat}
+                onChange={(e) => setCat(e.target.value)}
+                aria-label={t("Category")}
+              >
+                <option value="">{t("Choose category…")}</option>
                 {(cats.data ?? []).map((c) => (
                   <option key={c.category_id} value={c.category_id}>
                     {c.name}
@@ -433,13 +444,14 @@ export function StocktakesPage() {
               </select>
             ) : null}
             <Checkbox
-              label="Blind count (hide expected quantities while counting)"
+              label={t("Blind count (hide expected quantities while counting)")}
               checked={blind}
               onChange={setBlind}
             />
             <div className="tiny">
-              Expected quantities are frozen now. Sales during counting are handled: each count is compared with the
-              system quantity at the moment it is recorded.
+              {t(
+                "Expected quantities are frozen now. Sales during counting are handled: each count is compared with the system quantity at the moment it is recorded.",
+              )}
             </div>
             {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
           </div>
@@ -506,14 +518,14 @@ export function StocktakeDetailPage() {
         <Button
           variant="ghost"
           icon={<ArrowLeft size={18} />}
-          aria-label="Back"
+          aria-label={t("Back")}
           onClick={() => nav("/admin/stocktake")}
         />
         <div className="grow">
-          <div className="tiny">Stocktake {data.stocktake_number}</div>
+          <div className="tiny">{t("Stocktake {0}", data.stocktake_number)}</div>
           <h1>{data.name}</h1>
         </div>
-        <Chip tone={data.status === "completed" ? "success" : "info"}>{data.status}</Chip>
+        <Chip tone={data.status === "completed" ? "success" : "info"}>{codeLabel(data.status)}</Chip>
         {counting ? (
           <Button
             onClick={async () => (
@@ -521,7 +533,7 @@ export function StocktakeDetailPage() {
               void reload()
             )}
           >
-            Finish counting
+            {t("Finish counting")}
           </Button>
         ) : null}
         {data.status === "review" ? (
@@ -532,10 +544,10 @@ export function StocktakeDetailPage() {
                 void reload()
               )}
             >
-              Back to counting
+              {t("Back to counting")}
             </Button>
             <Button variant="primary" icon={<CheckCircle2 size={16} />} onClick={() => setFinalize(true)}>
-              Finalize
+              {t("Finalize")}
             </Button>
           </>
         ) : null}
@@ -547,29 +559,29 @@ export function StocktakeDetailPage() {
               void reload()
             )}
           >
-            Cancel stocktake
+            {t("Cancel stocktake")}
           </Button>
         ) : null}
       </div>
       <div className="kpis" style={{ marginBottom: 16 }}>
         <div className="card kpi">
-          <div className="k-label">Progress</div>
+          <div className="k-label">{t("Progress")}</div>
           <div className="k-value">
             {data.counted_count} / {data.line_count}
           </div>
         </div>
         <div className="card kpi">
-          <div className="k-label">Lines with variance</div>
+          <div className="k-label">{t("Lines with variance")}</div>
           <div className="k-value">{data.variance_lines}</div>
         </div>
         {data.expected_value_minor !== null ? (
           <>
             <div className="card kpi">
-              <div className="k-label">Expected value</div>
+              <div className="k-label">{t("Expected value")}</div>
               <div className="k-value">{formatMoney(data.expected_value_minor)}</div>
             </div>
             <div className="card kpi">
-              <div className="k-label">Net variance value</div>
+              <div className="k-label">{t("Net variance value")}</div>
               <div className={`k-value ${(data.variance_value_minor ?? 0) < 0 ? "neg-num" : ""}`}>
                 {formatMoney(data.variance_value_minor)}
               </div>
@@ -584,7 +596,7 @@ export function StocktakeDetailPage() {
             <input
               ref={scanRef}
               className="input"
-              placeholder="Scan barcode to count…"
+              placeholder={t("Scan barcode to count…")}
               value={scan}
               onChange={(e) => setScan(e.target.value)}
               onKeyDown={async (e) => {
@@ -594,7 +606,7 @@ export function StocktakeDetailPage() {
                   setScan("");
                 }
               }}
-              aria-label="Scan to count"
+              aria-label={t("Scan to count")}
             />
           </div>
           <select
@@ -602,17 +614,17 @@ export function StocktakeDetailPage() {
             style={{ width: 150 }}
             value={mode}
             onChange={(e) => setMode(e.target.value as "add" | "set")}
-            aria-label="Count mode"
+            aria-label={t("Count mode")}
           >
-            <option value="add">Add to count</option>
-            <option value="set">Set count</option>
+            <option value="add">{t("Add to count")}</option>
+            <option value="set">{t("Set count")}</option>
           </select>
           <input
             className="input num"
             style={{ width: 90 }}
             value={qty}
             onChange={(e) => setQty(e.target.value)}
-            aria-label="Quantity per scan"
+            aria-label={t("Quantity per scan")}
           />
         </div>
       ) : null}
@@ -622,29 +634,29 @@ export function StocktakeDetailPage() {
         <input
           className="input"
           style={{ width: 260 }}
-          placeholder="Filter products…"
+          placeholder={t("Filter products…")}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <Checkbox label="Only differences" checked={onlyDiff} onChange={setOnlyDiff} />
+        <Checkbox label={t("Only differences")} checked={onlyDiff} onChange={setOnlyDiff} />
       </div>
       <DataTable
         rows={lines}
         rowKey={(r) => r.product_id}
         maxHeight="55vh"
         columns={[
-          { key: "n", label: "Product", render: (r) => r.name, sort: (r) => r.name },
-          { key: "b", label: "Barcode", render: (r) => <span className="mono">{r.primary_barcode ?? r.sku}</span> },
+          { key: "n", label: t("Product"), render: (r) => r.name, sort: (r) => r.name },
+          { key: "b", label: t("Barcode"), render: (r) => <span className="mono">{r.primary_barcode ?? r.sku}</span> },
           {
             key: "e",
-            label: "Expected",
+            label: t("Expected"),
             num: true,
             render: (r) =>
               r.expected_qty_milli === null ? <span className="muted">hidden</span> : formatQty(r.expected_qty_milli),
           },
           {
             key: "c",
-            label: "Counted",
+            label: t("Counted"),
             num: true,
             render: (r) =>
               counting ? (
@@ -652,7 +664,7 @@ export function StocktakeDetailPage() {
                   className="input num"
                   style={{ width: 90 }}
                   defaultValue={r.counted_qty_milli === null ? "" : formatQty(r.counted_qty_milli)}
-                  aria-label={`Count for ${r.name}`}
+                  aria-label={t("Count for {0}", r.name)}
                   onBlur={async (e) => {
                     const v = e.target.value.trim();
                     const q = parseQty(v);
@@ -660,14 +672,14 @@ export function StocktakeDetailPage() {
                   }}
                 />
               ) : r.counted_qty_milli === null ? (
-                <span className="muted">not counted</span>
+                <span className="muted">{t("not counted")}</span>
               ) : (
                 formatQty(r.counted_qty_milli)
               ),
           },
           {
             key: "v",
-            label: "Variance",
+            label: t("Variance"),
             num: true,
             render: (r) =>
               r.variance_milli === null ? (
@@ -680,28 +692,30 @@ export function StocktakeDetailPage() {
               ),
             sort: (r) => r.variance_milli ?? 0,
           },
-          { key: "t", label: "Counted at", render: (r) => formatShort(r.counted_at) },
+          { key: "t", label: t("Counted at"), render: (r) => formatShort(r.counted_at) },
         ]}
       />
       {finalize ? (
         <Confirm
-          title="Finalize stocktake"
-          confirmLabel="Finalize and adjust stock"
+          title={t("Finalize stocktake")}
+          confirmLabel={t("Finalize and adjust stock")}
           busy={act.busy}
           error={act.error}
           onCancel={() => setFinalize(false)}
           onConfirm={async () => {
             const r = await act.run(() => api.stocktake.finalize(data.stocktake_id, opId));
             if (r) {
-              toast("success", `Stocktake finalized: ${String(r.adjusted_lines)} product(s) adjusted`);
+              toast("success", t("Stocktake finalized: {0} product(s) adjusted", String(r.adjusted_lines)));
               setFinalize(false);
               void reload();
             }
           }}
         >
-          {data.counted_count} counted product(s) will be adjusted to their counted quantities.{" "}
-          {data.line_count - data.counted_count} uncounted product(s) will not change. This creates stock movements and
-          cannot be undone.
+          {t("{0} counted product(s) will be adjusted to their counted quantities.", data.counted_count)}{" "}
+          {t(
+            "{0} uncounted product(s) will not change. This creates stock movements and cannot be undone.",
+            data.line_count - data.counted_count,
+          )}
         </Confirm>
       ) : null}
     </div>
@@ -730,7 +744,7 @@ export function ReceivingPage() {
   const openPos = (pos.data ?? []).filter((p) => p.status === "ordered" || p.status === "partially_received");
   useEffect(() => {
     if (!scan.trim()) return setResults([]);
-    const t = setTimeout(
+    const tv = setTimeout(
       () =>
         api.pos
           .search(scan, { limit: 8 })
@@ -738,7 +752,7 @@ export function ReceivingPage() {
           .catch(() => {}),
       150,
     );
-    return () => clearTimeout(t);
+    return () => clearTimeout(tv);
   }, [scan]);
   const add = (p: PosSearchRow) => {
     setLines((ls) => {
@@ -757,11 +771,14 @@ export function ReceivingPage() {
   const valid = lines.length > 0 && lines.every((l) => (parseQty(l.qty) ?? 0) > 0 && parseMoney(l.cost) !== null);
   return (
     <div>
-      <PageHeader title="Receiving" subtitle="Receive goods against a purchase order, or record a direct delivery." />
+      <PageHeader
+        title={t("Receiving")}
+        subtitle={t("Receive goods against a purchase order, or record a direct delivery.")}
+      />
       {openPos.length ? (
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-head">
-            <h3>Purchase orders awaiting delivery</h3>
+            <h3>{t("Purchase orders awaiting delivery")}</h3>
           </div>
           <table className="table">
             <tbody>
@@ -774,10 +791,10 @@ export function ReceivingPage() {
                   <td className="mono">{p.po_number}</td>
                   <td>{p.supplier_name}</td>
                   <td>{p.expected_at ?? "—"}</td>
-                  <td className="num">{p.received_pct}% received</td>
+                  <td className="num">{t("{0}% received", p.received_pct)}</td>
                   <td className="num">
                     <Button size="sm" variant="primary">
-                      Receive
+                      {t("Receive")}
                     </Button>
                   </td>
                 </tr>
@@ -787,11 +804,11 @@ export function ReceivingPage() {
         </div>
       ) : null}
       <div className="card card-pad col gap-16">
-        <h3>Direct receiving (no purchase order)</h3>
+        <h3>{t("Direct receiving (no purchase order)")}</h3>
         <div className="form-grid">
-          <Field label="Supplier">
+          <Field label={t("Supplier")}>
             <select className="select" value={supplier} onChange={(e) => setSupplier(e.target.value)}>
-              <option value="">No supplier</option>
+              <option value="">{t("No supplier")}</option>
               {(suppliers.data ?? []).map((s) => (
                 <option key={s.supplier_id} value={s.supplier_id}>
                   {s.name}
@@ -800,7 +817,7 @@ export function ReceivingPage() {
             </select>
           </Field>
           <TextInput
-            label="Invoice / delivery reference"
+            label={t("Invoice / delivery reference")}
             value={reference}
             onChange={(e) => setReference(e.target.value)}
           />
@@ -810,7 +827,7 @@ export function ReceivingPage() {
             <ScanBarcode size={20} className="scan-icon" />
             <input
               className="input"
-              placeholder="Scan or search product to add…"
+              placeholder={t("Scan or search product to add…")}
               value={scan}
               onChange={(e) => setScan(e.target.value)}
               onKeyDown={async (e) => {
@@ -822,7 +839,7 @@ export function ReceivingPage() {
             />
           </div>
           {results.length ? (
-            <div className="menu" style={{ left: 0, right: 0 }}>
+            <div className="menu" style={{ insetInline: 0 }}>
               {results.map((r) => (
                 <button key={r.product_id} onClick={() => add(r)}>
                   {r.name} <span className="tiny">{r.primary_barcode}</span>
@@ -835,10 +852,10 @@ export function ReceivingPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th className="num">Quantity</th>
-                <th className="num">Unit cost</th>
-                <th className="num">Line cost</th>
+                <th>{t("Product")}</th>
+                <th className="num">{t("Quantity")}</th>
+                <th className="num">{t("Unit cost")}</th>
+                <th className="num">{t("Line cost")}</th>
                 <th />
               </tr>
             </thead>
@@ -855,7 +872,7 @@ export function ReceivingPage() {
                         style={{ width: 100 }}
                         value={l.qty}
                         onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))}
-                        aria-label="Quantity"
+                        aria-label={t("Quantity")}
                       />
                     </td>
                     <td className="num">
@@ -865,7 +882,7 @@ export function ReceivingPage() {
                         value={l.cost}
                         placeholder={formatAmount(0)}
                         onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))}
-                        aria-label="Unit cost"
+                        aria-label={t("Unit cost")}
                       />
                     </td>
                     <td className="num">{q !== null && c !== null ? formatMoney(Math.round((c * q) / 1000)) : "—"}</td>
@@ -873,7 +890,7 @@ export function ReceivingPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        aria-label="Remove"
+                        aria-label={t("Remove")}
                         icon={<Trash2 size={14} />}
                         onClick={() => setLines(lines.filter((_, j) => j !== i))}
                       />
@@ -884,7 +901,7 @@ export function ReceivingPage() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={3}>Total cost</td>
+                <td colSpan={3}>{t("Total cost")}</td>
                 <td className="num">{formatMoney(total)}</td>
                 <td />
               </tr>
@@ -912,14 +929,14 @@ export function ReceivingPage() {
                 }),
               );
               if (r) {
-                toast("success", "Goods received", `${lines.length} product(s) added to stock`);
+                toast("success", t("Goods received"), `${lines.length} product(s) added to stock`);
                 setLines([]);
                 setReference("");
                 setOpId(newOperationId());
               }
             }}
           >
-            Receive Goods
+            {t("Receive Goods")}
           </Button>
         </div>
       </div>

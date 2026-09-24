@@ -66,6 +66,8 @@ import {
   UpdatesPage,
 } from "./system";
 import { WhatsAppPage, AiAssistantPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
+import { t } from "../../i18n";
+import { LanguageToggle } from "../../components/LanguageToggle";
 
 interface NavItem {
   path: string;
@@ -77,11 +79,11 @@ interface NavItem {
 
 const NAV: { group: string; items: NavItem[] }[] = [
   {
-    group: "OVERVIEW",
+    group: t("OVERVIEW"),
     items: [
       {
         path: "dashboard",
-        label: "Dashboard",
+        label: t("Dashboard"),
         icon: LayoutDashboard,
         perm: ["reports.sales", "admin.access"],
         element: Dashboard,
@@ -89,23 +91,23 @@ const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: "SALES",
+    group: t("SALES"),
     items: [
-      { path: "sales", label: "Sales", icon: ShoppingCart, perm: "sales.view", element: SalesPage },
-      { path: "refunds", label: "Refunds", icon: RefreshCcw, perm: "sales.view", element: RefundsPage },
-      { path: "shifts", label: "Shifts", icon: ClipboardList, perm: "sales.view", element: ShiftsPage },
-      { path: "cash", label: "Cash", icon: Wallet, perm: "sales.view", element: CashEventsPage },
+      { path: "sales", label: t("Sales"), icon: ShoppingCart, perm: "sales.view", element: SalesPage },
+      { path: "refunds", label: t("Refunds"), icon: RefreshCcw, perm: "sales.view", element: RefundsPage },
+      { path: "shifts", label: t("Shifts"), icon: ClipboardList, perm: "sales.view", element: ShiftsPage },
+      { path: "cash", label: t("Cash"), icon: Wallet, perm: "sales.view", element: CashEventsPage },
     ],
   },
   {
-    group: "CATALOG",
+    group: t("CATALOG"),
     items: [
-      { path: "products", label: "Products", icon: Boxes, perm: "products.view", element: ProductsPage },
-      { path: "categories", label: "Categories", icon: Layers, perm: "products.view", element: CategoriesPage },
-      { path: "pricing", label: "Pricing", icon: Tags, perm: "prices.manage", element: PricingPage },
+      { path: "products", label: t("Products"), icon: Boxes, perm: "products.view", element: ProductsPage },
+      { path: "categories", label: t("Categories"), icon: Layers, perm: "products.view", element: CategoriesPage },
+      { path: "pricing", label: t("Pricing"), icon: Tags, perm: "prices.manage", element: PricingPage },
       {
         path: "unknown-barcodes",
-        label: "Unknown Barcodes",
+        label: t("Unknown Barcodes"),
         icon: Barcode,
         perm: ["barcodes.resolve", "products.manage"],
         element: UnknownBarcodesPage,
@@ -113,13 +115,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: "INVENTORY",
+    group: t("INVENTORY"),
     items: [
-      { path: "inventory", label: "Inventory", icon: Warehouse, perm: "inventory.view", element: InventoryPage },
-      { path: "movements", label: "Stock Movements", icon: History, perm: "inventory.view", element: MovementsPage },
+      { path: "inventory", label: t("Inventory"), icon: Warehouse, perm: "inventory.view", element: InventoryPage },
+      { path: "movements", label: t("Stock Movements"), icon: History, perm: "inventory.view", element: MovementsPage },
       {
         path: "stocktake",
-        label: "Stocktake",
+        label: t("Stocktake"),
         icon: ClipboardCheck,
         perm: "stocktake.manage",
         element: StocktakesPage,
@@ -127,20 +129,26 @@ const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: "PURCHASING",
+    group: t("PURCHASING"),
     items: [
-      { path: "suppliers", label: "Suppliers", icon: Building2, perm: "suppliers.manage", element: SuppliersPage },
+      { path: "suppliers", label: t("Suppliers"), icon: Building2, perm: "suppliers.manage", element: SuppliersPage },
       {
         path: "purchase-orders",
-        label: "Purchase Orders",
+        label: t("Purchase Orders"),
         icon: FileText,
         perm: ["purchasing.manage", "inventory.receive"],
         element: PurchaseOrdersPage,
       },
-      { path: "receiving", label: "Receiving", icon: PackageCheck, perm: "inventory.receive", element: ReceivingPage },
+      {
+        path: "receiving",
+        label: t("Receiving"),
+        icon: PackageCheck,
+        perm: "inventory.receive",
+        element: ReceivingPage,
+      },
       {
         path: "invoice-scan",
-        label: "Invoice Scan",
+        label: t("Invoice Scan"),
         icon: FileScan,
         perm: "purchasing.manage",
         element: InvoiceScanPage,
@@ -148,63 +156,63 @@ const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: "CUSTOMERS",
+    group: t("CUSTOMERS"),
     items: [
-      { path: "customers", label: "Customers", icon: Users, perm: "customers.view", element: CustomersPage },
-      { path: "deliveries", label: "Deliveries", icon: Truck, perm: "deliveries.view", element: DeliveriesPage },
+      { path: "customers", label: t("Customers"), icon: Users, perm: "customers.view", element: CustomersPage },
+      { path: "deliveries", label: t("Deliveries"), icon: Truck, perm: "deliveries.view", element: DeliveriesPage },
     ],
   },
   {
-    group: "BUSINESS",
+    group: t("BUSINESS"),
     items: [
       {
         path: "reports",
-        label: "Reports",
+        label: t("Reports"),
         icon: ScrollText,
         perm: ["reports.sales", "reports.financial", "reports.tax", "inventory.view"],
         element: ReportsHome,
       },
-      { path: "analytics", label: "Analytics", icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
+      { path: "analytics", label: t("Analytics"), icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
     ],
   },
   {
-    group: "AUTOMATION",
+    group: t("AUTOMATION"),
     items: [
-      { path: "whatsapp", label: "WhatsApp", icon: MessageCircle, perm: "whatsapp.manage", element: WhatsAppPage },
+      { path: "whatsapp", label: t("WhatsApp"), icon: MessageCircle, perm: "whatsapp.manage", element: WhatsAppPage },
       {
         path: "payment-reviews",
-        label: "Payment Reviews",
+        label: t("Payment Reviews"),
         icon: BadgeCheck,
         perm: "whatsapp.manage",
         element: PaymentReviewsPage,
       },
-      { path: "ai", label: "AI Assistant", icon: Bot, perm: "ai.use", element: AiAssistantPage },
+      { path: "ai", label: t("AI Assistant"), icon: Bot, perm: "ai.use", element: AiAssistantPage },
     ],
   },
   {
-    group: "SYSTEM",
+    group: t("SYSTEM"),
     items: [
-      { path: "users", label: "Users & Roles", icon: ShieldCheck, perm: "users.manage", element: UsersPage },
+      { path: "users", label: t("Users & Roles"), icon: ShieldCheck, perm: "users.manage", element: UsersPage },
       {
         path: "devices",
-        label: "Devices",
+        label: t("Devices"),
         icon: Monitor,
         perm: ["devices.manage", "diagnostics.view"],
         element: DevicesPage,
       },
-      { path: "sync", label: "Sync / Hub", icon: Cloud, perm: ["sync.manage", "devices.manage"], element: SyncPage },
-      { path: "import", label: "Import", icon: FileInput, perm: "import.run", element: ImportPage },
-      { path: "backups", label: "Backups", icon: HardDriveDownload, perm: "backup.manage", element: BackupsPage },
-      { path: "audit", label: "Audit", icon: Activity, perm: "audit.view", element: AuditPage },
-      { path: "settings", label: "Settings", icon: Settings, perm: "settings.manage", element: SettingsPage },
+      { path: "sync", label: t("Sync / Hub"), icon: Cloud, perm: ["sync.manage", "devices.manage"], element: SyncPage },
+      { path: "import", label: t("Import"), icon: FileInput, perm: "import.run", element: ImportPage },
+      { path: "backups", label: t("Backups"), icon: HardDriveDownload, perm: "backup.manage", element: BackupsPage },
+      { path: "audit", label: t("Audit"), icon: Activity, perm: "audit.view", element: AuditPage },
+      { path: "settings", label: t("Settings"), icon: Settings, perm: "settings.manage", element: SettingsPage },
       {
         path: "diagnostics",
-        label: "Diagnostics",
+        label: t("Diagnostics"),
         icon: Stethoscope,
         perm: "diagnostics.view",
         element: DiagnosticsPage,
       },
-      { path: "updates", label: "Updates", icon: Database, perm: "settings.manage", element: UpdatesPage },
+      { path: "updates", label: t("Updates"), icon: Database, perm: "settings.manage", element: UpdatesPage },
     ],
   },
 ];
@@ -251,9 +259,9 @@ function Shell() {
       <aside className="sidebar">
         <div className="sb-brand">
           <Logo size={28} />
-          <span className="sb-label">AMWAPOS</span>
+          <span className="sb-label">{t("AMWAPOS")}</span>
         </div>
-        <nav aria-label="Admin navigation">
+        <nav aria-label={t("Admin navigation")}>
           {NAV.map((g) => {
             const items = g.items.filter((i) => allowed(i.perm));
             if (!items.length) return null;
@@ -278,11 +286,15 @@ function Shell() {
       </aside>
       <div className="admin-main">
         <header className="topbar">
-          <button className="btn ghost icon" aria-label="Toggle navigation" onClick={() => setCollapsed((c) => !c)}>
+          <button
+            className="btn ghost icon"
+            aria-label={t("Toggle navigation")}
+            onClick={() => setCollapsed((c) => !c)}
+          >
             <Menu size={18} />
           </button>
           <div className="tiny">
-            Admin / <strong style={{ color: "var(--text)" }}>{current?.label ?? "…"}</strong>
+            {t("Admin /")} <strong style={{ color: "var(--text)" }}>{current?.label ?? "…"}</strong>
           </div>
           <div className="grow" />
           <span className="small muted row">
@@ -291,7 +303,8 @@ function Shell() {
           <span style={{ filter: "invert(0)" }}>
             <ConnectionPill />
           </span>
-          <button className="btn ghost icon" aria-label="Alerts" onClick={() => nav("/admin/dashboard")}>
+          <LanguageToggle />
+          <button className="btn ghost icon" aria-label={t("Alerts")} onClick={() => nav("/admin/dashboard")}>
             <Bell size={18} />
           </button>
           <div style={{ position: "relative" }} ref={menuRef}>
@@ -302,25 +315,25 @@ function Shell() {
             {menu ? (
               <div className="menu" role="menu">
                 <button role="menuitem" onClick={() => (setMenu(false), nav("/admin/profile"))}>
-                  <UserRound size={15} /> My Profile
+                  <UserRound size={15} /> {t("My Profile")}
                 </button>
                 {has("pos.sell") ? (
                   <button role="menuitem" onClick={() => setMode("cashier")}>
-                    <Receipt size={15} /> Switch to POS
+                    <Receipt size={15} /> {t("Switch to POS")}
                   </button>
                 ) : null}
                 <button role="menuitem" onClick={() => void lock()}>
-                  <Lock size={15} /> Lock
+                  <Lock size={15} /> {t("Lock")}
                 </button>
                 <button role="menuitem" onClick={() => void logout()}>
-                  <LogOut size={15} /> Logout
+                  <LogOut size={15} /> {t("Logout")}
                 </button>
               </div>
             ) : null}
           </div>
           {has("pos.sell") ? (
-            <button className="btn primary sm" onClick={() => setMode("cashier")} title="Return to checkout">
-              <Gauge size={15} /> POS
+            <button className="btn primary sm" onClick={() => setMode("cashier")} title={t("Return to checkout")}>
+              <Gauge size={15} /> {t("POS")}
             </button>
           ) : null}
         </header>

@@ -1,0 +1,64 @@
+// Display labels for status / type codes stored by the backend.
+import { t } from ".";
+
+export const CODE_LABELS: Record<string, string> = {
+  active: "Active",
+  held: "Held",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  failed: "Failed",
+  counting: "Counting",
+  review: "Review",
+  draft: "Draft",
+  ordered: "Ordered",
+  partially_received: "Partly received",
+  received: "Received",
+  open: "Open",
+  closed: "Closed",
+  resolved: "Resolved",
+  dismissed: "Dismissed",
+  pending: "Pending",
+  preparing: "Preparing",
+  dispatched: "Dispatched",
+  delivered: "Delivered",
+  printed: "Printed",
+  paid: "Paid",
+  cod: "Cash on delivery",
+  paid_in: "Paid in",
+  paid_out: "Paid out",
+  safe_drop: "Safe drop",
+  no_sale: "No sale",
+  sale: "Sale",
+  refund: "Refund",
+  receive: "Receive",
+  adjust: "Adjust",
+  stocktake: "Stocktake",
+  opening: "Opening stock",
+  transfer_in: "Transfer in",
+  transfer_out: "Transfer out",
+  manual: "Manual",
+  automatic: "Automatic",
+  safety: "Safety",
+  standalone: "Standalone",
+  hub: "Hub",
+  terminal: "Terminal",
+  push: "Push",
+  pull: "Pull",
+  apply: "Apply",
+  ok: "OK",
+  warning: "Warning",
+  error: "Error",
+  all: "All",
+  category: "Category",
+  products: "Products",
+  import: "Import",
+  purchase_order: "Purchase order",
+  direct: "Direct",
+};
+
+/** "partially_received" → "Partly received" (translated). Unknown codes are shown as-is. */
+export function codeLabel(code: string | null | undefined): string {
+  if (!code) return "—";
+  const en = CODE_LABELS[code];
+  return en ? t(en) : code;
+}

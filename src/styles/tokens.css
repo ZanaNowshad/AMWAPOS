@@ -31,7 +31,8 @@
   --radius: 8px;
   --radius-card: 12px;
   --radius-modal: 14px;
-  --font: "Inter Variable", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font:
+    "Inter Variable", "Inter", "Noto Sans Arabic Variable", "Segoe UI", Tahoma, system-ui, -apple-system, sans-serif;
   --row-h: 46px;
   --control-h: 38px;
   --pos-control-h: 48px;

@@ -71,9 +71,9 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
 
   // Resume a session after a UI reload (the backend keeps sessions in memory).
   useEffect(() => {
-    const t = sessionStorage.getItem(TOKEN_KEY);
-    if (!t) return;
-    setToken(t);
+    const tv = sessionStorage.getItem(TOKEN_KEY);
+    if (!tv) return;
+    setToken(tv);
     api.auth
       .session()
       .then(async (s) => {
@@ -159,13 +159,13 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
     const bump = () => (lastActivity.current = Date.now());
     window.addEventListener("keydown", bump, true);
     window.addEventListener("pointerdown", bump, true);
-    const t = setInterval(() => {
+    const tv = setInterval(() => {
       if (Date.now() - lastActivity.current > minutes * 60_000) void lock();
     }, 5000);
     return () => {
       window.removeEventListener("keydown", bump, true);
       window.removeEventListener("pointerdown", bump, true);
-      clearInterval(t);
+      clearInterval(tv);
     };
   }, [session, locked, config, lock]);
 

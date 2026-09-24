@@ -4,10 +4,11 @@ import { api } from "../api";
 import { ApiError } from "../api/transport";
 import type { LoginUser } from "../api/types";
 import { Banner, Button, Keypad, Modal } from "./ui";
+import { t } from "../i18n";
 
 export class ApprovalCancelled extends Error {
   constructor() {
-    super("Approval cancelled");
+    super(t("Approval cancelled"));
   }
 }
 
@@ -73,7 +74,7 @@ function ApprovalDialog({
   onCancel,
 }: {
   pending: Pending;
-  onDone: (t: string) => void;
+  onDone: (tv: string) => void;
   onCancel: () => void;
 }) {
   const [approvers, setApprovers] = useState<LoginUser[] | null>(null);
@@ -113,15 +114,15 @@ function ApprovalDialog({
       size="sm"
       title={
         <span className="row">
-          <ShieldCheck size={20} color="var(--brand)" /> Manager Approval
+          <ShieldCheck size={20} color="var(--brand)" /> {t("Manager Approval")}
         </span>
       }
       onClose={onCancel}
       footer={
         <>
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button onClick={onCancel}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" onClick={submit} loading={busy} disabled={!who || pin.length < 4}>
-            Approve
+            {t("Approve")}
           </Button>
         </>
       }
@@ -129,17 +130,17 @@ function ApprovalDialog({
       <div className="col gap-16">
         <div className="banner info">
           <div>
-            <div className="tiny">Action</div>
+            <div className="tiny">{t("Action")}</div>
             <div style={{ fontWeight: 600 }}>{pending.summary}</div>
           </div>
         </div>
         {approvers && approvers.length === 0 ? (
-          <Banner tone="warning">No active user is allowed to approve this action.</Banner>
+          <Banner tone="warning">{t("No active user is allowed to approve this action.")}</Banner>
         ) : null}
         <div className="field">
-          <label htmlFor="approver">Approved by</label>
+          <label htmlFor="approver">{t("Approved by")}</label>
           <select id="approver" className="select" value={who} onChange={(e) => setWho(e.target.value)}>
-            <option value="">Select manager…</option>
+            <option value="">{t("Select manager…")}</option>
             {(approvers ?? []).map((a) => (
               <option key={a.user_id} value={a.user_id}>
                 {a.display_name} · {a.role_name}
@@ -148,7 +149,7 @@ function ApprovalDialog({
           </select>
         </div>
         <div className="field">
-          <label htmlFor="approver-pin">Manager PIN</label>
+          <label htmlFor="approver-pin">{t("Manager PIN")}</label>
           <input
             id="approver-pin"
             className="input lg"

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, type ReactNode, type ButtonHTMLAttributes, ty
 import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import { formatMoney } from "../lib/money";
+import { t } from "../i18n";
 
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "danger" | "danger-outline" | "ghost" | "default";
@@ -192,7 +193,7 @@ export function Empty({ title, children, actions }: { title: string; children?: 
 
 export function Skeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="col" style={{ padding: 16, gap: 14 }} aria-busy="true" aria-label="Loading">
+    <div className="col" style={{ padding: 16, gap: 14 }} aria-busy="true" aria-label={t("Loading")}>
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="skeleton" style={{ width: `${70 + ((i * 17) % 30)}%` }} />
       ))}
@@ -270,7 +271,7 @@ export function Modal({
           <h2 id={titleId} className="grow" style={{ fontSize: 18 }}>
             {title}
           </h2>
-          {onClose ? <Button variant="ghost" aria-label="Close" icon={<X size={18} />} onClick={onClose} /> : null}
+          {onClose ? <Button variant="ghost" aria-label={t("Close")} icon={<X size={18} />} onClick={onClose} /> : null}
         </div>
         <div className="modal-body">{children}</div>
         {footer ? <div className="modal-foot">{footer}</div> : null}
@@ -289,7 +290,7 @@ export function Keypad({ onKey, extra }: { onKey: (k: string) => void; extra?: s
           key={k}
           type="button"
           onClick={() => onKey(k === "⌫" ? "Backspace" : k)}
-          aria-label={k === "⌫" ? "Delete digit" : k}
+          aria-label={k === "⌫" ? t("Delete digit") : k}
         >
           {k}
         </button>
@@ -305,19 +306,19 @@ export function Tabs<T extends string>({
 }: {
   tabs: { key: T; label: string }[];
   value: T;
-  onChange: (t: T) => void;
+  onChange: (tv: T) => void;
 }) {
   return (
     <div className="tabs" role="tablist">
-      {tabs.map((t) => (
+      {tabs.map((tv) => (
         <button
-          key={t.key}
+          key={tv.key}
           role="tab"
-          aria-selected={value === t.key}
-          className={`tab ${value === t.key ? "active" : ""}`}
-          onClick={() => onChange(t.key)}
+          aria-selected={value === tv.key}
+          className={`tab ${value === tv.key ? "active" : ""}`}
+          onClick={() => onChange(tv.key)}
         >
-          {t.label}
+          {tv.label}
         </button>
       ))}
     </div>
@@ -327,15 +328,15 @@ export function Tabs<T extends string>({
 export function StockStatus({ status }: { status: string }) {
   switch (status) {
     case "in_stock":
-      return <Chip tone="success">In Stock</Chip>;
+      return <Chip tone="success">{t("In Stock")}</Chip>;
     case "low_stock":
-      return <Chip tone="warning">Low Stock</Chip>;
+      return <Chip tone="warning">{t("Low Stock")}</Chip>;
     case "out_of_stock":
-      return <Chip tone="danger">Out of Stock</Chip>;
+      return <Chip tone="danger">{t("Out of Stock")}</Chip>;
     case "negative":
-      return <Chip tone="danger">Negative</Chip>;
+      return <Chip tone="danger">{t("Negative")}</Chip>;
     default:
-      return <Chip>Not tracked</Chip>;
+      return <Chip>{t("Not tracked")}</Chip>;
   }
 }
 

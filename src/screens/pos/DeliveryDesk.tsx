@@ -8,6 +8,8 @@ import { formatMoney } from "../../lib/money";
 import { formatShort } from "../../lib/time";
 import { Banner, Button, Chip, Empty } from "../../components/ui";
 import { Logo } from "../../components/Logo";
+import { t } from "../../i18n";
+import { codeLabel } from "../../i18n/codes";
 
 /** Minimal workspace for delivery staff: assigned deliveries and status only. */
 export function DeliveryDesk() {
@@ -27,40 +29,42 @@ export function DeliveryDesk() {
     <div className="pos-root">
       <header className="pos-header">
         <div className="brand">
-          <Logo size={28} /> AMWAPOS · Deliveries
+          <Logo size={28} /> {t("AMWAPOS · Deliveries")}
         </div>
         <div className="grow" />
         <div className="hitem">{session?.display_name}</div>
         <Button size="sm" icon={<LogOut size={15} />} onClick={() => void logout()}>
-          Logout
+          {t("Logout")}
         </Button>
       </header>
       <div className="content">
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {rows.length === 0 ? (
-          <Empty title="No deliveries assigned">New deliveries appear here when a manager assigns them to you.</Empty>
+          <Empty title={t("No deliveries assigned")}>
+            {t("New deliveries appear here when a manager assigns them to you.")}
+          </Empty>
         ) : null}
         <div className="col">
           {rows.map((d) => (
             <div key={d.delivery_id} className="card card-pad row">
               <div className="grow">
                 <div style={{ fontWeight: 650 }}>
-                  {d.delivery_number} · {d.customer_name ?? "Customer"}
+                  {d.delivery_number} · {d.customer_name ?? t("Customer")}
                 </div>
                 <div className="small muted">
-                  {[d.area, d.address].filter(Boolean).join(", ")} · {d.phone ?? "no phone"} ·{" "}
+                  {[d.area, d.address].filter(Boolean).join(", ")} · {d.phone ?? t("no phone")} ·{" "}
                   {formatShort(d.created_at)}
                 </div>
               </div>
               <Chip tone={d.payment_status === "paid" ? "success" : "warning"}>
                 {d.payment_status === "cod"
-                  ? "Cash on delivery"
+                  ? t("Cash on delivery")
                   : d.payment_status === "paid"
-                    ? "Paid"
-                    : "Payment pending"}
+                    ? t("Paid")
+                    : t("Payment pending")}
               </Chip>
               <span className="money">{formatMoney(d.amount_minor)}</span>
-              <Chip tone="info">{d.status}</Chip>
+              <Chip tone="info">{codeLabel(d.status)}</Chip>
               {next[d.status] ? (
                 <Button
                   variant="primary"
@@ -73,7 +77,7 @@ export function DeliveryDesk() {
                     }
                   }}
                 >
-                  Mark {next[d.status]}
+                  {t("Mark {0}", next[d.status])}
                 </Button>
               ) : null}
             </div>

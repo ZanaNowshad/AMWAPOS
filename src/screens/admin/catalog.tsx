@@ -39,6 +39,8 @@ import {
 } from "../../components/ui";
 import { Confirm, DataTable, Drawer, Pager, download, useAction, useLoad, type Column } from "./common";
 import { AdjustDialog } from "./inventory";
+import { t } from "../../i18n";
+import { codeLabel } from "../../i18n/codes";
 
 export function ProductsPage() {
   const { has } = useSession();
@@ -70,12 +72,12 @@ export function ProductsPage() {
   const cols: Column<ProductRow>[] = [
     {
       key: "name",
-      label: "Product",
+      label: t("Product"),
       render: (r) => (
         <div>
           <div style={{ fontWeight: 600 }}>
             {r.is_favorite ? (
-              <Star size={12} fill="var(--warning)" color="var(--warning)" style={{ marginRight: 4 }} />
+              <Star size={12} fill="var(--warning)" color="var(--warning)" style={{ marginInlineEnd: 4 }} />
             ) : null}
             {r.name}
           </div>
@@ -88,16 +90,16 @@ export function ProductsPage() {
       ),
       sort: (r) => r.name.toLowerCase(),
     },
-    { key: "sku", label: "SKU", render: (r) => <span className="mono">{r.sku}</span>, sort: (r) => r.sku },
+    { key: "sku", label: t("SKU"), render: (r) => <span className="mono">{r.sku}</span>, sort: (r) => r.sku },
     {
       key: "bc",
-      label: "Barcodes",
+      label: t("Barcodes"),
       render: (r) =>
         r.primary_barcode ? (
           <span className="mono">
             {r.primary_barcode}
             {r.barcode_count > 1 ? (
-              <span className="chip" style={{ marginLeft: 6 }}>
+              <span className="chip" style={{ marginInlineStart: 6 }}>
                 +{r.barcode_count - 1}
               </span>
             ) : null}
@@ -106,19 +108,20 @@ export function ProductsPage() {
           <span className="muted">—</span>
         ),
     },
-    { key: "cat", label: "Category", render: (r) => r.category_name ?? "—", sort: (r) => r.category_name ?? "" },
+    { key: "cat", label: t("Category"), render: (r) => r.category_name ?? "—", sort: (r) => r.category_name ?? "" },
     {
       key: "price",
-      label: "Price",
+      label: t("Price"),
       num: true,
-      render: (r) => (r.price_minor === null ? <Chip tone="danger">No price</Chip> : <Money minor={r.price_minor} />),
+      render: (r) =>
+        r.price_minor === null ? <Chip tone="danger">{t("No price")}</Chip> : <Money minor={r.price_minor} />,
       sort: (r) => r.price_minor ?? -1,
     },
     ...(showCost
       ? [
           {
             key: "cost",
-            label: "Cost",
+            label: t("Cost"),
             num: true,
             render: (r: ProductRow) => <Money minor={r.cost_minor} />,
             sort: (r: ProductRow) => r.cost_minor ?? 0,
@@ -127,21 +130,21 @@ export function ProductsPage() {
       : []),
     {
       key: "stock",
-      label: "Stock",
+      label: t("Stock"),
       num: true,
       render: (r) => (r.track_inventory ? formatQty(r.stock_milli) : "—"),
       sort: (r) => r.stock_milli,
     },
     {
       key: "st",
-      label: "Status",
-      render: (r) => (r.active ? <StockStatus status={r.stock_status} /> : <Chip>Archived</Chip>),
+      label: t("Status"),
+      render: (r) => (r.active ? <StockStatus status={r.stock_status} /> : <Chip>{t("Archived")}</Chip>),
     },
   ];
   const bulk = async (active: boolean) => {
     const n = await act.run(() => api.products.bulkSetActive(Array.from(sel), active));
     if (n !== undefined) {
-      toast("success", `${n} product(s) ${active ? "restored" : "archived"}`);
+      toast("success", t("{0} product(s) {1}", n, active ? "restored" : "archived"));
       setSel(new Set());
       setConfirm(null);
       void reload();
@@ -150,12 +153,12 @@ export function ProductsPage() {
   return (
     <div>
       <PageHeader
-        title="Products"
+        title={t("Products")}
         actions={
           <>
             {has("import.run") ? (
               <Button icon={<Upload size={16} />} onClick={() => nav("/admin/import")}>
-                Import
+                {t("Import")}
               </Button>
             ) : null}
             <Button
@@ -165,11 +168,11 @@ export function ProductsPage() {
                 if (csv) download(`products-${new Date().toISOString().slice(0, 10)}.csv`, csv);
               }}
             >
-              Export
+              {t("Export")}
             </Button>
             {has("products.manage") ? (
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav("/admin/products/new")}>
-                Add Product
+                {t("Add Product")}
               </Button>
             ) : null}
           </>
@@ -179,19 +182,19 @@ export function ProductsPage() {
         <input
           className="input"
           style={{ width: 280 }}
-          placeholder="Search name, SKU or barcode…"
+          placeholder={t("Search name, SKU or barcode…")}
           value={q}
           onChange={(e) => (setQ(e.target.value), setOffset(0))}
-          aria-label="Search products"
+          aria-label={t("Search products")}
         />
         <select
           className="select"
           style={{ width: 180 }}
           value={cat}
           onChange={(e) => (setCat(e.target.value), setOffset(0))}
-          aria-label="Category"
+          aria-label={t("Category")}
         >
-          <option value="">All categories</option>
+          <option value="">{t("All categories")}</option>
           {(cats.data ?? []).map((c) => (
             <option key={c.category_id} value={c.category_id}>
               {c.name}
@@ -203,23 +206,23 @@ export function ProductsPage() {
           style={{ width: 140 }}
           value={status}
           onChange={(e) => (setStatus(e.target.value), setOffset(0))}
-          aria-label="Status"
+          aria-label={t("Status")}
         >
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
-          <option value="all">All</option>
+          <option value="active">{t("Active")}</option>
+          <option value="archived">{t("Archived")}</option>
+          <option value="all">{t("All")}</option>
         </select>
         <select
           className="select"
           style={{ width: 150 }}
           value={stock}
           onChange={(e) => (setStock(e.target.value), setOffset(0))}
-          aria-label="Stock"
+          aria-label={t("Stock")}
         >
-          <option value="">Any stock</option>
-          <option value="low">Low stock</option>
-          <option value="out">Out of stock</option>
-          <option value="negative">Negative</option>
+          <option value="">{t("Any stock")}</option>
+          <option value="low">{t("Low stock")}</option>
+          <option value="out">{t("Out of stock")}</option>
+          <option value="negative">{t("Negative")}</option>
         </select>
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -235,19 +238,19 @@ export function ProductsPage() {
         onSelect={setSel}
         empty={
           <Empty
-            title={q ? "No matching products" : "No products yet"}
+            title={q ? t("No matching products") : t("No products yet")}
             actions={
               q ? null : (
                 <>
-                  <Button onClick={() => nav("/admin/import")}>Import Products</Button>
+                  <Button onClick={() => nav("/admin/import")}>{t("Import Products")}</Button>
                   <Button variant="primary" onClick={() => nav("/admin/products/new")}>
-                    Add Product
+                    {t("Add Product")}
                   </Button>
                 </>
               )
             }
           >
-            {q ? "Try a different search." : "Import your existing catalogue or create your first product."}
+            {q ? t("Try a different search.") : t("Import your existing catalogue or create your first product.")}
           </Empty>
         }
       />
@@ -266,23 +269,23 @@ export function ProductsPage() {
           <span className="grow" />
           {status !== "archived" ? (
             <Button size="sm" icon={<Archive size={14} />} onClick={() => setConfirm("archive")}>
-              Archive
+              {t("Archive")}
             </Button>
           ) : null}
           {status !== "active" ? (
             <Button size="sm" icon={<RotateCcw size={14} />} onClick={() => setConfirm("restore")}>
-              Restore
+              {t("Restore")}
             </Button>
           ) : null}
           <Button size="sm" onClick={() => setSel(new Set())}>
-            Clear selection
+            {t("Clear selection")}
           </Button>
         </div>
       ) : null}
       {confirm ? (
         <Confirm
-          title={confirm === "archive" ? "Archive products" : "Restore products"}
-          confirmLabel={confirm === "archive" ? `Archive ${sel.size}` : `Restore ${sel.size}`}
+          title={confirm === "archive" ? t("Archive products") : t("Restore products")}
+          confirmLabel={confirm === "archive" ? t("Archive {0}", sel.size) : t("Restore {0}", sel.size)}
           danger={confirm === "archive"}
           busy={act.busy}
           error={act.error}
@@ -290,8 +293,11 @@ export function ProductsPage() {
           onConfirm={() => void bulk(confirm === "restore")}
         >
           {confirm === "archive"
-            ? `Archive ${sel.size} selected product(s)? They will no longer appear in POS search. Sales history is kept.`
-            : `Restore ${sel.size} product(s)? They will be sellable again.`}
+            ? t(
+                "Archive {0} selected product(s)? They will no longer appear in POS search. Sales history is kept.",
+                sel.size,
+              )
+            : t("Restore {0} product(s)? They will be sellable again.", sel.size)}
         </Confirm>
       ) : null}
     </div>
@@ -361,8 +367,8 @@ export function ProductEditorPage() {
   }, [id]);
   useEffect(() => {
     if (isNew && !form && taxes.data) {
-      const t = taxes.data.find((x) => x.active && x.rate_bp > 0) ?? taxes.data.find((x) => x.active);
-      setForm(emptyInput(t?.tax_rule_id ?? ""));
+      const tv = taxes.data.find((x) => x.active && x.rate_bp > 0) ?? taxes.data.find((x) => x.active);
+      setForm(emptyInput(tv?.tax_rule_id ?? ""));
     }
   }, [isNew, form, taxes.data]);
   // Warn before leaving with unsaved edits (browser close / reload).
@@ -383,7 +389,7 @@ export function ProductEditorPage() {
     if (!form) return;
     const rp = parseQty(reorder);
     if (rp === null || rp < 0) {
-      act.setError("Reorder point must be a number.");
+      act.setError(t("Reorder point must be a number."));
       return;
     }
     const input = {
@@ -396,12 +402,12 @@ export function ProductEditorPage() {
     if (isNew) {
       const p = parseMoney(price);
       if (p === null || p < 0) {
-        act.setError("Enter a valid selling price.");
+        act.setError(t("Enter a valid selling price."));
         return;
       }
       const c = cost.trim() ? parseMoney(cost) : null;
       if (cost.trim() && (c === null || c < 0)) {
-        act.setError("Enter a valid cost.");
+        act.setError(t("Enter a valid cost."));
         return;
       }
       const o = opening.trim() ? parseQty(opening) : null;
@@ -415,7 +421,7 @@ export function ProductEditorPage() {
         }),
       );
       if (created) {
-        toast("success", "Product created");
+        toast("success", t("Product created"));
         setDirty(false);
         nav(`/admin/products/${created.product_id}`, { replace: true });
       }
@@ -424,7 +430,7 @@ export function ProductEditorPage() {
         api.products.update({ ...input, product_id: detail.product_id, expected_version: detail.version }),
       );
       if (updated) {
-        toast("success", "Product saved");
+        toast("success", t("Product saved"));
         await loadDetail();
       }
     }
@@ -432,13 +438,13 @@ export function ProductEditorPage() {
 
   if (!form) return <Skeleton rows={10} />;
   const tabs = isNew
-    ? [{ key: "general" as const, label: "General" }]
+    ? [{ key: "general" as const, label: t("General") }]
     : [
-        { key: "general" as const, label: "General" },
-        { key: "barcodes" as const, label: "Barcodes" },
-        { key: "pricing" as const, label: "Pricing" },
-        { key: "inventory" as const, label: "Inventory" },
-        { key: "history" as const, label: "History" },
+        { key: "general" as const, label: t("General") },
+        { key: "barcodes" as const, label: t("Barcodes") },
+        { key: "pricing" as const, label: t("Pricing") },
+        { key: "inventory" as const, label: t("Inventory") },
+        { key: "history" as const, label: t("History") },
       ];
   return (
     <div>
@@ -446,13 +452,13 @@ export function ProductEditorPage() {
         <Button
           variant="ghost"
           icon={<ArrowLeft size={18} />}
-          aria-label="Back"
+          aria-label={t("Back")}
           onClick={() => (dirty ? setLeave(true) : nav("/admin/products"))}
         />
         <div className="grow">
-          <div className="tiny">Products</div>
+          <div className="tiny">{t("Products")}</div>
           <h1>
-            {isNew ? "New product" : detail?.name} {detail && !detail.active ? <Chip>Archived</Chip> : null}
+            {isNew ? t("New product") : detail?.name} {detail && !detail.active ? <Chip>{t("Archived")}</Chip> : null}
           </h1>
         </div>
         {!isNew && detail && canEdit ? (
@@ -461,17 +467,17 @@ export function ProductEditorPage() {
             onClick={async () => {
               const d = await act.run(() => api.products.setActive(detail.product_id, !detail.active));
               if (d) {
-                toast("success", d.active ? "Product restored" : "Product archived");
+                toast("success", d.active ? t("Product restored") : t("Product archived"));
                 await loadDetail();
               }
             }}
           >
-            {detail.active ? "Archive" : "Restore"}
+            {detail.active ? t("Archive") : t("Restore")}
           </Button>
         ) : null}
         {canEdit && (tab === "general" || isNew) ? (
           <Button variant="primary" onClick={save} loading={act.busy} disabled={!form.name.trim()}>
-            Save
+            {t("Save")}
           </Button>
         ) : null}
       </div>
@@ -482,7 +488,7 @@ export function ProductEditorPage() {
           <div className="card card-pad">
             <div className="form-grid">
               <TextInput
-                label="Name"
+                label={t("Name")}
                 required
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
@@ -491,27 +497,27 @@ export function ProductEditorPage() {
                 autoFocus={isNew}
               />
               <TextInput
-                label="Arabic name"
+                label={t("Arabic name")}
                 dir="rtl"
                 value={form.name_ar ?? ""}
                 onChange={(e) => set("name_ar", e.target.value)}
                 disabled={!canEdit}
               />
               <TextInput
-                label="SKU"
+                label={t("SKU")}
                 value={form.sku ?? ""}
                 onChange={(e) => set("sku", e.target.value)}
-                hint={isNew ? "Leave empty to generate." : undefined}
+                hint={isNew ? t("Leave empty to generate.") : undefined}
                 disabled={!canEdit}
               />
-              <Field label="Category">
+              <Field label={t("Category")}>
                 <select
                   className="select"
                   value={form.category_id ?? ""}
                   onChange={(e) => set("category_id", e.target.value || null)}
                   disabled={!canEdit}
                 >
-                  <option value="">Uncategorised</option>
+                  <option value="">{t("Uncategorised")}</option>
                   {(cats.data ?? []).map((c) => (
                     <option key={c.category_id} value={c.category_id}>
                       {c.name}
@@ -519,7 +525,7 @@ export function ProductEditorPage() {
                   ))}
                 </select>
               </Field>
-              <Field label="Tax rule" required>
+              <Field label={t("Tax rule")} required>
                 <select
                   className="select"
                   value={form.tax_rule_id}
@@ -527,15 +533,15 @@ export function ProductEditorPage() {
                   disabled={!canEdit}
                 >
                   {(taxes.data ?? [])
-                    .filter((t) => t.active || t.tax_rule_id === form.tax_rule_id)
-                    .map((t) => (
-                      <option key={t.tax_rule_id} value={t.tax_rule_id}>
-                        {t.name} ({formatPercent(t.rate_bp)} {t.inclusive ? "incl." : "excl."})
+                    .filter((tv) => tv.active || tv.tax_rule_id === form.tax_rule_id)
+                    .map((tv) => (
+                      <option key={tv.tax_rule_id} value={tv.tax_rule_id}>
+                        {tv.name} ({formatPercent(tv.rate_bp)} {tv.inclusive ? t("incl.") : t("excl.")})
                       </option>
                     ))}
                 </select>
               </Field>
-              <Field label="Description" className="span-2">
+              <Field label={t("Description")} className="span-2">
                 <textarea
                   className="textarea"
                   value={form.description ?? ""}
@@ -544,14 +550,14 @@ export function ProductEditorPage() {
                 />
               </Field>
               <TextInput
-                label="Unit"
+                label={t("Unit")}
                 value={form.unit}
                 onChange={(e) => set("unit", e.target.value)}
-                hint="pcs, kg, box…"
+                hint={t("pcs, kg, box…")}
                 disabled={!canEdit}
               />
               <TextInput
-                label="Reorder point"
+                label={t("Reorder point")}
                 className="num"
                 value={reorder}
                 onChange={(e) => (setReorder(e.target.value), setDirty(true))}
@@ -559,19 +565,19 @@ export function ProductEditorPage() {
               />
               <div className="col span-2">
                 <Checkbox
-                  label="Track stock"
+                  label={t("Track stock")}
                   checked={form.track_inventory}
                   onChange={(v) => set("track_inventory", v)}
                   disabled={!canEdit}
                 />
                 <Checkbox
-                  label="Sold by weight / decimal quantity"
+                  label={t("Sold by weight / decimal quantity")}
                   checked={form.allow_decimal_quantity}
                   onChange={(v) => set("allow_decimal_quantity", v)}
                   disabled={!canEdit}
                 />
                 <Checkbox
-                  label="Show in POS favorites"
+                  label={t("Show in POS favorites")}
                   checked={form.is_favorite}
                   onChange={(v) => set("is_favorite", v)}
                   disabled={!canEdit}
@@ -582,9 +588,9 @@ export function ProductEditorPage() {
           <div className="col gap-16">
             {isNew ? (
               <div className="card card-pad col gap-16">
-                <h3>Price & stock</h3>
+                <h3>{t("Price & stock")}</h3>
                 <TextInput
-                  label="Selling price"
+                  label={t("Selling price")}
                   required
                   className="num"
                   inputMode="decimal"
@@ -594,7 +600,7 @@ export function ProductEditorPage() {
                 />
                 {has("products.view_cost") ? (
                   <TextInput
-                    label="Cost"
+                    label={t("Cost")}
                     className="num"
                     inputMode="decimal"
                     value={cost}
@@ -603,7 +609,7 @@ export function ProductEditorPage() {
                   />
                 ) : null}
                 <TextInput
-                  label="Opening stock"
+                  label={t("Opening stock")}
                   className="num"
                   inputMode="decimal"
                   value={opening}
@@ -611,8 +617,8 @@ export function ProductEditorPage() {
                   disabled={!form.track_inventory}
                 />
                 <Field
-                  label="Barcodes"
-                  hint="Press Enter after each barcode. Barcodes are stored as text; leading zeros are kept."
+                  label={t("Barcodes")}
+                  hint={t("Press Enter after each barcode. Barcodes are stored as text; leading zeros are kept.")}
                 >
                   <div className="row wrap">
                     {barcodes.map((b) => (
@@ -620,7 +626,7 @@ export function ProductEditorPage() {
                         {b}
                         <button
                           className="link"
-                          aria-label={`Remove ${b}`}
+                          aria-label={t("Remove {0}", b)}
                           onClick={() => setBarcodes(barcodes.filter((x) => x !== b))}
                         >
                           ×
@@ -640,30 +646,32 @@ export function ProductEditorPage() {
                         setBcInput("");
                       }
                     }}
-                    placeholder="Scan or type barcode"
+                    placeholder={t("Scan or type barcode")}
                   />
                 </Field>
               </div>
             ) : detail ? (
               <div className="card card-pad">
                 <dl className="kv">
-                  <dt>Selling price</dt>
+                  <dt>{t("Selling price")}</dt>
                   <dd>
                     <Money minor={detail.price_minor} />
                   </dd>
                   {detail.avg_cost_minor !== null ? (
                     <>
-                      <dt>Average cost</dt>
+                      <dt>{t("Average cost")}</dt>
                       <dd>
                         <Money minor={detail.avg_cost_minor} />
                       </dd>
                     </>
                   ) : null}
-                  <dt>Stock</dt>
-                  <dd>{detail.track_inventory ? `${formatQty(detail.stock_milli)} ${detail.unit}` : "Not tracked"}</dd>
-                  <dt>Barcodes</dt>
+                  <dt>{t("Stock")}</dt>
+                  <dd>
+                    {detail.track_inventory ? `${formatQty(detail.stock_milli)} ${detail.unit}` : t("Not tracked")}
+                  </dd>
+                  <dt>{t("Barcodes")}</dt>
                   <dd>{detail.barcodes.length}</dd>
-                  <dt>Updated</dt>
+                  <dt>{t("Updated")}</dt>
                   <dd>{formatDateTime(detail.updated_at)}</dd>
                 </dl>
               </div>
@@ -677,13 +685,13 @@ export function ProductEditorPage() {
       {tab === "history" && detail ? <HistoryTab productId={detail.product_id} /> : null}
       {leave ? (
         <Confirm
-          title="Discard unsaved changes?"
-          confirmLabel="Discard"
+          title={t("Discard unsaved changes?")}
+          confirmLabel={t("Discard")}
           danger
           onCancel={() => setLeave(false)}
           onConfirm={() => nav("/admin/products")}
         >
-          You have unsaved changes to this product.
+          {t("You have unsaved changes to this product.")}
         </Confirm>
       ) : null}
     </div>
@@ -722,15 +730,15 @@ function BarcodesTab({
   return (
     <div className="card">
       <div className="card-head">
-        <h3 className="grow">Barcodes</h3>
+        <h3 className="grow">{t("Barcodes")}</h3>
       </div>
       <table className="table">
         <thead>
           <tr>
-            <th>Barcode</th>
-            <th>Source</th>
-            <th>Added</th>
-            <th>Primary</th>
+            <th>{t("Barcode")}</th>
+            <th>{t("Source")}</th>
+            <th>{t("Added")}</th>
+            <th>{t("Primary")}</th>
             <th />
           </tr>
         </thead>
@@ -738,9 +746,9 @@ function BarcodesTab({
           {detail.barcodes.map((b) => (
             <tr key={b.barcode_id}>
               <td className="mono">{b.barcode}</td>
-              <td>{b.source}</td>
+              <td>{codeLabel(b.source)}</td>
               <td>{formatShort(b.created_at)}</td>
-              <td>{b.is_primary ? <Chip tone="brand">Primary</Chip> : null}</td>
+              <td>{b.is_primary ? <Chip tone="brand">{t("Primary")}</Chip> : null}</td>
               <td className="num">
                 {canEdit ? (
                   <div className="row" style={{ justifyContent: "flex-end" }}>
@@ -751,7 +759,7 @@ function BarcodesTab({
                           onChanged((await act.run(() => api.barcodes.setPrimary(b.barcode_id))) ?? detail)
                         }
                       >
-                        Set Primary
+                        {t("Set Primary")}
                       </Button>
                     ) : null}
                     <Button
@@ -762,7 +770,7 @@ function BarcodesTab({
                         onChanged((await act.run(() => api.barcodes.remove(b.barcode_id))) ?? detail)
                       }
                     >
-                      Remove
+                      {t("Remove")}
                     </Button>
                   </div>
                 ) : null}
@@ -772,21 +780,21 @@ function BarcodesTab({
         </tbody>
       </table>
       {detail.barcodes.length === 0 ? (
-        <div className="empty">No barcodes. Add one so the product can be scanned.</div>
+        <div className="empty">{t("No barcodes. Add one so the product can be scanned.")}</div>
       ) : null}
       {canEdit ? (
         <div className="card-body col">
           <div className="row">
             <input
               className="input mono grow"
-              placeholder="Scan or type a barcode"
+              placeholder={t("Scan or type a barcode")}
               value={v}
               onChange={(e) => setV(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && v.trim() && add()}
-              aria-label="New barcode"
+              aria-label={t("New barcode")}
             />
             <Button variant="primary" icon={<Plus size={16} />} onClick={add} disabled={!v.trim()} loading={act.busy}>
-              Add Barcode
+              {t("Add Barcode")}
             </Button>
           </div>
           {act.error ? (
@@ -795,7 +803,7 @@ function BarcodesTab({
               action={
                 owner ? (
                   <button className="link" onClick={() => nav(`/admin/products/${owner.id}`)}>
-                    Open {owner.name}
+                    {t("Open {0}", owner.name)}
                   </button>
                 ) : null
               }
@@ -821,19 +829,19 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
   return (
     <div className="grid-2">
       <div className="card card-pad col gap-16">
-        <h3>Selling price</h3>
+        <h3>{t("Selling price")}</h3>
         <div className="due">{formatMoney(detail.price_minor)}</div>
         {has("prices.manage") ? (
           <>
             <div className="form-grid">
               <TextInput
-                label="New price"
+                label={t("New price")}
                 className="num"
                 inputMode="decimal"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
               />
-              <TextInput label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+              <TextInput label={t("Reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
             </div>
             <Button
               variant="primary"
@@ -844,13 +852,13 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
                   api.products.priceUpdate(detail.product_id, parseMoney(price)!, reason || null),
                 );
                 if (r) {
-                  toast("success", "Price changed");
+                  toast("success", t("Price changed"));
                   setReason("");
                   await onChanged();
                 }
               }}
             >
-              Change Price
+              {t("Change Price")}
             </Button>
           </>
         ) : null}
@@ -858,18 +866,18 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
         <table className="table">
           <thead>
             <tr>
-              <th>Effective</th>
-              <th>Until</th>
-              <th className="num">Price</th>
-              <th>Changed by</th>
-              <th>Reason</th>
+              <th>{t("Effective")}</th>
+              <th>{t("Until")}</th>
+              <th className="num">{t("Price")}</th>
+              <th>{t("Changed by")}</th>
+              <th>{t("Reason")}</th>
             </tr>
           </thead>
           <tbody>
             {detail.price_history.map((p) => (
               <tr key={p.price_id}>
                 <td>{formatShort(p.effective_from)}</td>
-                <td>{p.effective_to ? formatShort(p.effective_to) : <Chip tone="success">Current</Chip>}</td>
+                <td>{p.effective_to ? formatShort(p.effective_to) : <Chip tone="success">{t("Current")}</Chip>}</td>
                 <td className="num">{formatMoney(p.amount_minor)}</td>
                 <td>{p.created_by_name ?? "—"}</td>
                 <td>{p.reason ?? "—"}</td>
@@ -880,13 +888,13 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
       </div>
       {detail.cost_history ? (
         <div className="card card-pad col gap-16">
-          <h3>Cost</h3>
+          <h3>{t("Cost")}</h3>
           <dl className="kv">
-            <dt>Average cost</dt>
+            <dt>{t("Average cost")}</dt>
             <dd>{formatMoney(detail.avg_cost_minor)}</dd>
-            <dt>Last cost</dt>
+            <dt>{t("Last cost")}</dt>
             <dd>{formatMoney(detail.last_cost_minor)}</dd>
-            <dt>Unit margin</dt>
+            <dt>{t("Unit margin")}</dt>
             <dd className={margin !== null && margin < 0 ? "neg-num" : ""}>
               {margin === null ? "—" : formatMoney(margin)}
             </dd>
@@ -894,12 +902,12 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
           {has("products.manage") ? (
             <div className="row" style={{ alignItems: "flex-end" }}>
               <TextInput
-                label="Set standard cost"
+                label={t("Set standard cost")}
                 className="num"
                 value={cost}
                 onChange={(e) => setCost(e.target.value)}
                 fieldClass="grow"
-                hint="Overrides the weighted average. Receiving updates it automatically."
+                hint={t("Overrides the weighted average. Receiving updates it automatically.")}
               />
               <Button
                 disabled={parseMoney(cost) === null}
@@ -908,29 +916,29 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
                     api.products.costUpdate(detail.product_id, parseMoney(cost)!, "Manual"),
                   );
                   if (r) {
-                    toast("success", "Cost updated");
+                    toast("success", t("Cost updated"));
                     await onChanged();
                   }
                 }}
               >
-                Save cost
+                {t("Save cost")}
               </Button>
             </div>
           ) : null}
           <table className="table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Source</th>
-                <th>Supplier</th>
-                <th className="num">Cost</th>
+                <th>{t("Date")}</th>
+                <th>{t("Source")}</th>
+                <th>{t("Supplier")}</th>
+                <th className="num">{t("Cost")}</th>
               </tr>
             </thead>
             <tbody>
               {detail.cost_history.map((c) => (
                 <tr key={c.cost_id}>
                   <td>{formatShort(c.effective_at)}</td>
-                  <td>{c.source}</td>
+                  <td>{codeLabel(c.source)}</td>
                   <td>{c.supplier_name ?? "—"}</td>
                   <td className="num">{formatMoney(c.cost_minor)}</td>
                 </tr>
@@ -954,17 +962,17 @@ function InventoryTab({ detail, onChanged }: { detail: ProductDetail; onChanged:
     <div className="col gap-16">
       <div className="card card-pad row">
         <div className="grow">
-          <div className="tiny">On hand</div>
+          <div className="tiny">{t("On hand")}</div>
           <div className="due">
-            {detail.track_inventory ? formatQty(detail.stock_milli) : "Not tracked"}{" "}
+            {detail.track_inventory ? formatQty(detail.stock_milli) : t("Not tracked")}{" "}
             <span className="small muted">{detail.unit}</span>
           </div>
-          <div className="small muted">Reorder point {formatQty(detail.reorder_point_milli)}</div>
+          <div className="small muted">{t("Reorder point {0}", formatQty(detail.reorder_point_milli))}</div>
         </div>
         <StockStatus status={detail.stock_status} />
         {has("inventory.adjust") && detail.track_inventory ? (
           <Button variant="primary" onClick={() => setAdjust(true)}>
-            Adjust stock
+            {t("Adjust stock")}
           </Button>
         ) : null}
       </div>
@@ -972,13 +980,13 @@ function InventoryTab({ detail, onChanged }: { detail: ProductDetail; onChanged:
         rows={moves.data?.rows ?? null}
         loading={moves.loading}
         rowKey={(r) => r.movement_id}
-        empty={<div className="empty">No stock movements yet.</div>}
+        empty={<div className="empty">{t("No stock movements yet.")}</div>}
         columns={[
-          { key: "t", label: "Time", render: (r) => formatShort(r.created_at) },
-          { key: "k", label: "Type", render: (r) => r.kind },
+          { key: "t", label: t("Time"), render: (r) => formatShort(r.created_at) },
+          { key: "k", label: t("Type"), render: (r) => r.kind },
           {
             key: "q",
-            label: "Qty Change",
+            label: t("Qty Change"),
             num: true,
             render: (r) => (
               <span className={r.qty_delta_milli > 0 ? "pos-num" : "neg-num"}>
@@ -987,10 +995,10 @@ function InventoryTab({ detail, onChanged }: { detail: ProductDetail; onChanged:
               </span>
             ),
           },
-          { key: "b", label: "Balance", num: true, render: (r) => formatQty(r.balance_after_milli) },
-          { key: "s", label: "Source", render: (r) => r.source_ref ?? r.source_type },
-          { key: "r", label: "Reason", render: (r) => r.reason ?? "—" },
-          { key: "u", label: "User", render: (r) => r.user_name ?? "—" },
+          { key: "b", label: t("Balance"), num: true, render: (r) => formatQty(r.balance_after_milli) },
+          { key: "s", label: t("Source"), render: (r) => r.source_ref ?? r.source_type },
+          { key: "r", label: t("Reason"), render: (r) => r.reason ?? "—" },
+          { key: "u", label: t("User"), render: (r) => r.user_name ?? "—" },
         ]}
       />
       {adjust ? (
@@ -1016,21 +1024,21 @@ function HistoryTab({ productId }: { productId: string }) {
         : Promise.resolve(null),
     [productId],
   );
-  if (!has("audit.view")) return <div className="empty">Your role cannot view the audit history.</div>;
+  if (!has("audit.view")) return <div className="empty">{t("Your role cannot view the audit history.")}</div>;
   return (
     <DataTable
       rows={audit.data?.rows ?? null}
       loading={audit.loading}
       rowKey={(r) => r.audit_id}
-      empty={<div className="empty">No history.</div>}
+      empty={<div className="empty">{t("No history.")}</div>}
       columns={[
-        { key: "t", label: "Time", render: (r) => formatDateTime(r.created_at) },
-        { key: "e", label: "Event", render: (r) => r.event_type },
-        { key: "u", label: "User", render: (r) => r.user_name ?? "System" },
-        { key: "a", label: "Approved by", render: (r) => r.approver_name ?? "—" },
+        { key: "t", label: t("Time"), render: (r) => formatDateTime(r.created_at) },
+        { key: "e", label: t("Event"), render: (r) => r.event_type },
+        { key: "u", label: t("User"), render: (r) => r.user_name ?? t("System") },
+        { key: "a", label: t("Approved by"), render: (r) => r.approver_name ?? "—" },
         {
           key: "d",
-          label: "Change",
+          label: t("Change"),
           render: (r) => (
             <span className="small mono ellipsis" style={{ maxWidth: 420, display: "inline-block" }}>
               {JSON.stringify(r.after ?? r.before)}
@@ -1062,11 +1070,11 @@ export function CategoriesPage() {
   return (
     <div>
       <PageHeader
-        title="Categories"
+        title={t("Categories")}
         actions={
           canEdit ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => open("new")}>
-              Add Category
+              {t("Add Category")}
             </Button>
           ) : null
         }
@@ -1080,21 +1088,21 @@ export function CategoriesPage() {
         columns={[
           {
             key: "n",
-            label: "Name",
+            label: t("Name"),
             render: (r) => (r.parent_id ? `${byId.get(r.parent_id)?.name ?? "…"} › ${r.name}` : r.name),
             sort: (r) => r.name,
           },
           {
             key: "p",
-            label: "Active products",
+            label: t("Active products"),
             num: true,
             render: (r) => r.product_count,
             sort: (r) => r.product_count,
           },
           {
             key: "s",
-            label: "Status",
-            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Archived</Chip>),
+            label: t("Status"),
+            render: (r) => (r.active ? <Chip tone="success">{t("Active")}</Chip> : <Chip>{t("Archived")}</Chip>),
           },
           {
             key: "a",
@@ -1103,19 +1111,22 @@ export function CategoriesPage() {
             render: (r) =>
               canEdit && r.active ? (
                 <Button size="sm" onClick={(e) => (e.stopPropagation(), setArchive(r), setTarget(""))}>
-                  Archive
+                  {t("Archive")}
                 </Button>
               ) : null,
           },
         ]}
       />
       {editing ? (
-        <Drawer title={editing === "new" ? "New category" : `Edit ${editing.name}`} onClose={() => setEditing(null)}>
+        <Drawer
+          title={editing === "new" ? t("New category") : t("Edit {0}", editing.name)}
+          onClose={() => setEditing(null)}
+        >
           <div className="col gap-16">
-            <TextInput label="Name" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-            <Field label="Parent category">
+            <TextInput label={t("Name")} required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <Field label={t("Parent category")}>
               <select className="select" value={parent} onChange={(e) => setParent(e.target.value)}>
-                <option value="">None (top level)</option>
+                <option value="">{t("None (top level)")}</option>
                 {(data ?? [])
                   .filter((c) => c.active && (editing === "new" || c.category_id !== editing.category_id))
                   .map((c) => (
@@ -1139,21 +1150,21 @@ export function CategoriesPage() {
                   }),
                 );
                 if (r) {
-                  toast("success", "Category saved");
+                  toast("success", t("Category saved"));
                   setEditing(null);
                   void reload();
                 }
               }}
             >
-              Save
+              {t("Save")}
             </Button>
           </div>
         </Drawer>
       ) : null}
       {archive ? (
         <Confirm
-          title={`Archive ${archive.name}`}
-          confirmLabel="Archive"
+          title={t("Archive {0}", archive.name)}
+          confirmLabel={t("Archive")}
           danger
           busy={act.busy}
           error={act.error}
@@ -1168,14 +1179,14 @@ export function CategoriesPage() {
         >
           {archive.product_count > 0 ? (
             <div className="col">
-              <span>{archive.product_count} product(s) use this category. Move them to:</span>
+              <span>{t("{0} product(s) use this category. Move them to:", archive.product_count)}</span>
               <select
                 className="select"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
-                aria-label="Move products to"
+                aria-label={t("Move products to")}
               >
-                <option value="">Choose category…</option>
+                <option value="">{t("Choose category…")}</option>
                 {(data ?? [])
                   .filter((c) => c.active && c.category_id !== archive.category_id)
                   .map((c) => (
@@ -1186,7 +1197,7 @@ export function CategoriesPage() {
               </select>
             </div>
           ) : (
-            "The category will be hidden from pickers. Historical sales keep their category."
+            t("The category will be hidden from pickers. Historical sales keep their category.")
           )}
         </Confirm>
       ) : null}
@@ -1242,12 +1253,12 @@ export function PricingPage() {
     const r = await act.run(() =>
       api.products.bulkPrice(
         changes.map((c) => ({ product_id: c.p.product_id, amount_minor: c.next! })),
-        reason || "Bulk price change",
+        reason || t("Bulk price change"),
         newOperationId(),
       ),
     );
     if (r) {
-      toast("success", `${r.changed} price(s) changed`);
+      toast("success", t("{0} price(s) changed", r.changed));
       setConfirm(false);
       setSel(new Set());
       void reload();
@@ -1257,26 +1268,26 @@ export function PricingPage() {
   return (
     <div>
       <PageHeader
-        title="Pricing"
-        subtitle="Bulk price changes. Every change is previewed first and recorded in price history."
+        title={t("Pricing")}
+        subtitle={t("Bulk price changes. Every change is previewed first and recorded in price history.")}
       />
       <div className="filters">
         <input
           className="input"
           style={{ width: 240 }}
-          placeholder="Search products…"
+          placeholder={t("Search products…")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          aria-label="Search"
+          aria-label={t("Search")}
         />
         <select
           className="select"
           style={{ width: 180 }}
           value={cat}
           onChange={(e) => setCat(e.target.value)}
-          aria-label="Category"
+          aria-label={t("Category")}
         >
-          <option value="">All categories</option>
+          <option value="">{t("All categories")}</option>
           {(cats.data ?? []).map((c) => (
             <option key={c.category_id} value={c.category_id}>
               {c.name}
@@ -1291,22 +1302,22 @@ export function PricingPage() {
           onChange={(e) =>
             setRule({ kind: e.target.value as Rule["kind"], value: e.target.value === "round" ? "0.050" : rule.value })
           }
-          aria-label="Rule"
+          aria-label={t("Rule")}
         >
-          <option value="percent">Percentage change</option>
-          <option value="fixed">Fixed change</option>
-          <option value="set">Set price</option>
-          <option value="round">Round up to</option>
+          <option value="percent">{t("Percentage change")}</option>
+          <option value="fixed">{t("Fixed change")}</option>
+          <option value="set">{t("Set price")}</option>
+          <option value="round">{t("Round up to")}</option>
         </select>
         <input
           className="input num"
           style={{ width: 110 }}
           value={rule.value}
           onChange={(e) => setRule({ ...rule, value: e.target.value })}
-          aria-label="Rule value"
+          aria-label={t("Rule value")}
         />
         <Button variant="primary" disabled={changes.length === 0} onClick={() => setConfirm(true)}>
-          Preview {changes.length} change(s)
+          {t("Preview {0} change(s)", changes.length)}
         </Button>
       </div>
       <DataTable<ProductRow>
@@ -1318,14 +1329,14 @@ export function PricingPage() {
         onSelect={setSel}
         maxHeight="62vh"
         columns={[
-          { key: "n", label: "Product", render: (r) => r.name, sort: (r) => r.name },
-          { key: "p", label: "Current Price", num: true, render: (r) => <Money minor={r.price_minor} /> },
+          { key: "n", label: t("Product"), render: (r) => r.name, sort: (r) => r.name },
+          { key: "p", label: t("Current Price"), num: true, render: (r) => <Money minor={r.price_minor} /> },
           ...(has("products.view_cost")
             ? [
-                { key: "c", label: "Cost", num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} /> },
+                { key: "c", label: t("Cost"), num: true, render: (r: ProductRow) => <Money minor={r.cost_minor} /> },
                 {
                   key: "m",
-                  label: "Margin",
+                  label: t("Margin"),
                   num: true,
                   render: (r: ProductRow) =>
                     r.price_minor && r.cost_minor !== null
@@ -1336,7 +1347,7 @@ export function PricingPage() {
             : []),
           {
             key: "x",
-            label: "New Price",
+            label: t("New Price"),
             num: true,
             render: (r) =>
               sel.has(r.product_id) ? <strong>{formatMoney(computeNew(r))}</strong> : <span className="muted">—</span>,
@@ -1345,8 +1356,8 @@ export function PricingPage() {
       />
       {confirm ? (
         <Confirm
-          title="Apply price changes"
-          confirmLabel={`Change ${changes.length} price(s)`}
+          title={t("Apply price changes")}
+          confirmLabel={t("Change {0} price(s)", changes.length)}
           busy={act.busy}
           error={act.error}
           onCancel={() => setConfirm(false)}
@@ -1354,7 +1365,10 @@ export function PricingPage() {
         >
           <div className="col gap-16">
             <div>
-              Change the selling price of {changes.length} product(s). New prices apply immediately at every till.
+              {t(
+                "Change the selling price of {0} product(s). New prices apply immediately at every till.",
+                changes.length,
+              )}
             </div>
             <div style={{ maxHeight: 240, overflow: "auto" }}>
               <table className="table">
@@ -1369,7 +1383,7 @@ export function PricingPage() {
                 </tbody>
               </table>
             </div>
-            <TextInput label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+            <TextInput label={t("Reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
         </Confirm>
       ) : null}
@@ -1388,7 +1402,10 @@ export function UnknownBarcodesPage() {
   const act = useAction();
   return (
     <div>
-      <PageHeader title="Unknown Barcodes" subtitle="Barcodes scanned at the till that are not in the catalogue." />
+      <PageHeader
+        title={t("Unknown Barcodes")}
+        subtitle={t("Barcodes scanned at the till that are not in the catalogue.")}
+      />
       <div className="filters">
         {["open", "resolved", "dismissed", "all"].map((s) => (
           <button key={s} className={`filter-chip ${status === s ? "active" : ""}`} onClick={() => setStatus(s)}>
@@ -1402,37 +1419,42 @@ export function UnknownBarcodesPage() {
         loading={loading}
         rowKey={(r) => r.barcode}
         onRowClick={(r) => r.status === "open" && (setOpen(r), setQ(""))}
-        empty={<div className="empty">No unknown barcodes. Every scanned barcode was recognised.</div>}
+        empty={<div className="empty">{t("No unknown barcodes. Every scanned barcode was recognised.")}</div>}
         columns={[
-          { key: "b", label: "Barcode", render: (r) => <span className="mono">{r.barcode}</span> },
-          { key: "f", label: "First Seen", render: (r) => formatShort(r.first_seen_at), sort: (r) => r.first_seen_at },
-          { key: "l", label: "Last Seen", render: (r) => formatShort(r.last_seen_at), sort: (r) => r.last_seen_at },
-          { key: "c", label: "Scan Count", num: true, render: (r) => r.scan_count, sort: (r) => r.scan_count },
-          { key: "t", label: "Terminal", render: (r) => r.last_device_name ?? "—" },
+          { key: "b", label: t("Barcode"), render: (r) => <span className="mono">{r.barcode}</span> },
+          {
+            key: "f",
+            label: t("First Seen"),
+            render: (r) => formatShort(r.first_seen_at),
+            sort: (r) => r.first_seen_at,
+          },
+          { key: "l", label: t("Last Seen"), render: (r) => formatShort(r.last_seen_at), sort: (r) => r.last_seen_at },
+          { key: "c", label: t("Scan Count"), num: true, render: (r) => r.scan_count, sort: (r) => r.scan_count },
+          { key: "t", label: t("Terminal"), render: (r) => r.last_device_name ?? "—" },
           {
             key: "s",
-            label: "Status",
+            label: t("Status"),
             render: (r) =>
               r.status === "open" ? (
-                <Chip tone="warning">Open</Chip>
+                <Chip tone="warning">{t("Open")}</Chip>
               ) : r.status === "resolved" ? (
-                <Chip tone="success">Resolved · {r.resolved_product_name}</Chip>
+                <Chip tone="success">{t("Resolved · {0}", r.resolved_product_name)}</Chip>
               ) : (
-                <Chip>Dismissed</Chip>
+                <Chip>{t("Dismissed")}</Chip>
               ),
           },
         ]}
       />
       {open ? (
-        <Drawer title={`Resolve ${open.barcode}`} onClose={() => setOpen(null)}>
+        <Drawer title={t("Resolve {0}", open.barcode)} onClose={() => setOpen(null)}>
           <div className="col gap-16">
             <div className="small muted">
-              Scanned {open.scan_count} time(s), last on {formatDateTime(open.last_seen_at)}.
+              {t("Scanned {0} time(s), last on {1}.", open.scan_count, formatDateTime(open.last_seen_at))}
             </div>
-            <h3>Assign to an existing product</h3>
+            <h3>{t("Assign to an existing product")}</h3>
             <input
               className="input"
-              placeholder="Search product by name or SKU…"
+              placeholder={t("Search product by name or SKU…")}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               autoFocus
@@ -1442,7 +1464,7 @@ export function UnknownBarcodesPage() {
                 <div className="grow">
                   <div style={{ fontWeight: 600 }}>{p.name}</div>
                   <div className="tiny">
-                    {p.sku} · {p.primary_barcode ?? "no barcode"}
+                    {p.sku} · {p.primary_barcode ?? t("no barcode")}
                   </div>
                 </div>
                 <Button
@@ -1451,13 +1473,13 @@ export function UnknownBarcodesPage() {
                   onClick={async () => {
                     const r = await act.run(() => api.barcodes.add(p.product_id, open.barcode, false));
                     if (r) {
-                      toast("success", `Barcode assigned to ${p.name}`);
+                      toast("success", t("Barcode assigned to {0}", p.name));
                       setOpen(null);
                       void reload();
                     }
                   }}
                 >
-                  Assign
+                  {t("Assign")}
                 </Button>
               </div>
             ))}
@@ -1467,7 +1489,7 @@ export function UnknownBarcodesPage() {
                 variant="primary"
                 onClick={() => nav(`/admin/products/new?barcode=${encodeURIComponent(open.barcode)}`)}
               >
-                Create product
+                {t("Create product")}
               </Button>
               <Button
                 variant="danger-outline"
@@ -1480,7 +1502,7 @@ export function UnknownBarcodesPage() {
                   }
                 }}
               >
-                Dismiss
+                {t("Dismiss")}
               </Button>
             </div>
             {act.error ? <Banner tone="danger">{act.error}</Banner> : null}

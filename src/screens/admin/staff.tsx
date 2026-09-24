@@ -9,6 +9,7 @@ import { formatDateTime, formatShort } from "../../lib/time";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { DataTable, Drawer, useAction, useLoad } from "./common";
 import { initials } from "../login/Login";
+import { t, tb } from "../../i18n";
 
 export function UsersPage() {
   const nav = useNavigate();
@@ -33,13 +34,13 @@ export function UsersPage() {
   const save = async () => {
     if (edit === "new") {
       const r = await act.run(() => api.users.create({ display_name: name, role_id: role, pin, active }));
-      if (r) toast("success", `User ${r.display_name} created`);
+      if (r) toast("success", t("User {0} created", r.display_name));
       else return;
     } else if (edit) {
       const r = await act.run(() =>
         api.users.update(edit.user_id, { display_name: name, role_id: role, pin: pin || null, active }),
       );
-      if (r) toast("success", "User saved");
+      if (r) toast("success", t("User saved"));
       else return;
     }
     setEdit(null);
@@ -49,14 +50,14 @@ export function UsersPage() {
   return (
     <div>
       <PageHeader
-        title="Users"
+        title={t("Users")}
         actions={
           <>
             <Button icon={<ShieldCheck size={16} />} onClick={() => nav("/admin/roles")}>
-              Roles & Permissions
+              {t("Roles & Permissions")}
             </Button>
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => open("new")}>
-              User
+              {t("User")}
             </Button>
           </>
         }
@@ -70,29 +71,29 @@ export function UsersPage() {
         columns={[
           {
             key: "n",
-            label: "Name",
+            label: t("Name"),
             render: (r) => (
               <span className="row">
                 <span className="avatar sm">{initials(r.display_name)}</span>
-                {r.display_name} {r.user_id === session?.user_id ? <Chip tone="brand">You</Chip> : null}
+                {r.display_name} {r.user_id === session?.user_id ? <Chip tone="brand">{t("You")}</Chip> : null}
               </span>
             ),
             sort: (r) => r.display_name,
           },
-          { key: "r", label: "Role", render: (r) => r.role_name, sort: (r) => r.role_name },
-          { key: "l", label: "Last Login", render: (r) => formatShort(r.last_login_at) },
+          { key: "r", label: t("Role"), render: (r) => tb(r.role_name), sort: (r) => r.role_name },
+          { key: "l", label: t("Last Login"), render: (r) => formatShort(r.last_login_at) },
           {
             key: "s",
-            label: "Status",
+            label: t("Status"),
             render: (r) =>
               !r.active ? (
-                <Chip>Inactive</Chip>
+                <Chip>{t("Inactive")}</Chip>
               ) : r.locked_until && r.locked_until > now ? (
                 <Chip tone="danger">
-                  <Lock size={12} /> Locked
+                  <Lock size={12} /> {t("Locked")}
                 </Chip>
               ) : (
-                <Chip tone="success">Active</Chip>
+                <Chip tone="success">{t("Active")}</Chip>
               ),
           },
           {
@@ -110,17 +111,17 @@ export function UsersPage() {
                     void reload();
                   }}
                 >
-                  Unlock
+                  {t("Unlock")}
                 </Button>
               ) : null,
           },
         ]}
       />
       {edit ? (
-        <Drawer title={edit === "new" ? "New user" : `Edit ${edit.display_name}`} onClose={() => setEdit(null)}>
+        <Drawer title={edit === "new" ? t("New user") : t("Edit {0}", edit.display_name)} onClose={() => setEdit(null)}>
           <div className="col gap-16">
-            <TextInput label="Name" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-            <Field label="Role" required>
+            <TextInput label={t("Name")} required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <Field label={t("Role")} required>
               <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
                 {(roles.data ?? []).map((r) => (
                   <option key={r.role_id} value={r.role_id}>
@@ -130,7 +131,7 @@ export function UsersPage() {
               </select>
             </Field>
             <TextInput
-              label={edit === "new" ? "PIN" : "Reset PIN"}
+              label={edit === "new" ? t("PIN") : t("Reset PIN")}
               required={edit === "new"}
               type="password"
               inputMode="numeric"
@@ -139,14 +140,14 @@ export function UsersPage() {
               onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 12))}
               hint={
                 edit === "new"
-                  ? "4–8 digits. The user should change it after first login."
-                  : "Leave empty to keep the current PIN. PINs are never shown."
+                  ? t("4–8 digits. The user should change it after first login.")
+                  : t("Leave empty to keep the current PIN. PINs are never shown.")
               }
             />
-            <Checkbox label="Active" checked={active} onChange={setActive} />
+            <Checkbox label={t("Active")} checked={active} onChange={setActive} />
             {edit !== "new" ? (
               <div className="tiny">
-                Created {formatDateTime(edit.created_at)} · failed PIN attempts {edit.failed_attempts}
+                {t("Created {0} · failed PIN attempts {1}", formatDateTime(edit.created_at), edit.failed_attempts)}
               </div>
             ) : null}
             {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
@@ -156,7 +157,7 @@ export function UsersPage() {
               loading={act.busy}
               disabled={!name.trim() || (edit === "new" && pin.length < 4)}
             >
-              Save
+              {t("Save")}
             </Button>
           </div>
         </Drawer>
@@ -195,12 +196,14 @@ export function RolesPage() {
   return (
     <div>
       <PageHeader
-        title="Roles & Permissions"
-        subtitle="Permissions are enforced by the backend for every action. Hiding a button is never the only protection."
+        title={t("Roles & Permissions")}
+        subtitle={t(
+          "Permissions are enforced by the backend for every action. Hiding a button is never the only protection.",
+        )}
         actions={
           has("roles.manage") ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => setSel("new")}>
-              Role
+              {t("Role")}
             </Button>
           ) : null
         }
@@ -219,10 +222,22 @@ export function RolesPage() {
         </div>
         <div className="card card-pad col gap-16">
           <div className="form-grid">
-            <TextInput label="Role name" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} />
-            <TextInput label="Description" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={!canEdit} />
+            <TextInput
+              label={t("Role name")}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={!canEdit}
+            />
+            <TextInput
+              label={t("Description")}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              disabled={!canEdit}
+            />
           </div>
-          {owner ? <Banner tone="info">The Owner role always has every permission and cannot be edited.</Banner> : null}
+          {owner ? (
+            <Banner tone="info">{t("The Owner role always has every permission and cannot be edited.")}</Banner>
+          ) : null}
           <div className="perm-matrix">
             {domains.map(([domain, ps]) => (
               <div key={domain}>
@@ -254,7 +269,7 @@ export function RolesPage() {
           {canEdit ? (
             <div className="row">
               <span className="tiny">
-                Changing a role signs out its users so the new permissions apply immediately.
+                {t("Changing a role signs out its users so the new permissions apply immediately.")}
               </span>
               <Button
                 variant="primary"
@@ -266,13 +281,13 @@ export function RolesPage() {
                     api.roles.save(sel === "new" ? null : sel!.role_id, name, desc || null, Array.from(checked)),
                   );
                   if (r) {
-                    toast("success", "Role saved");
+                    toast("success", t("Role saved"));
                     await roles.reload();
                     setSel(r.find((x) => x.name === name) ?? null);
                   }
                 }}
               >
-                Save role
+                {t("Save role")}
               </Button>
             </div>
           ) : null}
@@ -297,39 +312,39 @@ export function ProfilePage() {
           <span className="avatar">{initials(session.display_name)}</span>
           <div>
             <h2>{session.display_name}</h2>
-            <div className="muted">{session.role_name}</div>
+            <div className="muted">{tb(session.role_name)}</div>
           </div>
         </div>
         <dl className="kv">
-          <dt>Signed in</dt>
+          <dt>{t("Signed in")}</dt>
           <dd>{formatDateTime(session.created_at)}</dd>
-          <dt>Permissions</dt>
+          <dt>{t("Permissions")}</dt>
           <dd>{session.permissions.length}</dd>
         </dl>
       </div>
       <div className="card card-pad col gap-16">
-        <h3>Change PIN</h3>
+        <h3>{t("Change PIN")}</h3>
         <TextInput
-          label="Current PIN"
+          label={t("Current PIN")}
           type="password"
           inputMode="numeric"
           value={cur}
           onChange={(e) => setCur(e.target.value.replace(/\D/g, ""))}
         />
         <TextInput
-          label="New PIN"
+          label={t("New PIN")}
           type="password"
           inputMode="numeric"
           value={next}
           onChange={(e) => setNext(e.target.value.replace(/\D/g, ""))}
         />
         <TextInput
-          label="Confirm new PIN"
+          label={t("Confirm new PIN")}
           type="password"
           inputMode="numeric"
           value={again}
           onChange={(e) => setAgain(e.target.value.replace(/\D/g, ""))}
-          error={again && again !== next ? "PINs do not match." : null}
+          error={again && again !== next ? t("PINs do not match.") : null}
         />
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
         <Button
@@ -339,14 +354,14 @@ export function ProfilePage() {
           onClick={async () => {
             const r = await act.run(() => api.auth.changePin(cur, next));
             if (r !== undefined) {
-              toast("success", "PIN changed");
+              toast("success", t("PIN changed"));
               setCur("");
               setNext("");
               setAgain("");
             }
           }}
         >
-          Change PIN
+          {t("Change PIN")}
         </Button>
       </div>
     </div>

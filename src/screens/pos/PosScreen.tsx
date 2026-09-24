@@ -47,6 +47,7 @@ import {
 } from "./dialogs";
 import { RefundFlow } from "./RefundFlow";
 import { ShiftClose } from "./ShiftScreens";
+import { getLang, switchLang, t } from "../../i18n";
 
 type ModalState =
   | { kind: "none" }
@@ -173,8 +174,8 @@ export function PosScreen({
   }, [activeCat]);
 
   useEffect(() => {
-    const t = setInterval(() => setClock(formatClock(new Date())), 15000);
-    return () => clearInterval(t);
+    const tv = setInterval(() => setClock(formatClock(new Date())), 15000);
+    return () => clearInterval(tv);
   }, []);
 
   // Debounced product search (name / SKU / barcode). Barcode scans never go through fuzzy search.
@@ -184,7 +185,7 @@ export function PosScreen({
       setResults(null);
       return;
     }
-    const t = setTimeout(() => {
+    const tv = setTimeout(() => {
       api.pos
         .search(q, { limit: 40 })
         .then((r) => {
@@ -193,7 +194,7 @@ export function PosScreen({
         })
         .catch(() => {});
     }, 120);
-    return () => clearTimeout(t);
+    return () => clearTimeout(tv);
   }, [query]);
 
   // Scans are processed strictly in order. A scan is never dropped while a
@@ -224,7 +225,7 @@ export function PosScreen({
           sounds.unknown();
           setNotice({
             tone: "warning",
-            text: `${r.product_name ?? "This product"} is archived and cannot be sold. Ask a manager.`,
+            text: t("{0} is archived and cannot be sold. Ask a manager.", r.product_name ?? "This product"),
           });
         }
       } catch (e) {
@@ -326,12 +327,12 @@ export function PosScreen({
 
   const hasLines = cart.lines.length > 0;
   const tenders = config?.payments ?? [];
-  const tenderEnabled = (m: string) => tenders.some((t) => t.method === m);
+  const tenderEnabled = (m: string) => tenders.some((tv) => tv.method === m);
 
   const openPay = useCallback(
     (method: string) => {
       if (!cart.cart_id || !cart.lines.length) {
-        setNotice({ tone: "info", text: "Scan an item before taking payment." });
+        setNotice({ tone: "info", text: t("Scan an item before taking payment.") });
         return;
       }
       setModal({ kind: "pay", method });
@@ -422,7 +423,10 @@ export function PosScreen({
 
   const doLogout = async () => {
     if (hasLines) {
-      setNotice({ tone: "warning", text: "A sale is currently in progress. Hold it or cancel it before logging out." });
+      setNotice({
+        tone: "warning",
+        text: t("A sale is currently in progress. Hold it or cancel it before logging out."),
+      });
       return;
     }
     await logout();
@@ -435,7 +439,7 @@ export function PosScreen({
     <div className="pos-root" data-testid="pos">
       <header className="pos-header">
         <div className="brand">
-          <Logo size={28} /> AMWAPOS
+          <Logo size={28} /> {t("AMWAPOS")}
         </div>
         <div className="sep" />
         <div className="hitem">{config?.business_name}</div>
@@ -449,19 +453,20 @@ export function PosScreen({
         <ConnectionPill />
         <span
           className="status-pill"
-          title={config?.printer_configured ? "Receipt printer configured" : "No receipt printer configured"}
+          title={config?.printer_configured ? t("Receipt printer configured") : t("No receipt printer configured")}
         >
-          <Printer size={13} /> {config?.printer_configured ? (printFailed ? "Print failed" : "Printer") : "No printer"}
+          <Printer size={13} />{" "}
+          {config?.printer_configured ? (printFailed ? t("Print failed") : t("Printer")) : t("No printer")}
         </span>
-        <div className="hitem">Shift {shift.shift_number}</div>
+        <div className="hitem">{t("Shift {0}", shift.shift_number)}</div>
         <div className="hitem">
           <UserRound size={15} /> {session?.display_name}
         </div>
         <div className="hitem num" style={{ fontWeight: 650, color: "#fff" }}>
           {clock}
         </div>
-        <Button size="sm" icon={<Lock size={15} />} onClick={() => void lock()} title="Lock (Ctrl+L)">
-          Lock
+        <Button size="sm" icon={<Lock size={15} />} onClick={() => void lock()} title={t("Lock (Ctrl+L)")}>
+          {t("Lock")}
         </Button>
       </header>
       <main className="pos-main">
@@ -471,8 +476,8 @@ export function PosScreen({
             <input
               ref={scanRef}
               className="input"
-              placeholder="Scan barcode or search product…"
-              aria-label="Scan barcode or search product"
+              placeholder={t("Scan barcode or search product…")}
+              aria-label={t("Scan barcode or search product")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onScanKey}
@@ -485,7 +490,7 @@ export function PosScreen({
                 variant="ghost"
                 size="sm"
                 className="clear"
-                aria-label="Clear search"
+                aria-label={t("Clear search")}
                 icon={<X size={16} />}
                 onClick={() => (setQuery(""), focusScan())}
               />
@@ -498,7 +503,7 @@ export function PosScreen({
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label="Dismiss"
+                  aria-label={t("Dismiss")}
                   icon={<X size={14} />}
                   onClick={() => setNotice(null)}
                 />
@@ -510,17 +515,17 @@ export function PosScreen({
           {printFailed && modal.kind === "none" ? (
             <Banner
               tone="warning"
-              title={`Sale ${lastSale!.receipt_number} completed — receipt could not be printed`}
+              title={t("Sale {0} completed — receipt could not be printed", lastSale!.receipt_number)}
               action={
                 <Button
                   size="sm"
                   onClick={async () => {
                     const r = await api.print.retry(lastSale!.print!.job_id!);
                     setLastSale({ ...lastSale!, print: r });
-                    if (r.status === "printed") toast("success", "Receipt printed");
+                    if (r.status === "printed") toast("success", t("Receipt printed"));
                   }}
                 >
-                  Retry Print
+                  {t("Retry Print")}
                 </Button>
               }
             >
@@ -529,11 +534,11 @@ export function PosScreen({
           ) : null}
           <div className="pos-panel">
             {results ? (
-              <div className="results" role="listbox" aria-label="Search results">
+              <div className="results" role="listbox" aria-label={t("Search results")}>
                 {results.length === 0 ? (
                   <div className="empty">
-                    <h3>No products found</h3>
-                    <p>Check the spelling or scan the barcode.</p>
+                    <h3>{t("No products found")}</h3>
+                    <p>{t("Check the spelling or scan the barcode.")}</p>
                   </div>
                 ) : (
                   results.map((r, i) => (
@@ -547,31 +552,34 @@ export function PosScreen({
                       <div className="grow">
                         <div style={{ fontWeight: 600 }}>{r.name}</div>
                         <div className="tiny">
-                          {r.category_name ?? "—"} · SKU {r.sku} {r.primary_barcode ? `· ${r.primary_barcode}` : ""}
+                          {t("{0} · SKU {1}", r.category_name ?? "—", r.sku)}{" "}
+                          {r.primary_barcode ? `· ${r.primary_barcode}` : ""}
                         </div>
                       </div>
-                      <div className="tiny" style={{ minWidth: 70, textAlign: "right" }}>
-                        {r.track_inventory ? `Stock ${formatQty(r.stock_milli)}` : ""}
+                      <div className="tiny" style={{ minWidth: 70, textAlign: "end" }}>
+                        {r.track_inventory ? t("Stock {0}", formatQty(r.stock_milli)) : ""}
                       </div>
-                      <div className="r-price">{r.price_minor === null ? "No price" : formatMoney(r.price_minor)}</div>
+                      <div className="r-price">
+                        {r.price_minor === null ? t("No price") : formatMoney(r.price_minor)}
+                      </div>
                     </div>
                   ))
                 )}
               </div>
             ) : (
               <>
-                <div className="cat-chips" role="tablist" aria-label="Categories">
+                <div className="cat-chips" role="tablist" aria-label={t("Categories")}>
                   <button
                     className={`filter-chip ${activeCat === "fav" ? "active" : ""}`}
                     onClick={() => setActiveCat("fav")}
                   >
-                    Favorites
+                    {t("Favorites")}
                   </button>
                   <button
                     className={`filter-chip ${activeCat === "all" ? "active" : ""}`}
                     onClick={() => setActiveCat("all")}
                   >
-                    All
+                    {t("All")}
                   </button>
                   {categories
                     .filter((c) => c.product_count > 0)
@@ -595,8 +603,8 @@ export function PosScreen({
                   ))}
                   {grid.length === 0 ? (
                     <div className="empty" style={{ gridColumn: "1 / -1" }}>
-                      <h3>Ready to scan</h3>
-                      <p>Scan a barcode or type a product name.</p>
+                      <h3>{t("Ready to scan")}</h3>
+                      <p>{t("Scan a barcode or type a product name.")}</p>
                     </div>
                   ) : null}
                 </div>
@@ -605,7 +613,7 @@ export function PosScreen({
           </div>
           <div className="quick-actions" style={{ position: "relative" }}>
             <Button icon={<Users size={20} />} onClick={() => setModal({ kind: "customer" })} title="F3">
-              Customer
+              {t("Customer")}
             </Button>
             <Button
               icon={<PauseCircle size={20} />}
@@ -613,7 +621,7 @@ export function PosScreen({
               disabled={!hasLines || !has("pos.hold")}
               title="F4"
             >
-              Hold
+              {t("Hold")}
             </Button>
             <Button
               icon={<ListRestart size={20} />}
@@ -621,10 +629,10 @@ export function PosScreen({
               disabled={!has("pos.hold")}
               title="F5"
             >
-              Held
+              {t("Held")}
             </Button>
-            <Button icon={<RotateCcw size={20} />} onClick={() => setModal({ kind: "refund" })} title="Refund">
-              Refund
+            <Button icon={<RotateCcw size={20} />} onClick={() => setModal({ kind: "refund" })} title={t("Refund")}>
+              {t("Refund")}
             </Button>
             <Button
               icon={<MoreHorizontal size={20} />}
@@ -632,46 +640,55 @@ export function PosScreen({
               aria-expanded={moreOpen}
               title="F10"
             >
-              More
+              {t("More")}
             </Button>
             {moreOpen ? (
               <div
                 className="menu"
-                style={{ bottom: 64, top: "auto", right: 0 }}
+                style={{ bottom: 64, top: "auto", insetInlineEnd: 0 }}
                 role="menu"
                 onMouseLeave={() => setMoreOpen(false)}
               >
                 {[
                   {
-                    label: "Custom item",
+                    label: t("Custom item"),
                     show: has("pos.custom_item") || config?.pos.allow_custom_item,
                     run: () => setModal({ kind: "custom" }),
                   },
-                  { label: "Sale discount", show: hasLines, run: () => setModal({ kind: "discount", lineId: null }) },
                   {
-                    label: "Reprint / recent sales",
+                    label: t("Sale discount"),
+                    show: hasLines,
+                    run: () => setModal({ kind: "discount", lineId: null }),
+                  },
+                  {
+                    label: t("Reprint / recent sales"),
                     show: has("pos.reprint"),
                     run: () => setModal({ kind: "recent" }),
                   },
-                  { label: "Print queue", show: true, run: () => setModal({ kind: "print_queue" }) },
+                  { label: t("Print queue"), show: true, run: () => setModal({ kind: "print_queue" }) },
                   {
-                    label: "Delivery for last sale",
+                    label: t("Delivery for last sale"),
                     show: !!lastSale,
                     run: () => setModal({ kind: "delivery", saleId: lastSale?.sale_id ?? null }),
                   },
                   {
-                    label: "Open drawer (no sale)",
+                    label: t("Open drawer (no sale)"),
                     show: true,
                     run: () => setModal({ kind: "cash", cashKind: "no_sale" }),
                   },
-                  { label: "Paid in", show: true, run: () => setModal({ kind: "cash", cashKind: "paid_in" }) },
-                  { label: "Paid out", show: true, run: () => setModal({ kind: "cash", cashKind: "paid_out" }) },
-                  { label: "Safe drop", show: true, run: () => setModal({ kind: "cash", cashKind: "safe_drop" }) },
-                  { label: "Cancel sale", show: hasLines, run: () => void cancelSale() },
-                  { label: "Close shift", show: has("shift.close"), run: () => setModal({ kind: "close_shift" }) },
-                  { label: "Admin", show: has("admin.access"), run: () => setMode("admin") },
-                  { label: "Lock terminal", show: true, run: () => void lock() },
-                  { label: "Logout", show: true, run: () => void doLogout() },
+                  { label: t("Paid in"), show: true, run: () => setModal({ kind: "cash", cashKind: "paid_in" }) },
+                  { label: t("Paid out"), show: true, run: () => setModal({ kind: "cash", cashKind: "paid_out" }) },
+                  { label: t("Safe drop"), show: true, run: () => setModal({ kind: "cash", cashKind: "safe_drop" }) },
+                  { label: t("Cancel sale"), show: hasLines, run: () => void cancelSale() },
+                  { label: t("Close shift"), show: has("shift.close"), run: () => setModal({ kind: "close_shift" }) },
+                  { label: t("Admin"), show: has("admin.access"), run: () => setMode("admin") },
+                  { label: t("Lock terminal"), show: true, run: () => void lock() },
+                  {
+                    label: getLang() === "ar" ? "English" : "العربية",
+                    show: true,
+                    run: () => switchLang(getLang() === "ar" ? "en" : "ar"),
+                  },
+                  { label: t("Logout"), show: true, run: () => void doLogout() },
                 ]
                   .filter((i) => i.show)
                   .map((i) => (
@@ -683,9 +700,9 @@ export function PosScreen({
                         i.run();
                       }}
                     >
-                      {i.label === "Admin" ? (
+                      {i.label === t("Admin") ? (
                         <Settings2 size={15} />
-                      ) : i.label.startsWith("Delivery") ? (
+                      ) : i.label.startsWith(t("Delivery")) ? (
                         <Truck size={15} />
                       ) : null}
                       {i.label}
@@ -711,19 +728,21 @@ export function PosScreen({
           <div className="pos-panel" style={{ flex: "none" }}>
             <div className="totals">
               <div className="t-row">
-                <span>Subtotal</span>
+                <span>{t("Subtotal")}</span>
                 <span>{formatMoney(cart.totals.subtotal_minor)}</span>
               </div>
               <div className="t-row">
-                <span>Discount</span>
+                <span>{t("Discount")}</span>
                 <span>{cart.totals.discount_minor ? formatMoney(-cart.totals.discount_minor) : formatMoney(0)}</span>
               </div>
               <div className="t-row">
-                <span>VAT {cart.lines.some((l) => l.tax_inclusive) ? "(included)" : ""}</span>
+                <span>
+                  {t("VAT")} {cart.lines.some((l) => l.tax_inclusive) ? t("(included)") : ""}
+                </span>
                 <span>{formatMoney(cart.totals.tax_minor)}</span>
               </div>
               <div className="t-total">
-                <span style={{ fontWeight: 700, color: "var(--text-2)" }}>TOTAL</span>
+                <span style={{ fontWeight: 700, color: "var(--text-2)" }}>{t("TOTAL")}</span>
                 <span className="amount" data-testid="cart-total">
                   {formatMoney(cart.totals.total_minor)}
                 </span>
@@ -737,7 +756,7 @@ export function PosScreen({
                   disabled={!hasLines}
                   data-testid="pay"
                 >
-                  PAY {formatMoney(cart.totals.total_minor)}
+                  {t("PAY {0}", formatMoney(cart.totals.total_minor))}
                 </Button>
               </div>
               <div className="row" style={{ marginTop: 8 }}>
@@ -748,7 +767,7 @@ export function PosScreen({
                   onClick={() => openPay("cash")}
                   disabled={!hasLines}
                 >
-                  Cash
+                  {t("Cash")}
                 </Button>
                 {tenderEnabled("card") ? (
                   <Button
@@ -758,7 +777,7 @@ export function PosScreen({
                     onClick={() => openPay("card")}
                     disabled={!hasLines}
                   >
-                    Card
+                    {t("Card")}
                   </Button>
                 ) : null}
                 {tenderEnabled("benefitpay") ? (
@@ -769,16 +788,14 @@ export function PosScreen({
                     onClick={() => openPay("benefitpay")}
                     disabled={!hasLines}
                   >
-                    BenefitPay
+                    {t("BenefitPay")}
                   </Button>
                 ) : null}
               </div>
             </div>
           </div>
           {selected && selected.stock_milli !== null && selected.stock_milli <= 0 ? (
-            <Chip tone="warning">
-              {selected.name}: recorded stock {formatQty(selected.stock_milli)}
-            </Chip>
+            <Chip tone="warning">{t("{0}: recorded stock {1}", selected.name, formatQty(selected.stock_milli))}</Chip>
           ) : null}
         </section>
       </main>
@@ -804,7 +821,7 @@ export function PosScreen({
               setLastSale({ ...modal.sale, print: r });
               toast(
                 r.status === "printed" ? "success" : "warning",
-                r.status === "printed" ? "Receipt reprinted" : "Receipt not printed",
+                r.status === "printed" ? t("Receipt reprinted") : t("Receipt not printed"),
                 r.message ?? undefined,
               );
             } catch (e) {
@@ -837,7 +854,7 @@ export function PosScreen({
           onHeld={() => {
             setCart(EMPTY_CART);
             setSelectedLine(null);
-            toast("success", "Sale held");
+            toast("success", t("Sale held"));
             closeModal();
           }}
         />
@@ -923,7 +940,7 @@ export function PosScreen({
         />
       ) : null}
       <span className="sr-only" aria-live="polite">
-        {cart.lines.length} items, total {formatMoney(cart.totals.total_minor)}
+        {t("{0} items, total {1}", cart.lines.length, formatMoney(cart.totals.total_minor))}
       </span>
     </div>
   );

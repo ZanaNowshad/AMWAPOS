@@ -11,18 +11,19 @@ import { LockScreen } from "./screens/login/LockScreen";
 import { CashierMode } from "./screens/pos/CashierMode";
 import { AdminShell } from "./screens/admin/AdminShell";
 import { DeliveryDesk } from "./screens/pos/DeliveryDesk";
+import { t } from "./i18n";
 
 type Boot =
   { phase: "loading"; stage: string } | { phase: "failed"; error: unknown } | { phase: "ready"; status: SetupStatus };
 
 export default function App() {
-  const [boot, setBoot] = useState<Boot>({ phase: "loading", stage: "Opening database" });
+  const [boot, setBoot] = useState<Boot>({ phase: "loading", stage: t("Opening database") });
   const start = useCallback(async () => {
-    setBoot({ phase: "loading", stage: "Opening database" });
+    setBoot({ phase: "loading", stage: t("Opening database") });
     try {
       const t0 = Date.now();
       const status = await api.setup.status();
-      setBoot({ phase: "loading", stage: "Checking schema" });
+      setBoot({ phase: "loading", stage: t("Checking schema") });
       // Avoid flashing the splash when startup is quick.
       const elapsed = Date.now() - t0;
       if (elapsed < 300) await new Promise((r) => setTimeout(r, 0));

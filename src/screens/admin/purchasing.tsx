@@ -30,6 +30,7 @@ import {
   TextInput,
 } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
+import { t } from "../../i18n";
 
 const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = {
   draft: "default",
@@ -70,7 +71,7 @@ function SupplierForm({
     <div className="col gap-16">
       <div className="form-grid">
         <TextInput
-          label="Supplier name"
+          label={t("Supplier name")}
           required
           value={f.name}
           onChange={(e) => set("name", e.target.value)}
@@ -78,35 +79,43 @@ function SupplierForm({
           autoFocus
         />
         <TextInput
-          label="Contact person"
+          label={t("Contact person")}
           value={f.contact_name ?? ""}
           onChange={(e) => set("contact_name", e.target.value)}
         />
-        <TextInput label="Phone" value={f.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
-        <TextInput label="WhatsApp" value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
-        <TextInput label="Email" value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
-        <TextInput label="CR number" value={f.cr_number ?? ""} onChange={(e) => set("cr_number", e.target.value)} />
-        <TextInput label="VAT number" value={f.vat_number ?? ""} onChange={(e) => set("vat_number", e.target.value)} />
+        <TextInput label={t("Phone")} value={f.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
+        <TextInput label={t("WhatsApp")} value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
+        <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
         <TextInput
-          label="Payment terms"
-          value={f.payment_terms ?? ""}
-          onChange={(e) => set("payment_terms", e.target.value)}
-          placeholder="e.g. 30 days"
+          label={t("CR number")}
+          value={f.cr_number ?? ""}
+          onChange={(e) => set("cr_number", e.target.value)}
         />
         <TextInput
-          label="Address"
+          label={t("VAT number")}
+          value={f.vat_number ?? ""}
+          onChange={(e) => set("vat_number", e.target.value)}
+        />
+        <TextInput
+          label={t("Payment terms")}
+          value={f.payment_terms ?? ""}
+          onChange={(e) => set("payment_terms", e.target.value)}
+          placeholder={t("e.g. 30 days")}
+        />
+        <TextInput
+          label={t("Address")}
           value={f.address ?? ""}
           onChange={(e) => set("address", e.target.value)}
           fieldClass="span-2"
         />
-        <Field label="Notes" className="span-2">
+        <Field label={t("Notes")} className="span-2">
           <textarea className="textarea" value={f.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
         </Field>
-        <Checkbox label="Active" checked={f.active} onChange={(v) => set("active", v)} />
+        <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="row">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onCancel}>{t("Cancel")}</Button>
         <Button
           variant="primary"
           className="right"
@@ -117,7 +126,7 @@ function SupplierForm({
             if (r) onSaved(r);
           }}
         >
-          Save
+          {t("Save")}
         </Button>
       </div>
     </div>
@@ -133,10 +142,10 @@ export function SuppliersPage() {
   return (
     <div>
       <PageHeader
-        title="Suppliers"
+        title={t("Suppliers")}
         actions={
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-            Supplier
+            {t("Supplier")}
           </Button>
         }
       />
@@ -144,11 +153,11 @@ export function SuppliersPage() {
         <input
           className="input"
           style={{ width: 280 }}
-          placeholder="Search name, phone or contact…"
+          placeholder={t("Search name, phone or contact…")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <Checkbox label="Show inactive" checked={inactive} onChange={setInactive} />
+        <Checkbox label={t("Show inactive")} checked={inactive} onChange={setInactive} />
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
       <DataTable<SupplierRow>
@@ -156,23 +165,25 @@ export function SuppliersPage() {
         loading={loading}
         rowKey={(r) => r.supplier_id}
         onRowClick={(r) => nav(`/admin/suppliers/${r.supplier_id}`)}
-        empty={<Empty title="No suppliers yet">Add suppliers to create purchase orders and track costs.</Empty>}
+        empty={
+          <Empty title={t("No suppliers yet")}>{t("Add suppliers to create purchase orders and track costs.")}</Empty>
+        }
         columns={[
-          { key: "n", label: "Supplier", render: (r) => r.name, sort: (r) => r.name },
-          { key: "p", label: "Phone", render: (r) => r.phone ?? "—" },
-          { key: "c", label: "Contact", render: (r) => r.contact_name ?? "—" },
-          { key: "t", label: "Payment Terms", render: (r) => r.payment_terms ?? "—" },
-          { key: "o", label: "Open POs", num: true, render: (r) => r.open_po_count },
-          { key: "l", label: "Last Purchase", render: (r) => formatShort(r.last_purchase_at) },
+          { key: "n", label: t("Supplier"), render: (r) => r.name, sort: (r) => r.name },
+          { key: "p", label: t("Phone"), render: (r) => r.phone ?? "—" },
+          { key: "c", label: t("Contact"), render: (r) => r.contact_name ?? "—" },
+          { key: "t", label: t("Payment Terms"), render: (r) => r.payment_terms ?? "—" },
+          { key: "o", label: t("Open POs"), num: true, render: (r) => r.open_po_count },
+          { key: "l", label: t("Last Purchase"), render: (r) => formatShort(r.last_purchase_at) },
           {
             key: "s",
-            label: "Status",
-            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>),
+            label: t("Status"),
+            render: (r) => (r.active ? <Chip tone="success">{t("Active")}</Chip> : <Chip>{t("Inactive")}</Chip>),
           },
         ]}
       />
       {creating ? (
-        <Drawer title="New supplier" onClose={() => setCreating(false)}>
+        <Drawer title={t("New supplier")} onClose={() => setCreating(false)}>
           <SupplierForm
             initial={null}
             onCancel={() => setCreating(false)}
@@ -199,27 +210,27 @@ export function SupplierDetailPage() {
         <Button
           variant="ghost"
           icon={<ArrowLeft size={18} />}
-          aria-label="Back"
+          aria-label={t("Back")}
           onClick={() => nav("/admin/suppliers")}
         />
         <div className="grow">
-          <div className="tiny">Supplier</div>
+          <div className="tiny">{t("Supplier")}</div>
           <h1>{s.name}</h1>
         </div>
-        <Button onClick={() => setEditing(true)}>Edit</Button>
+        <Button onClick={() => setEditing(true)}>{t("Edit")}</Button>
         <Button
           variant="primary"
           icon={<Plus size={16} />}
           onClick={() => nav(`/admin/purchase-orders/new?supplier=${s.supplier_id}`)}
         >
-          Purchase Order
+          {t("Purchase Order")}
         </Button>
       </div>
       <Tabs
         tabs={[
-          { key: "overview", label: "Overview" },
-          { key: "pos", label: "Purchase Orders" },
-          { key: "products", label: "Products" },
+          { key: "overview", label: t("Overview") },
+          { key: "pos", label: t("Purchase Orders") },
+          { key: "products", label: t("Products") },
         ]}
         value={tab}
         onChange={setTab}
@@ -227,23 +238,23 @@ export function SupplierDetailPage() {
       {tab === "overview" ? (
         <div className="card card-pad">
           <dl className="kv">
-            <dt>Contact</dt>
+            <dt>{t("Contact")}</dt>
             <dd>{s.contact_name ?? "—"}</dd>
-            <dt>Phone</dt>
+            <dt>{t("Phone")}</dt>
             <dd>{s.phone ?? "—"}</dd>
-            <dt>WhatsApp</dt>
+            <dt>{t("WhatsApp")}</dt>
             <dd>{s.whatsapp ?? "—"}</dd>
-            <dt>Email</dt>
+            <dt>{t("Email")}</dt>
             <dd>{s.email ?? "—"}</dd>
-            <dt>CR / VAT</dt>
+            <dt>{t("CR / VAT")}</dt>
             <dd>
               {s.cr_number ?? "—"} / {s.vat_number ?? "—"}
             </dd>
-            <dt>Payment terms</dt>
+            <dt>{t("Payment terms")}</dt>
             <dd>{s.payment_terms ?? "—"}</dd>
-            <dt>Address</dt>
+            <dt>{t("Address")}</dt>
             <dd>{s.address ?? "—"}</dd>
-            <dt>Notes</dt>
+            <dt>{t("Notes")}</dt>
             <dd style={{ whiteSpace: "pre-wrap" }}>{s.notes ?? "—"}</dd>
           </dl>
         </div>
@@ -254,10 +265,10 @@ export function SupplierDetailPage() {
           rowKey={(r) => r.po_id}
           onRowClick={(r) => nav(`/admin/purchase-orders/${r.po_id}`)}
           columns={[
-            { key: "n", label: "PO", render: (r) => <span className="mono">{r.po_number}</span> },
-            { key: "d", label: "Date", render: (r) => formatShort(r.created_at) },
-            { key: "t", label: "Total", num: true, render: (r) => <Money minor={r.total_minor} /> },
-            { key: "s", label: "Status", render: (r) => <Chip tone={PO_TONE[r.status]}>{poLabel(r.status)}</Chip> },
+            { key: "n", label: t("PO"), render: (r) => <span className="mono">{r.po_number}</span> },
+            { key: "d", label: t("Date"), render: (r) => formatShort(r.created_at) },
+            { key: "t", label: t("Total"), num: true, render: (r) => <Money minor={r.total_minor} /> },
+            { key: "s", label: t("Status"), render: (r) => <Chip tone={PO_TONE[r.status]}>{poLabel(r.status)}</Chip> },
           ]}
         />
       ) : null}
@@ -266,22 +277,22 @@ export function SupplierDetailPage() {
           rows={data.products}
           rowKey={(r) => String(r.product_id)}
           onRowClick={(r) => nav(`/admin/products/${String(r.product_id)}`)}
-          empty={<div className="empty">No products received from this supplier yet.</div>}
+          empty={<div className="empty">{t("No products received from this supplier yet.")}</div>}
           columns={[
-            { key: "n", label: "Product", render: (r) => String(r.name) },
-            { key: "s", label: "SKU", render: (r) => String(r.sku) },
+            { key: "n", label: t("Product"), render: (r) => String(r.name) },
+            { key: "s", label: t("SKU"), render: (r) => String(r.sku) },
             {
               key: "c",
-              label: "Last cost",
+              label: t("Last cost"),
               num: true,
               render: (r) => <Money minor={r.last_cost_minor as number | null} />,
             },
-            { key: "d", label: "Last received", render: (r) => formatShort(String(r.last_received_at)) },
+            { key: "d", label: t("Last received"), render: (r) => formatShort(String(r.last_received_at)) },
           ]}
         />
       ) : null}
       {editing ? (
-        <Drawer title={`Edit ${s.name}`} onClose={() => setEditing(false)}>
+        <Drawer title={t("Edit {0}", s.name)} onClose={() => setEditing(false)}>
           <SupplierForm
             initial={s}
             onCancel={() => setEditing(false)}
@@ -301,11 +312,11 @@ export function PurchaseOrdersPage() {
   return (
     <div>
       <PageHeader
-        title="Purchase Orders"
+        title={t("Purchase Orders")}
         actions={
           has("purchasing.manage") ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav("/admin/purchase-orders/new")}>
-              Purchase Order
+              {t("Purchase Order")}
             </Button>
           ) : null
         }
@@ -313,7 +324,7 @@ export function PurchaseOrdersPage() {
       <div className="filters">
         {["", "draft", "ordered", "partially_received", "received", "cancelled"].map((s) => (
           <button key={s} className={`filter-chip ${status === s ? "active" : ""}`} onClick={() => setStatus(s)}>
-            {s ? poLabel(s) : "All"}
+            {s ? poLabel(s) : t("All")}
           </button>
         ))}
       </div>
@@ -323,26 +334,28 @@ export function PurchaseOrdersPage() {
         loading={loading}
         rowKey={(r) => r.po_id}
         onRowClick={(r) => nav(`/admin/purchase-orders/${r.po_id}`)}
-        empty={<Empty title="No purchase orders">Create a purchase order to order stock from a supplier.</Empty>}
+        empty={
+          <Empty title={t("No purchase orders")}>{t("Create a purchase order to order stock from a supplier.")}</Empty>
+        }
         columns={[
           {
             key: "n",
-            label: "PO",
+            label: t("PO"),
             render: (r) => <span className="mono">{r.po_number}</span>,
             sort: (r) => r.po_number,
           },
-          { key: "s", label: "Supplier", render: (r) => r.supplier_name, sort: (r) => r.supplier_name },
-          { key: "d", label: "Date", render: (r) => formatShort(r.created_at), sort: (r) => r.created_at },
-          { key: "i", label: "Items", num: true, render: (r) => r.line_count },
+          { key: "s", label: t("Supplier"), render: (r) => r.supplier_name, sort: (r) => r.supplier_name },
+          { key: "d", label: t("Date"), render: (r) => formatShort(r.created_at), sort: (r) => r.created_at },
+          { key: "i", label: t("Items"), num: true, render: (r) => r.line_count },
           {
             key: "t",
-            label: "Total",
+            label: t("Total"),
             num: true,
             render: (r) => <Money minor={r.total_minor} />,
             sort: (r) => r.total_minor,
           },
-          { key: "r", label: "Received", num: true, render: (r) => `${r.received_pct}%` },
-          { key: "st", label: "Status", render: (r) => <Chip tone={PO_TONE[r.status]}>{poLabel(r.status)}</Chip> },
+          { key: "r", label: t("Received"), num: true, render: (r) => `${r.received_pct}%` },
+          { key: "st", label: t("Status"), render: (r) => <Chip tone={PO_TONE[r.status]}>{poLabel(r.status)}</Chip> },
         ]}
       />
     </div>
@@ -415,7 +428,7 @@ export function PoEditorPage() {
   }, [id]);
   useEffect(() => {
     if (!search.trim()) return setResults([]);
-    const t = setTimeout(
+    const tv = setTimeout(
       () =>
         api.pos
           .search(search, { limit: 8 })
@@ -423,7 +436,7 @@ export function PoEditorPage() {
           .catch(() => {}),
       150,
     );
-    return () => clearTimeout(t);
+    return () => clearTimeout(tv);
   }, [search]);
 
   const editable = isNew || po?.status === "draft";
@@ -452,7 +465,7 @@ export function PoEditorPage() {
     };
     const r = await act.run(() => api.po.save(isNew ? null : id!, payload));
     if (r) {
-      toast("success", `Purchase order ${r.po_number} saved`);
+      toast("success", t("Purchase order {0} saved", r.po_number));
       if (isNew) nav(`/admin/purchase-orders/${r.po_id}`, { replace: true });
       else await load();
     }
@@ -473,8 +486,8 @@ export function PoEditorPage() {
     if (r) {
       toast(
         "success",
-        "Goods received",
-        r.status === "received" ? "Purchase order fully received" : "Partial delivery recorded",
+        t("Goods received"),
+        r.status === "received" ? t("Purchase order fully received") : t("Partial delivery recorded"),
       );
       setReceiving(false);
       setRecvOp(newOperationId());
@@ -489,29 +502,29 @@ export function PoEditorPage() {
         <Button
           variant="ghost"
           icon={<ArrowLeft size={18} />}
-          aria-label="Back"
+          aria-label={t("Back")}
           onClick={() => nav("/admin/purchase-orders")}
         />
         <div className="grow">
-          <div className="tiny">Purchase order</div>
+          <div className="tiny">{t("Purchase order")}</div>
           <h1>
-            {isNew ? "New purchase order" : po!.po_number}{" "}
+            {isNew ? t("New purchase order") : po!.po_number}{" "}
             {po ? <Chip tone={PO_TONE[po.status]}>{poLabel(po.status)}</Chip> : null}
           </h1>
         </div>
         {editable && has("purchasing.manage") ? (
           <Button onClick={save} loading={act.busy} disabled={!supplier || lines.length === 0}>
-            Save Draft
+            {t("Save Draft")}
           </Button>
         ) : null}
         {po?.status === "draft" && has("purchasing.manage") ? (
           <Button variant="primary" icon={<Send size={16} />} onClick={() => setConfirm("order")}>
-            Place Order
+            {t("Place Order")}
           </Button>
         ) : null}
         {po && (po.status === "ordered" || po.status === "partially_received") && has("inventory.receive") ? (
           <Button variant="primary" icon={<PackageCheck size={16} />} onClick={() => setReceiving(true)}>
-            Receive Goods
+            {t("Receive Goods")}
           </Button>
         ) : null}
         {po &&
@@ -519,24 +532,24 @@ export function PoEditorPage() {
         po.received_pct === 0 &&
         has("purchasing.manage") ? (
           <Button variant="danger-outline" icon={<XCircle size={16} />} onClick={() => setConfirm("cancel")}>
-            Cancel PO
+            {t("Cancel PO")}
           </Button>
         ) : null}
         {po?.status === "partially_received" && has("purchasing.manage") ? (
-          <Button onClick={() => setConfirm("close")}>Close short</Button>
+          <Button onClick={() => setConfirm("close")}>{t("Close short")}</Button>
         ) : null}
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
-          <Field label="Supplier" required>
+          <Field label={t("Supplier")} required>
             <select
               className="select"
               value={supplier}
               onChange={(e) => setSupplier(e.target.value)}
               disabled={!editable}
             >
-              <option value="">Choose supplier…</option>
+              <option value="">{t("Choose supplier…")}</option>
               {(suppliers.data ?? []).map((s) => (
                 <option key={s.supplier_id} value={s.supplier_id}>
                   {s.name}
@@ -545,29 +558,29 @@ export function PoEditorPage() {
             </select>
           </Field>
           <TextInput
-            label="Reference"
+            label={t("Reference")}
             value={reference}
             onChange={(e) => setReference(e.target.value)}
             disabled={!editable}
           />
           <TextInput
-            label="Expected date"
+            label={t("Expected date")}
             type="date"
             value={expected}
             onChange={(e) => setExpected(e.target.value)}
             disabled={!editable}
           />
-          <TextInput label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!editable} />
+          <TextInput label={t("Notes")} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!editable} />
         </div>
       </div>
       {receiving && po ? (
         <div className="card">
           <div className="card-head">
-            <h3 className="grow">Receive goods</h3>
+            <h3 className="grow">{t("Receive goods")}</h3>
             <input
               className="input"
               style={{ width: 240 }}
-              placeholder="Delivery note / invoice ref"
+              placeholder={t("Delivery note / invoice ref")}
               value={recvRef}
               onChange={(e) => setRecvRef(e.target.value)}
             />
@@ -575,12 +588,12 @@ export function PoEditorPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th className="num">Ordered</th>
-                <th className="num">Previously received</th>
-                <th className="num">Receiving now</th>
-                <th className="num">Unit cost</th>
-                <th className="num">Remaining</th>
+                <th>{t("Product")}</th>
+                <th className="num">{t("Ordered")}</th>
+                <th className="num">{t("Previously received")}</th>
+                <th className="num">{t("Receiving now")}</th>
+                <th className="num">{t("Unit cost")}</th>
+                <th className="num">{t("Remaining")}</th>
               </tr>
             </thead>
             <tbody>
@@ -601,7 +614,7 @@ export function PoEditorPage() {
                       onChange={(e) =>
                         setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], qty: e.target.value } })
                       }
-                      aria-label={`Receive ${l.product_name}`}
+                      aria-label={t("Receive {0}", l.product_name)}
                     />
                   </td>
                   <td className="num">
@@ -612,7 +625,7 @@ export function PoEditorPage() {
                       onChange={(e) =>
                         setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], cost: e.target.value } })
                       }
-                      aria-label={`Cost ${l.product_name}`}
+                      aria-label={t("Cost {0}", l.product_name)}
                     />
                   </td>
                   <td className="num">{formatQty(l.qty_remaining_milli)}</td>
@@ -621,27 +634,27 @@ export function PoEditorPage() {
             </tbody>
           </table>
           <div className="card-body row">
-            <Button onClick={() => setReceiving(false)}>Cancel</Button>
+            <Button onClick={() => setReceiving(false)}>{t("Cancel")}</Button>
             <Button variant="primary" className="right" onClick={doReceive} loading={act.busy}>
-              Receive Goods
+              {t("Receive Goods")}
             </Button>
           </div>
         </div>
       ) : (
         <div className="card">
           <div className="card-head">
-            <h3 className="grow">Items</h3>
+            <h3 className="grow">{t("Items")}</h3>
             {editable ? (
               <div style={{ position: "relative", width: 360 }}>
                 <input
                   className="input"
-                  placeholder="Add product by name, SKU or barcode…"
+                  placeholder={t("Add product by name, SKU or barcode…")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  aria-label="Add product"
+                  aria-label={t("Add product")}
                 />
                 {results.length ? (
-                  <div className="menu" style={{ left: 0, right: 0 }}>
+                  <div className="menu" style={{ insetInline: 0 }}>
                     {results.map((r) => (
                       <button
                         key={r.product_id}
@@ -666,12 +679,12 @@ export function PoEditorPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Product</th>
-                <th className="num">Ordered Qty</th>
-                <th className="num">Unit Cost</th>
-                <th className="num">Tax %</th>
-                <th className="num">Total</th>
-                {po && !editable ? <th className="num">Received</th> : null}
+                <th>{t("Product")}</th>
+                <th className="num">{t("Ordered Qty")}</th>
+                <th className="num">{t("Unit Cost")}</th>
+                <th className="num">{t("Tax %")}</th>
+                <th className="num">{t("Total")}</th>
+                {po && !editable ? <th className="num">{t("Received")}</th> : null}
                 <th />
               </tr>
             </thead>
@@ -690,7 +703,7 @@ export function PoEditorPage() {
                           style={{ width: 100 }}
                           value={l.qty}
                           onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))}
-                          aria-label="Quantity"
+                          aria-label={t("Quantity")}
                         />
                       ) : (
                         l.qty
@@ -706,7 +719,7 @@ export function PoEditorPage() {
                           onChange={(e) =>
                             setLines(lines.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))
                           }
-                          aria-label="Unit cost"
+                          aria-label={t("Unit cost")}
                         />
                       ) : (
                         formatMoney(c)
@@ -719,7 +732,7 @@ export function PoEditorPage() {
                           style={{ width: 70 }}
                           value={l.tax}
                           onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, tax: e.target.value } : x)))}
-                          aria-label="Tax percent"
+                          aria-label={t("Tax percent")}
                         />
                       ) : (
                         `${l.tax}%`
@@ -732,7 +745,7 @@ export function PoEditorPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          aria-label="Remove line"
+                          aria-label={t("Remove line")}
                           icon={<Trash2 size={14} />}
                           onClick={() => setLines(lines.filter((_, j) => j !== i))}
                         />
@@ -746,21 +759,21 @@ export function PoEditorPage() {
               <tr>
                 <td colSpan={4}>
                   {po
-                    ? `Subtotal ${formatMoney(po.subtotal_minor)} · Tax ${formatMoney(po.tax_minor)}`
-                    : "Subtotal (before tax)"}
+                    ? t("Subtotal {0} · Tax {1}", formatMoney(po.subtotal_minor), formatMoney(po.tax_minor))
+                    : t("Subtotal (before tax)")}
                 </td>
                 <td className="num">{po && !editable ? formatMoney(po.total_minor) : formatMoney(totals)}</td>
                 <td colSpan={2} />
               </tr>
             </tfoot>
           </table>
-          {lines.length === 0 ? <div className="empty">Add products to this purchase order.</div> : null}
+          {lines.length === 0 ? <div className="empty">{t("Add products to this purchase order.")}</div> : null}
         </div>
       )}
       {po && po.receipts.length ? (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="card-head">
-            <h3>Deliveries received</h3>
+            <h3>{t("Deliveries received")}</h3>
           </div>
           <table className="table">
             <tbody>
@@ -780,12 +793,12 @@ export function PoEditorPage() {
         <Confirm
           title={
             confirm === "order"
-              ? "Place order"
+              ? t("Place order")
               : confirm === "cancel"
-                ? "Cancel purchase order"
-                : "Close purchase order short"
+                ? t("Cancel purchase order")
+                : t("Close purchase order short")
           }
-          confirmLabel={confirm === "order" ? "Place Order" : confirm === "cancel" ? "Cancel PO" : "Close PO"}
+          confirmLabel={confirm === "order" ? t("Place Order") : confirm === "cancel" ? t("Cancel PO") : t("Close PO")}
           danger={confirm === "cancel"}
           busy={act.busy}
           error={act.error}
@@ -804,10 +817,10 @@ export function PoEditorPage() {
           }}
         >
           {confirm === "order"
-            ? `Mark ${po.po_number} as ordered from ${po.supplier_name}. Lines can no longer be edited.`
+            ? t("Mark {0} as ordered from {1}. Lines can no longer be edited.", po.po_number, po.supplier_name)
             : confirm === "cancel"
-              ? `Cancel ${po.po_number}? Nothing has been received on it.`
-              : `Close ${po.po_number}? The remaining quantities will not be expected any more.`}
+              ? t("Cancel {0}? Nothing has been received on it.", po.po_number)
+              : t("Close {0}? The remaining quantities will not be expected any more.", po.po_number)}
         </Confirm>
       ) : null}
     </div>

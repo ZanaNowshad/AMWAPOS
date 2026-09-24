@@ -1,5 +1,6 @@
 // Exact money and quantity helpers. Values are integers (minor units / thousandths);
 // strings are parsed digit by digit — never through floating point.
+import { ltr } from "../i18n";
 
 let CURRENCY = "BHD";
 let DIGITS = 3;
@@ -28,7 +29,8 @@ export function formatAmount(minor: number): string {
 export function formatMoney(minor: number | null | undefined): string {
   if (minor === null || minor === undefined) return "—";
   const body = fixed(Math.abs(minor), DIGITS);
-  return minor < 0 ? `−${CURRENCY} ${body}` : `${CURRENCY} ${body}`;
+  // In Arabic the amount is isolated so "−BHD 4.500" keeps its order inside RTL text.
+  return ltr(minor < 0 ? `−${CURRENCY} ${body}` : `${CURRENCY} ${body}`);
 }
 
 /** Parse "1.25" -> 1250 (3 digits). Returns null if invalid or too precise. */

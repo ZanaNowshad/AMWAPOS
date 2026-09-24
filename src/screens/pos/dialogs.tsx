@@ -18,6 +18,7 @@ import {
 import { formatShort } from "../../lib/time";
 import { Banner, Button, Chip, Keypad, Modal, TextInput } from "../../components/ui";
 import { methodLabel } from "./labels";
+import { t } from "../../i18n";
 
 function useErr() {
   const [error, setError] = useState<string | null>(null);
@@ -44,28 +45,28 @@ export function UnknownBarcodeDialog({
 }) {
   return (
     <Modal
-      title="Barcode not found"
+      title={t("Barcode not found")}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          {canCustom ? <Button onClick={onCustom}>Add custom item</Button> : null}
+          <Button onClick={onClose}>{t("Cancel")}</Button>
+          {canCustom ? <Button onClick={onCustom}>{t("Add custom item")}</Button> : null}
           <Button variant="primary" className="right" onClick={onSearch} autoFocus>
-            Search product
+            {t("Search product")}
           </Button>
         </>
       }
     >
       <div className="col gap-16">
         <div>
-          <div className="tiny">Barcode</div>
+          <div className="tiny">{t("Barcode")}</div>
           <div className="mono" style={{ fontSize: 20, fontWeight: 600 }} data-testid="unknown-barcode">
             {barcode}
           </div>
         </div>
         <div className="small muted">
-          This barcode was recorded for review by management. Search by name to sell the item now.
+          {t("This barcode was recorded for review by management. Search by name to sell the item now.")}
         </div>
       </div>
     </Modal>
@@ -89,25 +90,25 @@ export function HoldDialog({ cart, onClose, onHeld }: { cart: Cart; onClose: () 
   };
   return (
     <Modal
-      title="Hold current sale"
+      title={t("Hold current sale")}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" onClick={hold} loading={busy}>
-            Hold Sale
+            {t("Hold Sale")}
           </Button>
         </>
       }
     >
       <div className="col gap-16">
         <div className="banner">
-          {cart.lines.length} lines · {formatQty(cart.totals.item_count_milli)} items ·{" "}
+          {t("{0} lines · {1} items ·", cart.lines.length, formatQty(cart.totals.item_count_milli))}{" "}
           <strong>{formatMoney(cart.totals.total_minor)}</strong>
         </div>
         <TextInput
-          label="Note (customer / reason)"
+          label={t("Note (customer / reason)")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           autoFocus
@@ -137,12 +138,14 @@ export function HeldCartsDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Modal title="Held sales" size="lg" onClose={onClose}>
-      {currentHasLines ? <Banner tone="info">Hold or finish the current sale before resuming another.</Banner> : null}
+    <Modal title={t("Held sales")} size="lg" onClose={onClose}>
+      {currentHasLines ? (
+        <Banner tone="info">{t("Hold or finish the current sale before resuming another.")}</Banner>
+      ) : null}
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {rows && rows.length === 0 ? (
         <div className="empty">
-          <h3>No held sales</h3>
+          <h3>{t("No held sales")}</h3>
         </div>
       ) : null}
       {rows && rows.length ? (
@@ -150,11 +153,11 @@ export function HeldCartsDialog({
           <thead>
             <tr>
               <th>#</th>
-              <th>Held</th>
-              <th>Cashier</th>
-              <th>Customer / note</th>
-              <th className="num">Items</th>
-              <th className="num">Total</th>
+              <th>{t("Held")}</th>
+              <th>{t("Cashier")}</th>
+              <th>{t("Customer / note")}</th>
+              <th className="num">{t("Items")}</th>
+              <th className="num">{t("Total")}</th>
               <th />
             </tr>
           </thead>
@@ -169,7 +172,7 @@ export function HeldCartsDialog({
                 <td className="num">{formatMoney(r.total_minor)}</td>
                 <td className="num">
                   <div className="row" style={{ justifyContent: "flex-end" }}>
-                    {r.locked ? <Lock size={14} aria-label="Held by another cashier" /> : null}
+                    {r.locked ? <Lock size={14} aria-label={t("Held by another cashier")} /> : null}
                     <Button
                       size="sm"
                       variant="primary"
@@ -182,7 +185,7 @@ export function HeldCartsDialog({
                         }
                       }}
                     >
-                      Resume
+                      {t("Resume")}
                     </Button>
                     <Button
                       size="sm"
@@ -196,7 +199,7 @@ export function HeldCartsDialog({
                         }
                       }}
                     >
-                      Delete
+                      {t("Delete")}
                     </Button>
                   </div>
                 </td>
@@ -226,10 +229,10 @@ export function CustomerPicker({
   const [area, setArea] = useState("");
   const { error, handle, setError } = useErr();
   useEffect(() => {
-    const t = setTimeout(() => {
+    const tv = setTimeout(() => {
       api.customers.search(q, false, 30).then(setRows).catch(handle);
     }, 150);
-    return () => clearTimeout(t);
+    return () => clearTimeout(tv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
   const pick = async (id: string | null) => {
@@ -249,7 +252,7 @@ export function CustomerPicker({
     }
   };
   return (
-    <Modal title="Customer" size="md" onClose={onClose}>
+    <Modal title={t("Customer")} size="md" onClose={onClose}>
       {!creating ? (
         <div className="col gap-16">
           <div className="row">
@@ -257,7 +260,7 @@ export function CustomerPicker({
               <Search size={18} className="scan-icon" />
               <input
                 className="input"
-                placeholder="Search by phone or name…"
+                placeholder={t("Search by phone or name…")}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 autoFocus
@@ -271,16 +274,16 @@ export function CustomerPicker({
                 setName(/^\+?\d/.test(q) ? "" : q)
               )}
             >
-              New Customer
+              {t("New Customer")}
             </Button>
           </div>
           {current ? (
             <div className="banner">
               <span className="grow">
-                Attached: <strong>{current.name}</strong> {current.phone}
+                {t("Attached:")} <strong>{current.name}</strong> {current.phone}
               </span>
               <Button size="sm" icon={<X size={14} />} onClick={() => pick(null)}>
-                Remove
+                {t("Remove")}
               </Button>
             </div>
           ) : null}
@@ -290,32 +293,32 @@ export function CustomerPicker({
                 <div className="grow">
                   <div style={{ fontWeight: 600 }}>{c.name}</div>
                   <div className="tiny">
-                    {c.phone ?? "No phone"} {c.area ? `· ${c.area}` : ""}
+                    {c.phone ?? t("No phone")} {c.area ? `· ${c.area}` : ""}
                   </div>
                 </div>
                 <span className="tiny">{c.purchase_count} purchases</span>
               </div>
             ))}
-            {rows.length === 0 ? <div className="empty">No customers found.</div> : null}
+            {rows.length === 0 ? <div className="empty">{t("No customers found.")}</div> : null}
           </div>
           {error ? <Banner tone="danger">{error}</Banner> : null}
         </div>
       ) : (
         <div className="col gap-16">
-          <TextInput label="Name" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <TextInput label={t("Name")} required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           <TextInput
-            label="Phone"
+            label={t("Phone")}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             inputMode="tel"
-            hint="8-digit Bahrain numbers get +973 automatically."
+            hint={t("8-digit Bahrain numbers get +973 automatically.")}
           />
-          <TextInput label="Area" value={area} onChange={(e) => setArea(e.target.value)} />
+          <TextInput label={t("Area")} value={area} onChange={(e) => setArea(e.target.value)} />
           {error ? <Banner tone="danger">{error}</Banner> : null}
           <div className="row">
-            <Button onClick={() => setCreating(false)}>Back</Button>
+            <Button onClick={() => setCreating(false)}>{t("Back")}</Button>
             <Button variant="primary" className="right" onClick={create} disabled={!name.trim()}>
-              Save & attach
+              {t("Save & attach")}
             </Button>
           </div>
         </div>
@@ -339,14 +342,14 @@ export function QtyDialog({
   const key = (k: string) => setV((x) => (k === "Backspace" ? x.slice(0, -1) : x + k));
   return (
     <Modal
-      title={`Quantity — ${line.name}`}
+      title={t("Quantity — {0}", line.name)}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" disabled={!valid} onClick={() => valid && onApply(q!)}>
-            Apply
+            {t("Apply")}
           </Button>
         </>
       }
@@ -360,10 +363,10 @@ export function QtyDialog({
           onFocus={(e) => e.target.select()}
           onChange={(e) => setV(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && valid && onApply(q!)}
-          aria-label="Quantity"
+          aria-label={t("Quantity")}
         />
         <div className="tiny">
-          {line.allow_decimal_quantity ? `Up to 3 decimals (${line.unit}).` : "Whole units only."}
+          {line.allow_decimal_quantity ? t("Up to 3 decimals ({0}).", line.unit) : t("Whole units only.")}
         </div>
         <Keypad onKey={key} extra={line.allow_decimal_quantity ? "." : ""} />
       </div>
@@ -397,14 +400,14 @@ export function DiscountDialog({
   };
   return (
     <Modal
-      title={line ? `Discount — ${line.name}` : "Discount on sale"}
+      title={line ? t("Discount — {0}", line.name) : t("Discount on sale")}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={() => onApply(0, 0)}>Remove discount</Button>
+          <Button onClick={() => onApply(0, 0)}>{t("Remove discount")}</Button>
           <Button variant="primary" className="right" disabled={!valid} onClick={apply}>
-            Apply
+            {t("Apply")}
           </Button>
         </>
       }
@@ -412,10 +415,10 @@ export function DiscountDialog({
       <div className="col gap-16">
         <div className="row">
           <button className={`filter-chip ${mode === "percent" ? "active" : ""}`} onClick={() => setMode("percent")}>
-            Percentage
+            {t("Percentage")}
           </button>
           <button className={`filter-chip ${mode === "amount" ? "active" : ""}`} onClick={() => setMode("amount")}>
-            Amount
+            {t("Amount")}
           </button>
         </div>
         <input
@@ -426,12 +429,12 @@ export function DiscountDialog({
           autoFocus
           placeholder={mode === "percent" ? "10" : formatAmount(0)}
           onKeyDown={(e) => e.key === "Enter" && apply()}
-          aria-label="Discount"
+          aria-label={t("Discount")}
         />
         <div className="tiny">
-          Applies to {formatMoney(base)}. Discounts above {formatPercent(maxBp)} need manager approval.
+          {t("Applies to {0}. Discounts above {1} need manager approval.", formatMoney(base), formatPercent(maxBp))}
         </div>
-        {!valid ? <Banner tone="danger">Enter a valid discount not larger than the amount.</Banner> : null}
+        {!valid ? <Banner tone="danger">{t("Enter a valid discount not larger than the amount.")}</Banner> : null}
       </div>
     </Modal>
   );
@@ -452,22 +455,24 @@ export function PriceDialog({
   const valid = p !== null && p >= 0;
   return (
     <Modal
-      title={`Change price — ${line.name}`}
+      title={t("Change price — {0}", line.name)}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" disabled={!valid} onClick={() => onApply(p!, reason || null)}>
-            Apply
+            {t("Apply")}
           </Button>
         </>
       }
     >
       <div className="col gap-16">
         <div className="tiny">
-          Catalogue price {formatMoney(line.catalog_unit_price_minor)}. Price overrides require permission and are
-          audited.
+          {t(
+            "Catalogue price {0}. Price overrides require permission and are audited.",
+            formatMoney(line.catalog_unit_price_minor),
+          )}
         </div>
         <input
           className="input lg num"
@@ -476,9 +481,9 @@ export function PriceDialog({
           onChange={(e) => setV(e.target.value)}
           autoFocus
           onFocus={(e) => e.target.select()}
-          aria-label="New unit price"
+          aria-label={t("New unit price")}
         />
-        <TextInput label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <TextInput label={t("Reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
     </Modal>
   );
@@ -505,23 +510,23 @@ export function CustomItemDialog({ onClose, onAdded }: { onClose: () => void; on
   };
   return (
     <Modal
-      title="Custom item"
+      title={t("Custom item")}
       size="sm"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" disabled={!valid} onClick={add} icon={<Plus size={16} />}>
-            Add to sale
+            {t("Add to sale")}
           </Button>
         </>
       }
     >
       <div className="col gap-16">
-        <TextInput label="Description" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        <TextInput label={t("Description")} required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         <div className="form-grid">
           <TextInput
-            label="Unit price"
+            label={t("Unit price")}
             required
             className="num"
             inputMode="decimal"
@@ -529,14 +534,16 @@ export function CustomItemDialog({ onClose, onAdded }: { onClose: () => void; on
             onChange={(e) => setPrice(e.target.value)}
           />
           <TextInput
-            label="Quantity"
+            label={t("Quantity")}
             className="num"
             inputMode="decimal"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
           />
         </div>
-        <div className="tiny">Custom items are not tracked in inventory and are listed for management review.</div>
+        <div className="tiny">
+          {t("Custom items are not tracked in inventory and are listed for management review.")}
+        </div>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>
@@ -544,10 +551,10 @@ export function CustomItemDialog({ onClose, onAdded }: { onClose: () => void; on
 }
 
 const CASH_TITLES = {
-  paid_in: "Paid in",
-  paid_out: "Paid out",
-  safe_drop: "Safe drop",
-  no_sale: "Open drawer (no sale)",
+  paid_in: t("Paid in"),
+  paid_out: t("Paid out"),
+  safe_drop: t("Safe drop"),
+  no_sale: t("Open drawer (no sale)"),
 };
 
 export function CashEventDialog({
@@ -590,9 +597,9 @@ export function CashEventDialog({
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" disabled={!valid} loading={busy} onClick={submit}>
-            Confirm
+            {t("Confirm")}
           </Button>
         </>
       }
@@ -600,7 +607,7 @@ export function CashEventDialog({
       <div className="col gap-16">
         {kind !== "no_sale" ? (
           <TextInput
-            label="Amount"
+            label={t("Amount")}
             required
             className="num"
             inputMode="decimal"
@@ -610,14 +617,14 @@ export function CashEventDialog({
           />
         ) : null}
         <TextInput
-          label="Reason"
+          label={t("Reason")}
           required
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           autoFocus={kind === "no_sale"}
           onKeyDown={(e) => e.key === "Enter" && submit()}
         />
-        <div className="tiny">This cash event is recorded against your shift and cannot be edited later.</div>
+        <div className="tiny">{t("This cash event is recorded against your shift and cannot be edited later.")}</div>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>
@@ -638,12 +645,12 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt]);
   return (
-    <Modal title="Recent sales" size="xl" onClose={onClose}>
+    <Modal title={t("Recent sales")} size="xl" onClose={onClose}>
       <div className="grid-2">
         <div className="col">
           <input
             className="input"
-            placeholder="Receipt number…"
+            placeholder={t("Receipt number…")}
             value={receipt}
             onChange={(e) => setReceipt(e.target.value)}
             autoFocus
@@ -693,7 +700,7 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
                     const r = await api.sales.reprint(preview.id);
                     toast(
                       r.status === "printed" ? "success" : "warning",
-                      r.status === "printed" ? "Reprinted (marked COPY)" : "Not printed",
+                      r.status === "printed" ? t("Reprinted (marked COPY)") : t("Not printed"),
                       r.message ?? undefined,
                     );
                   } catch (e) {
@@ -701,11 +708,11 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
                   }
                 }}
               >
-                Reprint (copy)
+                {t("Reprint (copy)")}
               </Button>
             </>
           ) : (
-            <div className="empty">Select a sale to preview its receipt.</div>
+            <div className="empty">{t("Select a sale to preview its receipt.")}</div>
           )}
         </div>
       </div>
@@ -723,20 +730,20 @@ export function PrintQueueDialog({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <Modal title="Print queue" size="lg" onClose={onClose}>
+    <Modal title={t("Print queue")} size="lg" onClose={onClose}>
       {rows.length === 0 ? (
         <div className="empty">
-          <h3>Nothing waiting to print</h3>
+          <h3>{t("Nothing waiting to print")}</h3>
         </div>
       ) : null}
       {rows.length ? (
         <table className="table">
           <thead>
             <tr>
-              <th>Document</th>
-              <th>Reference</th>
-              <th>Created</th>
-              <th>Problem</th>
+              <th>{t("Document")}</th>
+              <th>{t("Reference")}</th>
+              <th>{t("Created")}</th>
+              <th>{t("Problem")}</th>
               <th />
             </tr>
           </thead>
@@ -746,10 +753,10 @@ export function PrintQueueDialog({ onClose }: { onClose: () => void }) {
                 <td>{j.kind.replace("_", " ")}</td>
                 <td className="mono">{j.reference}</td>
                 <td>{formatShort(j.created_at)}</td>
-                <td className="small">{j.last_error ?? "Waiting"}</td>
+                <td className="small">{j.last_error ?? t("Waiting")}</td>
                 <td className="num">
                   <Button size="sm" onClick={async () => (await api.print.retry(j.job_id), void load())}>
-                    Retry
+                    {t("Retry")}
                   </Button>
                 </td>
               </tr>
@@ -789,7 +796,7 @@ export function DeliveryQuickDialog({
         payment_status: pay,
         notes: notes || null,
       });
-      toast("success", `Delivery ${d.delivery_number} created`);
+      toast("success", t("Delivery {0} created", d.delivery_number));
       onClose();
     } catch (e) {
       handle(e);
@@ -797,37 +804,37 @@ export function DeliveryQuickDialog({
   };
   return (
     <Modal
-      title="Delivery"
+      title={t("Delivery")}
       size="md"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" onClick={create}>
-            Create delivery
+            {t("Create delivery")}
           </Button>
         </>
       }
     >
       <div className="form-grid">
-        <TextInput label="Area" value={area} onChange={(e) => setArea(e.target.value)} autoFocus />
-        <TextInput label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <TextInput label={t("Area")} value={area} onChange={(e) => setArea(e.target.value)} autoFocus />
+        <TextInput label={t("Phone")} value={phone} onChange={(e) => setPhone(e.target.value)} />
         <TextInput
-          label="Address"
+          label={t("Address")}
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           fieldClass="span-2"
-          hint={customer ? "Leave empty to use the customer's saved address." : undefined}
+          hint={customer ? t("Leave empty to use the customer's saved address.") : undefined}
         />
         <div className="field">
-          <label>Payment</label>
+          <label>{t("Payment")}</label>
           <select className="select" value={pay} onChange={(e) => setPay(e.target.value)}>
-            <option value="paid">Paid</option>
-            <option value="cod">Cash on delivery</option>
-            <option value="pending">Payment pending</option>
+            <option value="paid">{t("Paid")}</option>
+            <option value="cod">{t("Cash on delivery")}</option>
+            <option value="pending">{t("Payment pending")}</option>
           </select>
         </div>
-        <TextInput label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <TextInput label={t("Notes")} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
     </Modal>

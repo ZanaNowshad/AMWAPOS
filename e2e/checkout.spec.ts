@@ -234,3 +234,66 @@ test("cashier: no admin access; over-limit discount needs manager approval", asy
   const rows = audit.rows as { event_type: string; user_name: string | null; approver_name: string | null }[];
   expect(rows.some((r) => r.user_name === "Sara" && r.approver_name === "Zana")).toBe(true);
 });
+
+test("Arabic RTL: cashier sale and admin are usable right-to-left", async ({ page }) => {
+  await page.goto("/");
+  // Switch with the real toggle on the login screen; the choice survives the reload.
+  await page.getByTestId("lang-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ar");
+  await expect(page.getByRole("heading", { name: "من يسجّل الدخول؟" })).toBeVisible();
+  await shot(page, "20-ar-login");
+
+  await page.getByRole("button", { name: /Sara/ }).click();
+  await page.getByLabel("الرمز السري").fill("7391");
+  await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+  await expect(page.getByTestId("pos")).toBeVisible();
+  await expect(page.getByPlaceholder("امسح الباركود أو ابحث عن منتج…")).toBeVisible();
+  await page.getByTestId("scan-input").focus();
+  await page.keyboard.type("6281007031126", { delay: 5 });
+  await page.keyboard.press("Enter");
+  // Money keeps its left-to-right order inside RTL text.
+  await expect(page.getByTestId("cart-total")).toHaveText(/^⁦?BHD 0\.850⁩?$/);
+  await shot(page, "21-ar-pos");
+  await page.keyboard.press("F6");
+  await page.getByTestId("pay-amount").fill("1.000");
+  await expect(page.getByTestId("change")).toContainText("BHD 0.150");
+  await shot(page, "22-ar-payment");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("receipt-number")).toHaveText(/T01-0000004/);
+  await shot(page, "23-ar-success");
+  await page.getByTestId("new-sale").click();
+
+  // Owner: admin in Arabic.
+  await page.getByRole("button", { name: /المزيد/ }).click();
+  await page.getByRole("menuitem", { name: "تسجيل الخروج" }).click();
+  await page.getByRole("button", { name: /Zana/ }).click();
+  await page.getByLabel("الرمز السري").fill("4826");
+  await page.getByRole("button", { name: "تسجيل الدخول" }).click();
+  // Shifts are per cashier: the owner lands on the shift gate and goes to Admin from there.
+  await expect(page.getByRole("heading", { name: "بدء الوردية" })).toBeVisible();
+  await shot(page, "23b-ar-shift-gate");
+  await page.getByRole("button", { name: "الإدارة" }).click();
+  await expect(page.getByTestId("admin")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "لوحة المعلومات" })).toBeVisible();
+  await shot(page, "24-ar-dashboard");
+  await page.getByRole("link", { name: "المنتجات" }).click();
+  await expect(page.getByText("Almarai Fresh Milk 1L")).toBeVisible();
+  await shot(page, "25-ar-products");
+  await page.getByRole("link", { name: "الإعدادات" }).click();
+  await shot(page, "26-ar-settings");
+  // Theme and density still apply in RTL.
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.density = "compact";
+  });
+  await page.getByRole("link", { name: "لوحة المعلومات" }).click();
+  await shot(page, "27-ar-dark-compact");
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.density = "comfortable";
+  });
+  // Back to English for any later runs on this profile.
+  await page.getByTestId("lang-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+});

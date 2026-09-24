@@ -9,8 +9,16 @@ import { formatMoney, formatQty, parseQty } from "../../lib/money";
 import { formatDateTime } from "../../lib/time";
 import { Banner, Button, Checkbox, Modal } from "../../components/ui";
 import { methodLabel } from "./labels";
+import { t } from "../../i18n";
 
-const REASONS = ["Damaged / defective", "Expired", "Wrong item", "Customer changed mind", "Price dispute", "Other"];
+const REASONS = [
+  t("Damaged / defective"),
+  t("Expired"),
+  t("Wrong item"),
+  t("Customer changed mind"),
+  t("Price dispute"),
+  t("Other"),
+];
 
 export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const approve = useApproval();
@@ -61,16 +69,16 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
       }))
       .filter((l) => l.qty_milli > 0);
 
-  const reasonText = reason === "Other" ? other.trim() : reason;
+  const reasonText = reason === t("Other") ? other.trim() : reason;
 
   const review = async () => {
     setError(null);
     if (!lines().length) {
-      setError("Select at least one item and quantity to refund.");
+      setError(t("Select at least one item and quantity to refund."));
       return;
     }
     if (!reasonText) {
-      setError("Enter a reason.");
+      setError(t("Enter a reason."));
       return;
     }
     setBusy(true);
@@ -82,8 +90,8 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
         operation_id: opId,
         tenders: [],
       });
-      const t = p.total_minor > 0 ? [{ method, amount_minor: p.total_minor }] : [];
-      setPreview({ ...p, tenders: t });
+      const tv = p.total_minor > 0 ? [{ method, amount_minor: p.total_minor }] : [];
+      setPreview({ ...p, tenders: tv });
       setStep("review");
     } catch (e) {
       fail(e);
@@ -120,28 +128,28 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
   if (step === "search") {
     return (
       <Modal
-        title="Refund"
+        title={t("Refund")}
         size="md"
         onClose={onClose}
         footer={
           <>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={onClose}>{t("Cancel")}</Button>
             <Button variant="primary" className="right" onClick={find} loading={busy} disabled={!receipt.trim()}>
-              Open Refund
+              {t("Open Refund")}
             </Button>
           </>
         }
       >
         <div className="col gap-16">
           <label className="field-label" htmlFor="refund-receipt">
-            Receipt number
+            {t("Receipt number")}
           </label>
           <div className="scan-box">
             <Search size={18} className="scan-icon" />
             <input
               id="refund-receipt"
               className="input"
-              placeholder="Scan or type the receipt number, e.g. T01-0000123"
+              placeholder={t("Scan or type the receipt number, e.g. T01-0000123")}
               value={receipt}
               onChange={(e) => setReceipt(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && find()}
@@ -158,16 +166,16 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
     const methods = Array.from(new Set(["cash", ...sale.payments.map((p) => p.method)]));
     return (
       <Modal
-        title={`Refund — receipt ${sale.receipt_number}`}
+        title={t("Refund — receipt {0}", sale.receipt_number)}
         size="full"
         onClose={onClose}
         footer={
           <>
             <Button icon={<ArrowLeft size={16} />} onClick={() => setStep("search")}>
-              Back
+              {t("Back")}
             </Button>
             <Button variant="primary" className="right" onClick={review} loading={busy}>
-              Review Refund
+              {t("Review Refund")}
             </Button>
           </>
         }
@@ -175,18 +183,18 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
         <div className="grid-3">
           <div>
             <div className="tiny" style={{ marginBottom: 8 }}>
-              {formatDateTime(sale.completed_at)} · {sale.cashier_name} · {sale.device_name} · paid{" "}
+              {t("{0} · {1} · {2} · paid", formatDateTime(sale.completed_at), sale.cashier_name, sale.device_name)}{" "}
               {sale.payments.map((p) => methodLabel(p.method)).join(", ")}
             </div>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Item</th>
-                  <th className="num">Purchased</th>
-                  <th className="num">Refunded</th>
-                  <th className="num">Available</th>
-                  <th className="num">Refund qty</th>
-                  <th>Restock</th>
+                  <th>{t("Item")}</th>
+                  <th className="num">{t("Purchased")}</th>
+                  <th className="num">{t("Refunded")}</th>
+                  <th className="num">{t("Available")}</th>
+                  <th className="num">{t("Refund qty")}</th>
+                  <th>{t("Restock")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -200,7 +208,7 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                       <td>
                         <div style={{ fontWeight: 600 }}>{i.name}</div>
                         <div className="tiny">
-                          {formatMoney(i.line_total_minor)} · {i.sku ?? (i.is_custom ? "Custom" : "")}
+                          {formatMoney(i.line_total_minor)} · {i.sku ?? (i.is_custom ? t("Custom") : "")}
                         </div>
                       </td>
                       <td className="num">{formatQty(i.qty_milli)}</td>
@@ -214,7 +222,7 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                             inputMode="decimal"
                             disabled={avail <= 0}
                             value={v}
-                            aria-label={`Refund quantity for ${i.name}`}
+                            aria-label={t("Refund quantity for {0}", i.name)}
                             onChange={(e) => setQty({ ...qty, [i.sale_item_id]: e.target.value })}
                           />
                           <Button
@@ -222,7 +230,7 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                             disabled={avail <= 0}
                             onClick={() => setQty({ ...qty, [i.sale_item_id]: formatQty(avail) })}
                           >
-                            All
+                            {t("All")}
                           </Button>
                         </div>
                       </td>
@@ -242,23 +250,23 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
           </div>
           <div className="col gap-16">
             <div className="field">
-              <label htmlFor="reason">Reason</label>
+              <label htmlFor="reason">{t("Reason")}</label>
               <select id="reason" className="select" value={reason} onChange={(e) => setReason(e.target.value)}>
                 {REASONS.map((r) => (
                   <option key={r}>{r}</option>
                 ))}
               </select>
-              {reason === "Other" ? (
+              {reason === t("Other") ? (
                 <input
                   className="input"
-                  placeholder="Describe the reason"
+                  placeholder={t("Describe the reason")}
                   value={other}
                   onChange={(e) => setOther(e.target.value)}
                 />
               ) : null}
             </div>
             <div className="field">
-              <label htmlFor="refund-method">Refund to</label>
+              <label htmlFor="refund-method">{t("Refund to")}</label>
               <select id="refund-method" className="select" value={method} onChange={(e) => setMethod(e.target.value)}>
                 {methods.map((m) => (
                   <option key={m} value={m}>
@@ -268,7 +276,7 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
               </select>
             </div>
             <div className="tiny">
-              Refunds are limited to quantities not yet refunded. Restocked items return to inventory.
+              {t("Refunds are limited to quantities not yet refunded. Restocked items return to inventory.")}
             </div>
             {error ? <Banner tone="danger">{error}</Banner> : null}
           </div>
@@ -280,16 +288,16 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
   if (step === "review" && preview && sale) {
     return (
       <Modal
-        title="Review refund"
+        title={t("Review refund")}
         size="md"
         onClose={onClose}
         footer={
           <>
             <Button icon={<ArrowLeft size={16} />} onClick={() => setStep("select")}>
-              Back
+              {t("Back")}
             </Button>
             <Button variant="danger" className="right" onClick={confirm} loading={busy}>
-              Confirm Refund {formatMoney(preview.total_minor)}
+              {t("Confirm Refund {0}", formatMoney(preview.total_minor))}
             </Button>
           </>
         }
@@ -301,27 +309,28 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
                 <tr key={l.sale_item_id}>
                   <td>{l.name}</td>
                   <td className="num">× {formatQty(l.qty_milli)}</td>
-                  <td>{l.restock ? "Restock" : "No restock"}</td>
+                  <td>{l.restock ? t("Restock") : t("No restock")}</td>
                   <td className="num">{formatMoney(l.amount_minor)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <dl className="kv">
-            <dt>VAT reversed</dt>
+            <dt>{t("VAT reversed")}</dt>
             <dd className="money">{formatMoney(preview.tax_minor)}</dd>
-            <dt>Refund amount</dt>
+            <dt>{t("Refund amount")}</dt>
             <dd className="money" style={{ fontWeight: 700 }}>
               {formatMoney(preview.total_minor)}
             </dd>
-            <dt>Refunded to</dt>
+            <dt>{t("Refunded to")}</dt>
             <dd>
-              {preview.tenders.map((t) => `${methodLabel(t.method)} ${formatMoney(t.amount_minor)}`).join(", ") || "—"}
+              {preview.tenders.map((tv) => `${methodLabel(tv.method)} ${formatMoney(tv.amount_minor)}`).join(", ") ||
+                "—"}
             </dd>
-            <dt>Reason</dt>
+            <dt>{t("Reason")}</dt>
             <dd>{reasonText}</dd>
           </dl>
-          {preview.requires_approval ? <Banner tone="info">A manager must approve this refund.</Banner> : null}
+          {preview.requires_approval ? <Banner tone="info">{t("A manager must approve this refund.")}</Banner> : null}
           {error ? <Banner tone="danger">{error}</Banner> : null}
         </div>
       </Modal>
@@ -331,12 +340,12 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
   if (step === "done" && result) {
     return (
       <Modal
-        title="Refund completed"
+        title={t("Refund completed")}
         size="sm"
         onClose={onClose}
         footer={
           <Button variant="primary" className="right" onClick={onClose} autoFocus>
-            Done
+            {t("Done")}
           </Button>
         }
       >
@@ -347,10 +356,10 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
           <div style={{ fontWeight: 700 }}>{result.refund_receipt_number}</div>
           <div className="due">{formatMoney(result.total_minor)}</div>
           <div className="small muted">
-            {result.tenders.map((t) => `${methodLabel(t.method)} ${formatMoney(t.amount_minor)}`).join(" · ")}
+            {result.tenders.map((tv) => `${methodLabel(tv.method)} ${formatMoney(tv.amount_minor)}`).join(" · ")}
           </div>
           {result.print?.status === "failed" ? (
-            <Banner tone="warning" title="Refund completed — receipt could not be printed">
+            <Banner tone="warning" title={t("Refund completed — receipt could not be printed")}>
               {result.print.message}
             </Banner>
           ) : null}

@@ -1,11 +1,29 @@
 // Display helpers. Stored timestamps are UTC; display uses the store timezone.
+import { getLang, t } from "../i18n";
+
 let TZ = "Asia/Bahrain";
 export function configureTimezone(tz: string) {
   TZ = tz;
 }
 export const timezone = () => TZ;
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Gulf month names; digits stay Western (0-9) as on receipts and tills.
+const MONTHS_AR = [
+  "يناير",
+  "فبراير",
+  "مارس",
+  "أبريل",
+  "مايو",
+  "يونيو",
+  "يوليو",
+  "أغسطس",
+  "سبتمبر",
+  "أكتوبر",
+  "نوفمبر",
+  "ديسمبر",
+];
+const month = (i: number) => (getLang() === "ar" ? MONTHS_AR : MONTHS_EN)[i];
 
 function parts(iso: string) {
   const d = new Date(iso);
@@ -26,14 +44,14 @@ function parts(iso: string) {
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const p = parts(iso);
-  return `${p.d} ${MONTHS[p.m - 1]} ${p.y}, ${p.hh}:${p.mm}`;
+  return `${p.d} ${month(p.m - 1)} ${p.y}, ${p.hh}:${p.mm}`;
 }
 
 /** "24 Sep 19:42" */
 export function formatShort(iso: string | null | undefined): string {
   if (!iso) return "—";
   const p = parts(iso);
-  return `${p.d} ${MONTHS[p.m - 1]} ${p.hh}:${p.mm}`;
+  return `${p.d} ${month(p.m - 1)} ${p.hh}:${p.mm}`;
 }
 
 /** "24 Sep 2026" */
@@ -41,10 +59,10 @@ export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
     const [y, m, d] = iso.split("-");
-    return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
+    return `${d} ${month(Number(m) - 1)} ${y}`;
   }
   const p = parts(iso);
-  return `${p.d} ${MONTHS[p.m - 1]} ${p.y}`;
+  return `${p.d} ${month(p.m - 1)} ${p.y}`;
 }
 
 export function formatClock(date: Date): string {
@@ -60,10 +78,10 @@ export function todayLocal(offsetDays = 0): string {
 }
 
 export function relative(iso: string | null | undefined): string {
-  if (!iso) return "never";
+  if (!iso) return t("never");
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return `${Math.floor(s / 86400)} d ago`;
+  if (s < 60) return t("just now");
+  if (s < 3600) return t("{0} min ago", Math.floor(s / 60));
+  if (s < 86400) return t("{0} h ago", Math.floor(s / 3600));
+  return t("{0} d ago", Math.floor(s / 86400));
 }

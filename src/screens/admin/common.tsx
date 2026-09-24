@@ -6,6 +6,7 @@ import { explain } from "../../lib/errors";
 import { ApprovalCancelled } from "../../components/approval";
 import { Banner, Button, Modal, Skeleton } from "../../components/ui";
 import { todayLocal } from "../../lib/time";
+import { t, tb } from "../../i18n";
 
 /** Load data with loading / error state. `deps` re-trigger loading. */
 export function useLoad<T>(fn: () => Promise<T>, deps: unknown[]) {
@@ -122,7 +123,7 @@ export function DataTable<T>({
                 <th style={{ width: 36 }}>
                   <input
                     type="checkbox"
-                    aria-label="Select all"
+                    aria-label={t("Select all")}
                     checked={!!allSel}
                     onChange={(e) => onSelect?.(e.target.checked ? new Set(data.map(rowKey)) : new Set())}
                   />
@@ -141,7 +142,7 @@ export function DataTable<T>({
                   }
                   aria-sort={sort?.key === c.key ? (sort.dir === 1 ? "ascending" : "descending") : undefined}
                 >
-                  {c.label}
+                  {tb(c.label)}
                   {sort?.key === c.key ? sort.dir === 1 ? <ChevronUp size={12} /> : <ChevronDown size={12} /> : null}
                 </th>
               ))}
@@ -162,7 +163,7 @@ export function DataTable<T>({
                     <td onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
-                        aria-label="Select row"
+                        aria-label={t("Select row")}
                         checked={!!selected?.has(k)}
                         onChange={(e) => {
                           const s = new Set(selected);
@@ -184,7 +185,9 @@ export function DataTable<T>({
           </tbody>
           {footer ? <tfoot>{footer}</tfoot> : null}
         </table>
-        {data.length === 0 && !loading ? <div>{empty ?? <div className="empty">Nothing to show.</div>}</div> : null}
+        {data.length === 0 && !loading ? (
+          <div>{empty ?? <div className="empty">{t("Nothing to show.")}</div>}</div>
+        ) : null}
       </div>
     </div>
   );
@@ -207,30 +210,28 @@ export function Pager({
   const to = Math.min(total, offset + limit);
   return (
     <div className="pager">
-      <span>
-        {from}–{to} of {total.toLocaleString("en")}
-      </span>
+      <span>{t("{0}–{1} of {2}", from, to, total.toLocaleString("en"))}</span>
       {onLimit ? (
         <select
           className="select"
           style={{ width: 90, height: 30 }}
           value={limit}
           onChange={(e) => onLimit(Number(e.target.value))}
-          aria-label="Rows per page"
+          aria-label={t("Rows per page")}
         >
           {[25, 50, 100].map((n) => (
             <option key={n} value={n}>
-              {n} / page
+              {t("{0} / page", n)}
             </option>
           ))}
         </select>
       ) : null}
       <span className="grow" />
       <Button size="sm" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - limit))}>
-        Previous
+        {t("Previous")}
       </Button>
       <Button size="sm" disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
-        Next
+        {t("Next")}
       </Button>
     </div>
   );
@@ -261,7 +262,7 @@ export function Drawer({
             {title}
           </h2>
           {actions}
-          <Button variant="ghost" aria-label="Close" icon={<X size={18} />} onClick={onClose} />
+          <Button variant="ghost" aria-label={t("Close")} icon={<X size={18} />} onClick={onClose} />
         </div>
         <div className="d-body">{children}</div>
       </aside>
@@ -297,7 +298,7 @@ export function Confirm({
       onClose={onCancel}
       footer={
         <>
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button onClick={onCancel}>{t("Cancel")}</Button>
           <Button variant={danger ? "danger" : "primary"} className="right" onClick={onConfirm} loading={busy}>
             {confirmLabel}
           </Button>
@@ -322,11 +323,11 @@ export function DateRange({
   onChange: (from: string, to: string) => void;
 }) {
   const presets: [string, () => [string, string]][] = [
-    ["Today", () => [todayLocal(), todayLocal()]],
-    ["Yesterday", () => [todayLocal(-1), todayLocal(-1)]],
+    [t("Today"), () => [todayLocal(), todayLocal()]],
+    [t("Yesterday"), () => [todayLocal(-1), todayLocal(-1)]],
     ["7 days", () => [todayLocal(-6), todayLocal()]],
     ["30 days", () => [todayLocal(-29), todayLocal()]],
-    ["This month", () => [todayLocal().slice(0, 8) + "01", todayLocal()]],
+    [t("This month"), () => [todayLocal().slice(0, 8) + "01", todayLocal()]],
   ];
   return (
     <div className="row wrap">
@@ -349,7 +350,7 @@ export function DateRange({
         value={from}
         max={to}
         onChange={(e) => onChange(e.target.value, to)}
-        aria-label="From date"
+        aria-label={t("From date")}
       />
       <span className="muted">to</span>
       <input
@@ -359,7 +360,7 @@ export function DateRange({
         value={to}
         min={from}
         onChange={(e) => onChange(from, e.target.value)}
-        aria-label="To date"
+        aria-label={t("To date")}
       />
     </div>
   );
@@ -380,8 +381,8 @@ export function download(filename: string, content: string, type = "text/csv;cha
 export function Denied() {
   return (
     <div className="empty" style={{ paddingTop: 80 }}>
-      <h3>Access restricted</h3>
-      <p>Your account does not have permission to access this area.</p>
+      <h3>{t("Access restricted")}</h3>
+      <p>{t("Your account does not have permission to access this area.")}</p>
     </div>
   );
 }

@@ -22,6 +22,8 @@ import {
 } from "../../components/ui";
 import { DataTable, Drawer, useAction, useLoad } from "./common";
 import { SaleDrawer } from "./sales";
+import { t, tb } from "../../i18n";
+import { codeLabel } from "../../i18n/codes";
 
 function CustomerForm({
   initial,
@@ -41,7 +43,7 @@ function CustomerForm({
     <div className="col gap-16">
       <div className="form-grid">
         <TextInput
-          label="Name"
+          label={t("Name")}
           required
           value={f.name}
           onChange={(e) => set("name", e.target.value)}
@@ -49,25 +51,25 @@ function CustomerForm({
           autoFocus
         />
         <TextInput
-          label="Phone"
+          label={t("Phone")}
           value={f.phone ?? ""}
           onChange={(e) => set("phone", e.target.value)}
-          hint="8-digit Bahrain numbers get +973."
+          hint={t("8-digit Bahrain numbers get +973.")}
         />
-        <TextInput label="WhatsApp" value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
-        <TextInput label="Email" value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
-        <TextInput label="Area" value={f.area ?? ""} onChange={(e) => set("area", e.target.value)} />
+        <TextInput label={t("WhatsApp")} value={f.whatsapp ?? ""} onChange={(e) => set("whatsapp", e.target.value)} />
+        <TextInput label={t("Email")} value={f.email ?? ""} onChange={(e) => set("email", e.target.value)} />
+        <TextInput label={t("Area")} value={f.area ?? ""} onChange={(e) => set("area", e.target.value)} />
         <TextInput
-          label="Address"
+          label={t("Address")}
           value={f.address ?? ""}
           onChange={(e) => set("address", e.target.value)}
           fieldClass="span-2"
         />
-        <Checkbox label="Active" checked={f.active} onChange={(v) => set("active", v)} />
+        <Checkbox label={t("Active")} checked={f.active} onChange={(v) => set("active", v)} />
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       <div className="row">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onCancel}>{t("Cancel")}</Button>
         <Button
           variant="primary"
           className="right"
@@ -87,7 +89,7 @@ function CustomerForm({
             if (r) onSaved(r);
           }}
         >
-          Save
+          {t("Save")}
         </Button>
       </div>
     </div>
@@ -103,11 +105,11 @@ export function CustomersPage() {
   return (
     <div>
       <PageHeader
-        title="Customers"
+        title={t("Customers")}
         actions={
           has("customers.manage") ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-              Customer
+              {t("Customer")}
             </Button>
           ) : null
         }
@@ -116,7 +118,7 @@ export function CustomersPage() {
         <input
           className="input"
           style={{ width: 300 }}
-          placeholder="Search phone or name…"
+          placeholder={t("Search phone or name…")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -127,34 +129,42 @@ export function CustomersPage() {
         loading={loading}
         rowKey={(r) => r.customer_id}
         onRowClick={(r) => nav(`/admin/customers/${r.customer_id}`)}
-        empty={<Empty title="No customers found">Customers can be added here or quickly from the till.</Empty>}
+        empty={
+          <Empty title={t("No customers found")}>{t("Customers can be added here or quickly from the till.")}</Empty>
+        }
         columns={[
-          { key: "n", label: "Name", render: (r) => r.name, sort: (r) => r.name },
-          { key: "p", label: "Phone", render: (r) => r.phone ?? "—" },
-          { key: "a", label: "Area", render: (r) => r.area ?? "—" },
+          { key: "n", label: t("Name"), render: (r) => r.name, sort: (r) => r.name },
+          { key: "p", label: t("Phone"), render: (r) => r.phone ?? "—" },
+          { key: "a", label: t("Area"), render: (r) => r.area ?? "—" },
           {
             key: "l",
-            label: "Last Purchase",
+            label: t("Last Purchase"),
             render: (r) => (r.last_purchase_at ? relative(r.last_purchase_at) : "—"),
             sort: (r) => r.last_purchase_at ?? "",
           },
-          { key: "c", label: "Purchases", num: true, render: (r) => r.purchase_count, sort: (r) => r.purchase_count },
+          {
+            key: "c",
+            label: t("Purchases"),
+            num: true,
+            render: (r) => r.purchase_count,
+            sort: (r) => r.purchase_count,
+          },
           {
             key: "t",
-            label: "Total Purchases",
+            label: t("Total Purchases"),
             num: true,
             render: (r) => <Money minor={r.total_spent_minor} />,
             sort: (r) => r.total_spent_minor,
           },
           {
             key: "s",
-            label: "Status",
-            render: (r) => (r.active ? <Chip tone="success">Active</Chip> : <Chip>Inactive</Chip>),
+            label: t("Status"),
+            render: (r) => (r.active ? <Chip tone="success">{t("Active")}</Chip> : <Chip>{t("Inactive")}</Chip>),
           },
         ]}
       />
       {creating ? (
-        <Drawer title="New customer" onClose={() => setCreating(false)}>
+        <Drawer title={t("New customer")} onClose={() => setCreating(false)}>
           <CustomerForm
             initial={null}
             onCancel={() => setCreating(false)}
@@ -187,27 +197,27 @@ export function CustomerDetailPage() {
         <Button
           variant="ghost"
           icon={<ArrowLeft size={18} />}
-          aria-label="Back"
+          aria-label={t("Back")}
           onClick={() => nav("/admin/customers")}
         />
         <div className="grow">
-          <div className="tiny">Customer</div>
+          <div className="tiny">{t("Customer")}</div>
           <h1>{c.name}</h1>
-          <div className="muted">{c.phone ?? "No phone"}</div>
+          <div className="muted">{c.phone ?? t("No phone")}</div>
         </div>
         {wa ? (
           <a className="btn" href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer">
-            <MessageCircle size={16} /> WhatsApp
+            <MessageCircle size={16} /> {t("WhatsApp")}
           </a>
         ) : null}
-        {has("customers.manage") ? <Button onClick={() => setEditing(true)}>Edit</Button> : null}
+        {has("customers.manage") ? <Button onClick={() => setEditing(true)}>{t("Edit")}</Button> : null}
       </div>
       <Tabs
         tabs={[
-          { key: "overview", label: "Overview" },
-          { key: "purchases", label: "Purchases" },
-          { key: "deliveries", label: "Deliveries" },
-          { key: "notes", label: "Notes" },
+          { key: "overview", label: t("Overview") },
+          { key: "purchases", label: t("Purchases") },
+          { key: "deliveries", label: t("Deliveries") },
+          { key: "notes", label: t("Notes") },
         ]}
         value={tab}
         onChange={setTab}
@@ -216,31 +226,31 @@ export function CustomerDetailPage() {
         <div className="grid-2">
           <div className="card card-pad">
             <dl className="kv">
-              <dt>Phone</dt>
+              <dt>{t("Phone")}</dt>
               <dd>{c.phone ?? "—"}</dd>
-              <dt>WhatsApp</dt>
+              <dt>{t("WhatsApp")}</dt>
               <dd>{c.whatsapp ?? "—"}</dd>
-              <dt>Email</dt>
+              <dt>{t("Email")}</dt>
               <dd>{c.email ?? "—"}</dd>
-              <dt>Area</dt>
+              <dt>{t("Area")}</dt>
               <dd>{c.area ?? "—"}</dd>
-              <dt>Address</dt>
+              <dt>{t("Address")}</dt>
               <dd>{c.address ?? "—"}</dd>
-              <dt>Customer since</dt>
+              <dt>{t("Customer since")}</dt>
               <dd>{formatShort(c.created_at)}</dd>
             </dl>
           </div>
           <div className="kpis">
             <div className="card kpi">
-              <div className="k-label">Purchases</div>
+              <div className="k-label">{t("Purchases")}</div>
               <div className="k-value">{c.purchase_count}</div>
             </div>
             <div className="card kpi">
-              <div className="k-label">Total (net of refunds)</div>
+              <div className="k-label">{t("Total (net of refunds)")}</div>
               <div className="k-value">{formatMoney(c.total_spent_minor)}</div>
             </div>
             <div className="card kpi">
-              <div className="k-label">Last purchase</div>
+              <div className="k-label">{t("Last purchase")}</div>
               <div className="k-value" style={{ fontSize: 16 }}>
                 {c.last_purchase_at ? formatDateTime(c.last_purchase_at) : "—"}
               </div>
@@ -255,13 +265,13 @@ export function CustomerDetailPage() {
           onRowClick={(r) => setSale(String(r.sale_id))}
           empty={
             <div className="empty">
-              {has("sales.view") ? "No purchases yet." : "Your role cannot view purchase history."}
+              {has("sales.view") ? t("No purchases yet.") : t("Your role cannot view purchase history.")}
             </div>
           }
           columns={[
-            { key: "r", label: "Receipt", render: (r) => <span className="mono">{String(r.receipt_number)}</span> },
-            { key: "d", label: "Date", render: (r) => formatShort(String(r.completed_at)) },
-            { key: "t", label: "Total", num: true, render: (r) => <Money minor={Number(r.total_minor)} /> },
+            { key: "r", label: t("Receipt"), render: (r) => <span className="mono">{String(r.receipt_number)}</span> },
+            { key: "d", label: t("Date"), render: (r) => formatShort(String(r.completed_at)) },
+            { key: "t", label: t("Total"), num: true, render: (r) => <Money minor={Number(r.total_minor)} /> },
           ]}
         />
       ) : null}
@@ -272,7 +282,7 @@ export function CustomerDetailPage() {
             <div className="row">
               <input
                 className="input grow"
-                placeholder="Add a note…"
+                placeholder={t("Add a note…")}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
               />
@@ -283,12 +293,12 @@ export function CustomerDetailPage() {
                   const r = await act.run(() => api.customers.addNote(c.customer_id, note));
                   if (r !== undefined) {
                     setNote("");
-                    toast("success", "Note added");
+                    toast("success", t("Note added"));
                     void reload();
                   }
                 }}
               >
-                Add
+                {t("Add")}
               </Button>
             </div>
           ) : null}
@@ -300,11 +310,11 @@ export function CustomerDetailPage() {
               <div style={{ whiteSpace: "pre-wrap" }}>{n.note}</div>
             </div>
           ))}
-          {data.notes.length === 0 ? <div className="empty">No notes.</div> : null}
+          {data.notes.length === 0 ? <div className="empty">{t("No notes.")}</div> : null}
         </div>
       ) : null}
       {editing ? (
-        <Drawer title={`Edit ${c.name}`} onClose={() => setEditing(false)}>
+        <Drawer title={t("Edit {0}", c.name)} onClose={() => setEditing(false)}>
           <CustomerForm
             initial={c}
             onCancel={() => setEditing(false)}
@@ -324,7 +334,7 @@ const DSTATUS: Record<string, "default" | "info" | "warning" | "success"> = {
   delivered: "success",
   cancelled: "default",
 };
-const payLabel = (p: string) => (p === "cod" ? "Cash on Delivery" : p === "paid" ? "Paid" : "Payment Pending");
+const payLabel = (p: string) => (p === "cod" ? t("Cash on Delivery") : p === "paid" ? t("Paid") : t("Payment Pending"));
 
 function DeliveryTable({ rows, onOpen }: { rows: DeliveryRow[]; onOpen?: (d: DeliveryRow) => void }) {
   return (
@@ -332,21 +342,21 @@ function DeliveryTable({ rows, onOpen }: { rows: DeliveryRow[]; onOpen?: (d: Del
       rows={rows}
       rowKey={(r) => r.delivery_id}
       onRowClick={onOpen}
-      empty={<div className="empty">No deliveries.</div>}
+      empty={<div className="empty">{t("No deliveries.")}</div>}
       columns={[
-        { key: "n", label: "Order", render: (r) => <span className="mono">{r.delivery_number}</span> },
-        { key: "c", label: "Customer", render: (r) => r.customer_name ?? "—" },
-        { key: "a", label: "Area", render: (r) => r.area ?? "—" },
-        { key: "m", label: "Amount", num: true, render: (r) => <Money minor={r.amount_minor} /> },
+        { key: "n", label: t("Order"), render: (r) => <span className="mono">{r.delivery_number}</span> },
+        { key: "c", label: t("Customer"), render: (r) => r.customer_name ?? "—" },
+        { key: "a", label: t("Area"), render: (r) => r.area ?? "—" },
+        { key: "m", label: t("Amount"), num: true, render: (r) => <Money minor={r.amount_minor} /> },
         {
           key: "p",
-          label: "Payment",
+          label: t("Payment"),
           render: (r) => (
             <Chip tone={r.payment_status === "paid" ? "success" : "warning"}>{payLabel(r.payment_status)}</Chip>
           ),
         },
-        { key: "s", label: "Status", render: (r) => <Chip tone={DSTATUS[r.status]}>{r.status}</Chip> },
-        { key: "t", label: "Created", render: (r) => formatShort(r.created_at) },
+        { key: "s", label: t("Status"), render: (r) => <Chip tone={DSTATUS[r.status]}>{codeLabel(r.status)}</Chip> },
+        { key: "t", label: t("Created"), render: (r) => formatShort(r.created_at) },
       ]}
     />
   );
@@ -368,7 +378,7 @@ export function DeliveriesPage() {
   const update = async (a: Parameters<typeof api.deliveries.update>[0]) => {
     const r = await act.run(() => api.deliveries.update(a));
     if (r) {
-      toast("success", `Delivery ${r.delivery_number} updated`);
+      toast("success", t("Delivery {0} updated", r.delivery_number));
       setOpen(r);
       void reload();
       void detail.reload();
@@ -378,16 +388,16 @@ export function DeliveriesPage() {
   return (
     <div>
       <PageHeader
-        title="Deliveries"
+        title={t("Deliveries")}
         actions={
           <>
             <button className={`filter-chip ${view === "board" ? "active" : ""}`} onClick={() => setView("board")}>
-              Board
+              {t("Board")}
             </button>
             <button className={`filter-chip ${view === "table" ? "active" : ""}`} onClick={() => setView("table")}>
-              Table
+              {t("Table")}
             </button>
-            <Checkbox label="Include delivered / cancelled" checked={closed} onChange={setClosed} />
+            <Checkbox label={t("Include delivered / cancelled")} checked={closed} onChange={setClosed} />
           </>
         }
       />
@@ -415,7 +425,7 @@ export function DeliveriesPage() {
                       <strong className="grow">{d.delivery_number}</strong>
                       <span className="tiny">{waitMin(d)} min</span>
                     </div>
-                    <div className="small">{d.customer_name ?? "Customer"}</div>
+                    <div className="small">{d.customer_name ?? t("Customer")}</div>
                     <div className="tiny">{d.area ?? d.address ?? ""}</div>
                     <div className="row" style={{ marginTop: 6 }}>
                       <span className="money grow">{formatMoney(d.amount_minor)}</span>
@@ -431,55 +441,55 @@ export function DeliveriesPage() {
       ) : null}
       {view === "table" && data ? <DeliveryTable rows={data} onOpen={setOpen} /> : null}
       {open ? (
-        <Drawer title={`Delivery ${open.delivery_number}`} onClose={() => setOpen(null)}>
+        <Drawer title={t("Delivery {0}", open.delivery_number)} onClose={() => setOpen(null)}>
           <div className="stack-16">
             <div className="row">
-              <Chip tone={DSTATUS[open.status]}>{open.status}</Chip>
+              <Chip tone={DSTATUS[open.status]}>{codeLabel(open.status)}</Chip>
               <Chip tone={open.payment_status === "paid" ? "success" : "warning"}>{payLabel(open.payment_status)}</Chip>
             </div>
             <dl className="kv">
-              <dt>Customer</dt>
+              <dt>{t("Customer")}</dt>
               <dd>{open.customer_name ?? "—"}</dd>
-              <dt>Phone</dt>
+              <dt>{t("Phone")}</dt>
               <dd>{open.phone ?? "—"}</dd>
-              <dt>Address</dt>
+              <dt>{t("Address")}</dt>
               <dd>{[open.area, open.address].filter(Boolean).join(", ") || "—"}</dd>
-              <dt>Linked sale</dt>
+              <dt>{t("Linked sale")}</dt>
               <dd className="mono">{open.receipt_number ?? "—"}</dd>
-              <dt>Amount</dt>
+              <dt>{t("Amount")}</dt>
               <dd>{formatMoney(open.amount_minor)}</dd>
-              <dt>Rider</dt>
-              <dd>{open.assigned_name ?? "Unassigned"}</dd>
-              <dt>Notes</dt>
+              <dt>{t("Rider")}</dt>
+              <dd>{open.assigned_name ?? t("Unassigned")}</dd>
+              <dt>{t("Notes")}</dt>
               <dd>{open.notes ?? "—"}</dd>
             </dl>
             {has("deliveries.manage") ? (
               <div className="col">
-                <Field label="Assign rider">
+                <Field label={t("Assign rider")}>
                   <select
                     className="select"
                     value={open.assigned_user_id ?? ""}
                     onChange={(e) => update({ delivery_id: open.delivery_id, assigned_user_id: e.target.value })}
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">{t("Unassigned")}</option>
                     {(users.data ?? [])
                       .filter((u) => u.active)
                       .map((u) => (
                         <option key={u.user_id} value={u.user_id}>
-                          {u.display_name} ({u.role_name})
+                          {u.display_name} ({tb(u.role_name)})
                         </option>
                       ))}
                   </select>
                 </Field>
-                <Field label="Payment">
+                <Field label={t("Payment")}>
                   <select
                     className="select"
                     value={open.payment_status}
                     onChange={(e) => update({ delivery_id: open.delivery_id, payment_status: e.target.value })}
                   >
-                    <option value="paid">Paid</option>
-                    <option value="cod">Cash on Delivery</option>
-                    <option value="pending">Payment Pending</option>
+                    <option value="paid">{t("Paid")}</option>
+                    <option value="cod">{t("Cash on Delivery")}</option>
+                    <option value="pending">{t("Payment Pending")}</option>
                   </select>
                 </Field>
               </div>
@@ -487,7 +497,7 @@ export function DeliveriesPage() {
             <div className="row wrap">
               {open.status === "pending" ? (
                 <Button onClick={() => update({ delivery_id: open.delivery_id, status: "preparing" })}>
-                  Preparing
+                  {t("Preparing")}
                 </Button>
               ) : null}
               {open.status === "pending" || open.status === "preparing" ? (
@@ -495,7 +505,7 @@ export function DeliveriesPage() {
                   variant="primary"
                   onClick={() => update({ delivery_id: open.delivery_id, status: "dispatched" })}
                 >
-                  Dispatch
+                  {t("Dispatch")}
                 </Button>
               ) : null}
               {open.status === "dispatched" ? (
@@ -503,7 +513,7 @@ export function DeliveriesPage() {
                   variant="primary"
                   onClick={() => update({ delivery_id: open.delivery_id, status: "delivered" })}
                 >
-                  Delivered
+                  {t("Delivered")}
                 </Button>
               ) : null}
               {["pending", "preparing", "dispatched"].includes(open.status) && has("deliveries.manage") ? (
@@ -511,7 +521,7 @@ export function DeliveriesPage() {
                   variant="danger-outline"
                   onClick={() => update({ delivery_id: open.delivery_id, status: "cancelled" })}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </Button>
               ) : null}
             </div>
@@ -519,7 +529,7 @@ export function DeliveriesPage() {
             {detail.data ? (
               <>
                 <div>
-                  <h3 style={{ marginBottom: 6 }}>Timeline</h3>
+                  <h3 style={{ marginBottom: 6 }}>{t("Timeline")}</h3>
                   {detail.data.events.map((e, i) => (
                     <div key={i} className="small row">
                       <span style={{ width: 130 }}>{formatShort(e.at)}</span>
@@ -533,7 +543,7 @@ export function DeliveriesPage() {
                 </div>
                 {detail.data.items.length ? (
                   <div>
-                    <h3 style={{ marginBottom: 6 }}>Items</h3>
+                    <h3 style={{ marginBottom: 6 }}>{t("Items")}</h3>
                     {detail.data.items.map((it, i) => (
                       <div key={i} className="small row">
                         <span className="grow">{String(it.name)}</span>

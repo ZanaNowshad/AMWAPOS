@@ -1,13 +1,14 @@
+import { t } from "../../i18n";
 export function methodLabel(m: string): string {
   switch (m) {
     case "cash":
-      return "Cash";
+      return t("Cash");
     case "card":
-      return "Card";
+      return t("Card");
     case "benefitpay":
-      return "BenefitPay";
+      return t("BenefitPay");
     case "bank_transfer":
-      return "Bank Transfer";
+      return t("Bank Transfer");
     default:
       return m;
   }

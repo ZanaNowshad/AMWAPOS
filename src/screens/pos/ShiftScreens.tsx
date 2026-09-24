@@ -11,6 +11,7 @@ import { formatDate, formatDateTime } from "../../lib/time";
 import { Banner, Button, Keypad, Modal } from "../../components/ui";
 import { Logo } from "../../components/Logo";
 import { methodLabel } from "./labels";
+import { t } from "../../i18n";
 
 export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void }) {
   const { session, status, logout, has, setMode } = useSession();
@@ -21,7 +22,7 @@ export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void })
   const minor = parseMoney(amount);
   const submit = async () => {
     if (minor === null || minor < 0) {
-      setError("Enter the opening float, e.g. 20.000");
+      setError(t("Enter the opening float, e.g. 20.000"));
       return;
     }
     setBusy(true);
@@ -45,21 +46,21 @@ export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void })
     <div className="splash failure">
       <div className="failure-card" style={{ width: 460 }}>
         <Logo size={40} />
-        <h1>Start Shift</h1>
+        <h1>{t("Start Shift")}</h1>
         <dl className="kv" style={{ width: "100%" }}>
-          <dt>Cashier</dt>
+          <dt>{t("Cashier")}</dt>
           <dd>{session?.display_name}</dd>
-          <dt>Terminal</dt>
+          <dt>{t("Terminal")}</dt>
           <dd>
             {status.device?.name} ({status.device?.device_code})
           </dd>
-          <dt>Business date</dt>
+          <dt>{t("Business date")}</dt>
           <dd>{formatDate(new Date().toISOString())}</dd>
         </dl>
         {has("shift.open") ? (
           <div className="col" style={{ width: "100%" }}>
             <label htmlFor="float" className="field-label">
-              Opening float (cash in drawer)
+              {t("Opening float (cash in drawer)")}
             </label>
             <input
               id="float"
@@ -74,20 +75,20 @@ export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void })
             <Keypad onKey={key} />
             {error ? <Banner tone="danger">{error}</Banner> : null}
             <Button variant="primary" size="xl" block onClick={submit} loading={busy}>
-              Open Shift
+              {t("Open Shift")}
             </Button>
           </div>
         ) : (
-          <Banner tone="warning">You are not allowed to open a shift on this terminal.</Banner>
+          <Banner tone="warning">{t("You are not allowed to open a shift on this terminal.")}</Banner>
         )}
         <div className="row" style={{ width: "100%" }}>
           {has("admin.access") ? (
             <Button icon={<Settings2 size={16} />} onClick={() => setMode("admin")}>
-              Admin
+              {t("Admin")}
             </Button>
           ) : null}
           <Button className="right" icon={<LogOut size={16} />} onClick={() => void logout()}>
-            Logout
+            {t("Logout")}
           </Button>
         </div>
       </div>
@@ -123,7 +124,7 @@ export function ShiftClose({
   const variance = sum && sum.expected_visible && minor !== null ? minor - sum.expected_cash_minor : null;
   const submit = async () => {
     if (minor === null || minor < 0) {
-      setError("Enter the counted cash, e.g. 145.250");
+      setError(t("Enter the counted cash, e.g. 145.250"));
       return;
     }
     setBusy(true);
@@ -148,42 +149,42 @@ export function ShiftClose({
   const rows = useMemo(() => {
     if (!sum) return [];
     return [
-      ["Sales", `${sum.sale_count} · ${formatMoney(sum.sales_total_minor)}`],
+      [t("Sales"), `${sum.sale_count} · ${formatMoney(sum.sales_total_minor)}`],
       ...sum.by_method.map((m) => [`  ${methodLabel(m.method)}`, formatMoney(m.amount_minor)]),
-      ["Refunds", formatMoney(-sum.refunds_total_minor)],
-      ["Opening float", formatMoney(sum.opening_float_minor)],
-      ["Cash sales", formatMoney(sum.cash_sales_minor)],
-      ["Cash refunds", formatMoney(-sum.cash_refunds_minor)],
-      ["Paid in", formatMoney(sum.paid_in_minor)],
-      ["Paid out", formatMoney(-sum.paid_out_minor)],
-      ["Safe drops", formatMoney(-sum.safe_drop_minor)],
+      [t("Refunds"), formatMoney(-sum.refunds_total_minor)],
+      [t("Opening float"), formatMoney(sum.opening_float_minor)],
+      [t("Cash sales"), formatMoney(sum.cash_sales_minor)],
+      [t("Cash refunds"), formatMoney(-sum.cash_refunds_minor)],
+      [t("Paid in"), formatMoney(sum.paid_in_minor)],
+      [t("Paid out"), formatMoney(-sum.paid_out_minor)],
+      [t("Safe drops"), formatMoney(-sum.safe_drop_minor)],
     ];
   }, [sum]);
   if (done) {
     const v = done.summary.variance_minor ?? 0;
     return (
       <Modal
-        title="Shift closed"
+        title={t("Shift closed")}
         size="sm"
         footer={
           <Button variant="primary" className="right" onClick={onClosed}>
-            Done
+            {t("Done")}
           </Button>
         }
       >
         <div className="col gap-16">
           <dl className="kv">
-            <dt>Expected cash</dt>
+            <dt>{t("Expected cash")}</dt>
             <dd className="money">{formatMoney(done.summary.expected_cash_minor)}</dd>
-            <dt>Counted cash</dt>
+            <dt>{t("Counted cash")}</dt>
             <dd className="money">{formatMoney(done.summary.counted_cash_minor)}</dd>
-            <dt>Variance</dt>
+            <dt>{t("Variance")}</dt>
             <dd className={`money ${v === 0 ? "pos-num" : "neg-num"}`}>{formatMoney(v)}</dd>
           </dl>
           {done.print.status === "printed" ? (
-            <Banner tone="success">Shift report printed.</Banner>
+            <Banner tone="success">{t("Shift report printed.")}</Banner>
           ) : done.print.status === "failed" ? (
-            <Banner tone="warning" title="Shift report could not be printed">
+            <Banner tone="warning" title={t("Shift report could not be printed")}>
               {done.print.message}
             </Banner>
           ) : null}
@@ -193,14 +194,14 @@ export function ShiftClose({
   }
   return (
     <Modal
-      title={`Close shift ${sum?.shift_number ?? ""}`}
+      title={t("Close shift {0}", sum?.shift_number ?? "")}
       size="lg"
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button variant="primary" className="right" onClick={submit} loading={busy} disabled={minor === null}>
-            Close Shift
+            {t("Close Shift")}
           </Button>
         </>
       }
@@ -214,9 +215,9 @@ export function ShiftClose({
       ) : (
         <div className="grid-2">
           <div>
-            <h3 style={{ marginBottom: 8 }}>Shift summary</h3>
+            <h3 style={{ marginBottom: 8 }}>{t("Shift summary")}</h3>
             <div className="tiny" style={{ marginBottom: 8 }}>
-              Opened {formatDateTime(sum.opened_at)}
+              {t("Opened {0}", formatDateTime(sum.opened_at))}
             </div>
             <table className="table">
               <tbody>
@@ -228,7 +229,7 @@ export function ShiftClose({
                 ))}
                 {sum.expected_visible ? (
                   <tr>
-                    <td style={{ fontWeight: 700 }}>Expected in drawer</td>
+                    <td style={{ fontWeight: 700 }}>{t("Expected in drawer")}</td>
                     <td className="num" style={{ fontWeight: 700 }}>
                       {formatMoney(sum.expected_cash_minor)}
                     </td>
@@ -238,13 +239,13 @@ export function ShiftClose({
             </table>
             {!sum.expected_visible ? (
               <div className="tiny" style={{ marginTop: 8 }}>
-                Blind count: the expected amount is shown after you close.
+                {t("Blind count: the expected amount is shown after you close.")}
               </div>
             ) : null}
           </div>
           <div className="col gap-16">
             <label className="field-label" htmlFor="counted">
-              Counted cash in drawer
+              {t("Counted cash in drawer")}
             </label>
             <input
               id="counted"
@@ -259,23 +260,23 @@ export function ShiftClose({
             {variance !== null ? (
               <Banner
                 tone={variance === 0 ? "success" : Math.abs(variance) <= 1000 ? "warning" : "danger"}
-                title="Variance"
+                title={t("Variance")}
               >
                 {formatMoney(variance)}
               </Banner>
             ) : null}
             <textarea
               className="textarea"
-              placeholder="Note (optional)"
+              placeholder={t("Note (optional)")}
               value={note}
               onChange={(e) => setNote(e.target.value)}
             />
             {!has("shift.approve_variance") ? (
-              <div className="tiny">A manager must acknowledge large differences.</div>
+              <div className="tiny">{t("A manager must acknowledge large differences.")}</div>
             ) : null}
             {error ? <Banner tone="danger">{error}</Banner> : null}
             <div className="tiny row">
-              <Printer size={14} /> A shift report prints on close.
+              <Printer size={14} /> {t("A shift report prints on close.")}
             </div>
           </div>
         </div>

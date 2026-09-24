@@ -8,6 +8,7 @@ import { newOperationId } from "../../lib/ids";
 import { digits, formatAmount, formatMoney, formatQty, parseMoney } from "../../lib/money";
 import { Banner, Button, Modal } from "../../components/ui";
 import { methodLabel } from "./labels";
+import { t } from "../../i18n";
 
 const icons: Record<string, typeof Banknote> = {
   cash: Banknote,
@@ -41,7 +42,7 @@ export function PaymentModal({
   const due = cart.totals.total_minor;
   const [split, setSplit] = useState(false);
   const [method, setMethod] = useState(
-    tenders.some((t) => t.method === initialMethod) ? initialMethod : (tenders[0]?.method ?? "cash"),
+    tenders.some((tv) => tv.method === initialMethod) ? initialMethod : (tenders[0]?.method ?? "cash"),
   );
   const [amount, setAmount] = useState(initialMethod === "cash" ? "" : formatAmount(due));
   const [reference, setReference] = useState("");
@@ -57,7 +58,7 @@ export function PaymentModal({
     amountRef.current?.select();
   }, [method, split]);
 
-  const cfg = (m: string) => tenders.find((t) => t.method === m);
+  const cfg = (m: string) => tenders.find((tv) => tv.method === m);
   const unit = 10 ** digits();
 
   const tenderList: TenderInput[] | null = useMemo(() => {
@@ -75,25 +76,25 @@ export function PaymentModal({
     return [{ method, amount_minor: v, reference: reference || null }];
   }, [split, rows, amount, method, reference, due]);
 
-  const paid = (tenderList ?? []).reduce((a, t) => a + t.amount_minor, 0);
+  const paid = (tenderList ?? []).reduce((a, tv) => a + tv.amount_minor, 0);
   const nonCash = (tenderList ?? [])
-    .filter((t) => !cfg(t.method)?.allows_change)
-    .reduce((a, t) => a + t.amount_minor, 0);
+    .filter((tv) => !cfg(tv.method)?.allows_change)
+    .reduce((a, tv) => a + tv.amount_minor, 0);
   const cashIn = paid - nonCash;
   const remaining = due - paid;
   const change = paid > due ? paid - due : 0;
   const validation = useMemo(() => {
     if (!tenderList)
       return split
-        ? "Enter an amount for each payment."
+        ? t("Enter an amount for each payment.")
         : method === "cash"
-          ? "Enter the cash received or press Exact."
-          : "Enter the amount.";
-    if (nonCash > due) return "Card and other non-cash payments cannot exceed the amount due.";
+          ? t("Enter the cash received or press Exact.")
+          : t("Enter the amount.");
+    if (nonCash > due) return t("Card and other non-cash payments cannot exceed the amount due.");
     if (remaining > 0) return `Remaining ${formatMoney(remaining)}.`;
-    if (change > cashIn) return "Change can only be given from cash.";
-    for (const t of tenderList) {
-      if (cfg(t.method)?.requires_reference && !t.reference) return `${methodLabel(t.method)} requires a reference.`;
+    if (change > cashIn) return t("Change can only be given from cash.");
+    for (const tv of tenderList) {
+      if (cfg(tv.method)?.requires_reference && !tv.reference) return `${methodLabel(tv.method)} requires a reference.`;
     }
     return null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,16 +150,16 @@ export function PaymentModal({
 
   return (
     <Modal
-      title="Payment"
+      title={t("Payment")}
       size="xl"
       onClose={busy ? undefined : onClose}
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>
-            Back to sale
+            {t("Back to sale")}
           </Button>
-          <span className="small muted grow" style={{ textAlign: "right" }}>
-            {validation ?? (change > 0 ? `Change ${formatMoney(change)}` : "Ready")}
+          <span className="small muted grow" style={{ textAlign: "end" }}>
+            {validation ?? (change > 0 ? t("Change {0}", formatMoney(change)) : t("Ready"))}
           </span>
           <Button
             variant="primary"
@@ -168,7 +169,7 @@ export function PaymentModal({
             loading={busy}
             data-testid="complete-sale"
           >
-            Complete Sale <span className="kbd">Enter</span>
+            {t("Complete Sale")} <span className="kbd">{t("Enter")}</span>
           </Button>
         </>
       }
@@ -179,24 +180,24 @@ export function PaymentModal({
       >
         <div className="col gap-16">
           <div>
-            <div className="tiny">Amount Due</div>
+            <div className="tiny">{t("Amount Due")}</div>
             <div className="due" data-testid="amount-due">
               {formatMoney(due)}
             </div>
           </div>
-          <div className="method-cards" role="radiogroup" aria-label="Payment method">
-            {tenders.map((t) => {
-              const Icon = icons[t.method] ?? CreditCard;
-              const active = !split && method === t.method;
+          <div className="method-cards" role="radiogroup" aria-label={t("Payment method")}>
+            {tenders.map((tv) => {
+              const Icon = icons[tv.method] ?? CreditCard;
+              const active = !split && method === tv.method;
               return (
                 <button
-                  key={t.method}
+                  key={tv.method}
                   role="radio"
                   aria-checked={active}
                   className={`method-card ${active ? "active" : ""}`}
-                  onClick={() => pickMethod(t.method)}
+                  onClick={() => pickMethod(tv.method)}
                 >
-                  <Icon size={20} /> {t.label}
+                  <Icon size={20} /> {t(tv.label)}
                 </button>
               );
             })}
@@ -206,14 +207,14 @@ export function PaymentModal({
               className={`method-card ${split ? "active" : ""}`}
               onClick={() => pickMethod("split")}
             >
-              <Split size={20} /> Split
+              <Split size={20} /> {t("Split")}
             </button>
           </div>
           {!split ? (
             <>
               <div className="field">
                 <label htmlFor="pay-amount">
-                  {method === "cash" ? "Cash received" : `${methodLabel(method)} amount`}
+                  {method === "cash" ? t("Cash received") : t("{0} amount", methodLabel(method))}
                 </label>
                 <input
                   id="pay-amount"
@@ -229,7 +230,7 @@ export function PaymentModal({
               {method === "cash" ? (
                 <div className="denoms">
                   <Button size="lg" onClick={() => setAmount(formatAmount(due))}>
-                    Exact
+                    {t("Exact")}
                   </Button>
                   {denoms.map((d) => (
                     <Button key={d} size="lg" onClick={() => setAmount(formatAmount(d))} disabled={d < due}>
@@ -239,18 +240,20 @@ export function PaymentModal({
                 </div>
               ) : (
                 <div className="field">
-                  <label htmlFor="pay-ref">Reference {cfg(method)?.requires_reference ? "" : "(optional)"}</label>
+                  <label htmlFor="pay-ref">
+                    {t("Reference")} {cfg(method)?.requires_reference ? "" : t("(optional)")}
+                  </label>
                   <input
                     id="pay-ref"
                     className="input"
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
-                    placeholder="Approval code / last 4 digits / transfer ref"
+                    placeholder={t("Approval code / last 4 digits / transfer ref")}
                   />
                   <div className="hint">
                     {method === "benefitpay"
-                      ? "Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation."
-                      : "Recorded tender. AMWAPOS does not verify card settlement."}
+                      ? t("Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation.")
+                      : t("Recorded tender. AMWAPOS does not verify card settlement.")}
                   </div>
                 </div>
               )}
@@ -265,9 +268,9 @@ export function PaymentModal({
                     value={r.method}
                     onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, method: e.target.value } : x)))}
                   >
-                    {tenders.map((t) => (
-                      <option key={t.method} value={t.method}>
-                        {t.label}
+                    {tenders.map((tv) => (
+                      <option key={tv.method} value={tv.method}>
+                        {t(tv.label)}
                       </option>
                     ))}
                   </select>
@@ -276,19 +279,19 @@ export function PaymentModal({
                     style={{ width: 140 }}
                     inputMode="decimal"
                     value={r.amount}
-                    aria-label={`Payment ${i + 1} amount`}
+                    aria-label={t("Payment {0} amount", i + 1)}
                     onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))}
                     ref={i === 0 ? amountRef : undefined}
                   />
                   <input
                     className="input grow"
-                    placeholder="Reference (optional)"
+                    placeholder={t("Reference (optional)")}
                     value={r.reference}
                     onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, reference: e.target.value } : x)))}
                   />
                   <Button
                     variant="ghost"
-                    aria-label="Remove payment"
+                    aria-label={t("Remove payment")}
                     icon={<Trash2 size={16} />}
                     onClick={() => setRows(rows.filter((_, j) => j !== i))}
                   />
@@ -300,32 +303,32 @@ export function PaymentModal({
                   setRows([
                     ...rows,
                     {
-                      method: tenders.find((t) => t.method !== rows.at(-1)?.method)?.method ?? "cash",
+                      method: tenders.find((tv) => tv.method !== rows.at(-1)?.method)?.method ?? "cash",
                       amount: remaining > 0 ? formatAmount(remaining) : "",
                       reference: "",
                     },
                   ])
                 }
               >
-                Add Payment
+                {t("Add Payment")}
               </Button>
             </div>
           )}
           {change > 0 && !validation ? (
             <div className="change-panel" data-testid="change">
-              <div className="label">CHANGE</div>
+              <div className="label">{t("CHANGE")}</div>
               <div className="amount">{formatMoney(change)}</div>
             </div>
           ) : null}
           {error ? (
-            <Banner tone="danger" title="Sale was not completed">
+            <Banner tone="danger" title={t("Sale was not completed")}>
               {error}
             </Banner>
           ) : null}
         </div>
         <div className="card" style={{ alignSelf: "start" }}>
           <div className="card-head">
-            <h3>Sale summary</h3>
+            <h3>{t("Sale summary")}</h3>
             <span className="right tiny">{cart.lines.length} lines</span>
           </div>
           <div className="card-body" style={{ maxHeight: 320, overflow: "auto" }}>
@@ -333,7 +336,7 @@ export function PaymentModal({
               <div key={l.line_id} className="row small" style={{ padding: "3px 0" }}>
                 <span className="grow ellipsis">{l.name}</span>
                 <span className="num muted">{formatQty(l.qty_milli)}×</span>
-                <span className="num" style={{ minWidth: 90, textAlign: "right" }}>
+                <span className="num" style={{ minWidth: 90, textAlign: "end" }}>
                   {formatMoney(l.line_total_minor)}
                 </span>
               </div>
@@ -341,25 +344,25 @@ export function PaymentModal({
           </div>
           <div className="totals">
             <div className="t-row">
-              <span>Subtotal</span>
+              <span>{t("Subtotal")}</span>
               <span>{formatMoney(cart.totals.subtotal_minor)}</span>
             </div>
             {cart.totals.discount_minor ? (
               <div className="t-row">
-                <span>Discount</span>
+                <span>{t("Discount")}</span>
                 <span>{formatMoney(-cart.totals.discount_minor)}</span>
               </div>
             ) : null}
             <div className="t-row">
-              <span>VAT</span>
+              <span>{t("VAT")}</span>
               <span>{formatMoney(cart.totals.tax_minor)}</span>
             </div>
             <div className="t-row" style={{ fontWeight: 700, color: "var(--text)" }}>
-              <span>Paid</span>
+              <span>{t("Paid")}</span>
               <span>{formatMoney(paid)}</span>
             </div>
             <div className="t-row">
-              <span>Remaining</span>
+              <span>{t("Remaining")}</span>
               <span>{formatMoney(Math.max(0, remaining))}</span>
             </div>
           </div>
@@ -390,27 +393,27 @@ export function SaleSuccess({
   const hasCashChange = sale.change_minor > 0;
   useEffect(() => {
     if (paused || returnSeconds <= 0 || print?.status === "failed") return;
-    const t = setInterval(() => setLeft((l) => l - 1), 1000);
-    return () => clearInterval(t);
+    const tv = setInterval(() => setLeft((l) => l - 1), 1000);
+    return () => clearInterval(tv);
   }, [paused, returnSeconds, print]);
   useEffect(() => {
     if (left <= 0 && !paused && returnSeconds > 0 && print?.status !== "failed") onClose();
   }, [left, paused, returnSeconds, onClose, print]);
   return (
     <Modal
-      title="Sale completed"
+      title={t("Sale completed")}
       size="md"
       onClose={onClose}
       footer={
         <>
           <Button icon={<Printer size={16} />} onClick={() => (setPaused(true), onReprint())}>
-            Reprint
+            {t("Reprint")}
           </Button>
           <Button icon={<Truck size={16} />} onClick={() => (setPaused(true), onDelivery())}>
-            Delivery
+            {t("Delivery")}
           </Button>
           <Button variant="primary" size="lg" className="right" onClick={onClose} autoFocus data-testid="new-sale">
-            New Sale {returnSeconds > 0 && !paused && print?.status !== "failed" ? `(${Math.max(0, left)})` : ""}
+            {t("New Sale")} {returnSeconds > 0 && !paused && print?.status !== "failed" ? `(${Math.max(0, left)})` : ""}
           </Button>
         </>
       }
@@ -419,7 +422,7 @@ export function SaleSuccess({
         <div className="success-mark">
           <Check size={34} />
         </div>
-        <div className="tiny">Receipt</div>
+        <div className="tiny">{t("Receipt")}</div>
         <div style={{ fontWeight: 700, fontSize: 18 }} data-testid="receipt-number">
           {sale.receipt_number}
         </div>
@@ -429,7 +432,7 @@ export function SaleSuccess({
         </div>
         {hasCashChange ? (
           <div className="change-panel" style={{ marginTop: 8, minWidth: 260 }}>
-            <div className="label">CHANGE</div>
+            <div className="label">{t("CHANGE")}</div>
             <div className="amount" data-testid="success-change">
               {formatMoney(sale.change_minor)}
             </div>
@@ -437,15 +440,15 @@ export function SaleSuccess({
         ) : null}
         <div style={{ marginTop: 12, width: "100%" }}>
           {print?.status === "printed" ? (
-            <Banner tone="success">Receipt printed</Banner>
+            <Banner tone="success">{t("Receipt printed")}</Banner>
           ) : print?.status === "failed" ? (
             <Banner
               tone="warning"
-              title="Sale completed — receipt could not be printed"
+              title={t("Sale completed — receipt could not be printed")}
               action={
                 print.job_id ? (
                   <Button size="sm" onClick={async () => setPrint(await onRetryPrint(print.job_id!))}>
-                    Retry Print
+                    {t("Retry Print")}
                   </Button>
                 ) : null
               }
@@ -453,7 +456,7 @@ export function SaleSuccess({
               {print.message}
             </Banner>
           ) : print?.status === "disabled" ? (
-            <Banner tone="info">No receipt printer is configured. The receipt can be reprinted later.</Banner>
+            <Banner tone="info">{t("No receipt printer is configured. The receipt can be reprinted later.")}</Banner>
           ) : null}
         </div>
       </div>

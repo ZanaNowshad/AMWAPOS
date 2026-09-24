@@ -1,6 +1,7 @@
 import { Bot, FileScan, MessageCircle, BadgeCheck } from "lucide-react";
 import type { ComponentType } from "react";
 import { Banner, PageHeader } from "../../components/ui";
+import { t } from "../../i18n";
 
 function NotConfigured({
   icon: Icon,
@@ -20,18 +21,18 @@ function NotConfigured({
         <div className="row">
           <Icon size={28} color="var(--brand)" />
           <div>
-            <h3>Not enabled on this installation</h3>
+            <h3>{t("Not enabled on this installation")}</h3>
             <div className="muted">{summary}</div>
           </div>
         </div>
-        <Banner tone="info" title="Checkout never depends on this feature">
-          Selling, cash, refunds and reports work fully without it.
+        <Banner tone="info" title={t("Checkout never depends on this feature")}>
+          {t("Selling, cash, refunds and reports work fully without it.")}
         </Banner>
         <div>
           <div className="field-label" style={{ marginBottom: 6 }}>
-            Required before it can be enabled
+            {t("Required before it can be enabled")}
           </div>
-          <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
+          <ul className="small" style={{ margin: 0, paddingInlineStart: 18 }}>
             {needs.map((n) => (
               <li key={n}>{n}</li>
             ))}
@@ -45,12 +46,12 @@ function NotConfigured({
 export const WhatsAppPage = () => (
   <NotConfigured
     icon={MessageCircle}
-    title="WhatsApp"
+    title={t("WhatsApp")}
     summary="Send receipts and delivery updates through a WhatsApp account linked by QR code."
     needs={[
-      "The AMWAPOS WhatsApp sidecar (bundled in a later release)",
+      t("The AMWAPOS WhatsApp sidecar (bundled in a later release)"),
       "A WhatsApp account to link from Linked Devices",
-      "Owner approval of message templates",
+      t("Owner approval of message templates"),
     ]}
   />
 );
@@ -58,20 +59,20 @@ export const WhatsAppPage = () => (
 export const PaymentReviewsPage = () => (
   <NotConfigured
     icon={BadgeCheck}
-    title="Payment Reviews"
+    title={t("Payment Reviews")}
     summary="Review BenefitPay screenshots received on WhatsApp against expected amounts. Screenshot analysis never counts as bank settlement."
-    needs={["WhatsApp sidecar", "Local OCR models (English)"]}
+    needs={["WhatsApp sidecar", t("Local OCR models (English)")]}
   />
 );
 
 export const AiAssistantPage = () => (
   <NotConfigured
     icon={Bot}
-    title="AI Assistant"
+    title={t("AI Assistant")}
     summary="Ask questions about sales, stock and margins, and preview proposed changes before approving them."
     needs={[
-      "An AI provider API key stored in Windows Credential Manager",
-      "Owner consent to send minimised business data to the provider",
+      t("An AI provider API key stored in Windows Credential Manager"),
+      t("Owner consent to send minimised business data to the provider"),
     ]}
   />
 );
@@ -79,8 +80,8 @@ export const AiAssistantPage = () => (
 export const InvoiceScanPage = () => (
   <NotConfigured
     icon={FileScan}
-    title="Invoice Scan"
+    title={t("Invoice Scan")}
     summary="Extract supplier invoice lines with local OCR and turn them into a purchase draft after human review. Nothing is posted automatically."
-    needs={["Local OCR engine and bundled English models"]}
+    needs={[t("Local OCR engine and bundled English models")]}
   />
 );
