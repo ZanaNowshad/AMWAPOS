@@ -21,6 +21,7 @@ import {
   parseMoney,
   parsePercent,
   parseQty,
+  mulDivRound,
 } from "../../lib/money";
 import { formatDateTime, formatShort } from "../../lib/time";
 import {
@@ -1228,7 +1229,7 @@ export function PricingPage() {
     if (rule.kind === "percent") {
       const bp = parsePercent(rule.value);
       if (bp === null) return null;
-      return Math.max(0, base + Math.round((base * bp) / 10000));
+      return Math.max(0, base + mulDivRound(base, bp, 10000));
     }
     if (rule.kind === "fixed") {
       const v = parseMoney(rule.value);

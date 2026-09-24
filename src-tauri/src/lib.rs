@@ -49,7 +49,14 @@ fn data_dir(app: &tauri::App) -> PathBuf {
 fn init_logging(dir: &std::path::Path) -> Option<tracing_appender::non_blocking::WorkerGuard> {
     let logs = dir.parent().unwrap_or(dir).join("logs");
     std::fs::create_dir_all(&logs).ok()?;
-    let appender = tracing_appender::rolling::daily(&logs, "amwapos.log");
+    // Daily files, 30 kept: a till runs for years and must not fill its disk with logs.
+    let appender = tracing_appender::rolling::RollingFileAppender::builder()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("amwapos")
+        .filename_suffix("log")
+        .max_log_files(30)
+        .build(&logs)
+        .ok()?;
     let (writer, guard) = tracing_appender::non_blocking(appender);
     tracing_subscriber::fmt()
         .json()

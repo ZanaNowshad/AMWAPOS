@@ -1864,6 +1864,7 @@ export const AR: Record<string, string> = {
     "سيُعدَّل {0} منتج(ات) معدودة إلى كمياتها المعدودة.",
   "{0} d ago": "قبل {0} يوم",
   "{0} does not track stock.": "{0} لا يتتبّع المخزون.",
+  "{0} gross profit.": "إجمالي ربح {0}.",
   "{0} h ago": "قبل {0} ساعة",
   "{0} has no selling price. Ask a manager to set one.": "{0} ليس له سعر بيع. اطلب من المدير تحديده.",
   "{0} is archived and cannot be sold.": "{0} مؤرشف ولا يمكن بيعه.",
@@ -1885,7 +1886,10 @@ export const AR: Record<string, string> = {
   "{0} pending": "{0} بالانتظار",
   "{0} price(s) changed": "تم تغيير {0} سعر(أسعار)",
   "{0} printer · {1} failed job(s)": "طابعة {0} · {1} مهمة فاشلة",
+  "{0} processed {1}% of refund value in 30 days.": "عالج {0} نسبة {1}% من قيمة الاسترجاعات خلال 30 يوماً.",
   "{0} product(s) at or below reorder point": "{0} منتج(ات) عند حدّ إعادة الطلب أو دونه",
+  "{0} product(s) had negative gross profit in the last 30 days (e.g. {1}).":
+    "{0} منتج(ات) حققت إجمالي ربح سالباً خلال آخر 30 يوماً (مثل {1}).",
   "{0} product(s) sold below cost in this period.": "{0} منتج(ات) بيعت بأقل من التكلفة في هذه الفترة.",
   "{0} product(s) use this category. Choose a category to move them to first.":
     "{0} منتج(ات) تستخدم هذه الفئة. اختر فئة لنقلها إليها أولاً.",
@@ -1896,12 +1900,17 @@ export const AR: Record<string, string> = {
   "{0} receipt(s) failed to print": "فشلت طباعة {0} إيصال(ات)",
   "{0} record is not owned by the pushing terminal.": "سجل {0} لا يخص نقطة البيع المُرسِلة.",
   "{0} refund(s) totalling {1} are deducted in Net sales.": "{0} استرجاع(ات) بإجمالي {1} مخصومة من صافي المبيعات.",
+  "{0} refunded.": "تم استرجاع {0}.",
   "{0} requires a reference.": "{0} يتطلب مرجعاً.",
   "{0} row(s) have errors. Fix them or choose to skip rows with errors.":
     "{0} صف(وف) بها أخطاء. صحّحها أو اختر تخطي الصفوف التي بها أخطاء.",
+  "{0} selling product(s) are at or below their reorder point (e.g. {1}).":
+    "{0} منتج(ات) مباعة عند حدّ إعادة الطلب أو دونه (مثل {1}).",
   "{0} shift(s) closed with a cash variance today": "{0} وردية أُغلقت اليوم بفرق نقدي",
   "{0} still has an open shift on this terminal. They (or a manager) must close it first.":
     "لدى {0} وردية مفتوحة على نقطة البيع هذه. يجب أن يغلقها (أو المدير) أولاً.",
+  "{0} stocked product(s) had no sales in 60 days.": "{0} منتج(ات) في المخزون بلا مبيعات منذ 60 يوماً.",
+  "{0} tied up at average cost.": "{0} مجمّدة بمتوسط التكلفة.",
   "{0} uncounted product(s) will not change. This creates stock movements and cannot be undone.":
     "لن يتغيّر {0} منتج(ات) غير معدودة. ينشئ هذا حركات مخزون ولا يمكن التراجع عنه.",
   "{0} unknown barcode(s) scanned": "مُسح {0} باركود(ات) مجهولة",

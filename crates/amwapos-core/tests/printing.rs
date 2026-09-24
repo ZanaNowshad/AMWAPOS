@@ -184,3 +184,59 @@ fn english_receipts_stay_in_fast_text_mode() {
     assert!(!text_mode.contains(&b'?'));
     assert!(e.core.settings_save(t, "receipt", json!({ "language": "fr" })).is_err());
 }
+
+fn jobs(e: &Env, sale_id: &str) -> Vec<(String, String)> {
+    e.core
+        .db
+        .read(|c| {
+            let mut st = c.prepare("SELECT kind, status FROM print_jobs WHERE ref_id=?1 ORDER BY created_at, kind DESC")?;
+            let rows = st.query_map([sale_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .unwrap()
+}
+
+#[test]
+fn cash_drawer_pulses_on_cash_sales_only() {
+    let e = env();
+    let t = &e.owner_token;
+    e.product("Coca-Cola 330ml", "06291100001234", 250, 100, 10_000);
+    e.open_shift(t, 0);
+    let out = e.dir.path().join("printer.txt");
+    e.core.settings_save(t, "local.printer", json!({ "mode": "file", "target": out.to_string_lossy(), "drawer_pulse": true })).unwrap();
+
+    // Cash sale: receipt and drawer pulse are both queued in the sale's transaction and printed.
+    let cash = sell(&e, "06291100001234");
+    assert_eq!(jobs(&e, &cash.sale_id), vec![("sale".into(), "printed".into()), ("drawer".into(), "printed".into())]);
+    assert!(std::fs::read_to_string(&out).unwrap().contains("[drawer pulse]"));
+
+    // Card sale: receipt only, the drawer stays shut.
+    let cart = e.core.pos_scan(t, "06291100001234", None).unwrap().cart;
+    let card = e
+        .core
+        .pos_finalize(
+            t,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![TenderInput { method: "card".into(), amount_minor: cart.totals.total_minor, reference: Some("4421".into()) }],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(jobs(&e, &card.sale_id), vec![("sale".into(), "printed".into())]);
+
+    // A reprint never opens the drawer.
+    e.core.sale_reprint(t, &cash.sale_id).unwrap();
+    let kinds: Vec<String> = jobs(&e, &cash.sale_id).into_iter().map(|j| j.0).collect();
+    assert_eq!(kinds.iter().filter(|k| *k == "drawer").count(), 1);
+    assert_eq!(kinds.iter().filter(|k| *k == "sale").count(), 2);
+
+    // Drawer pulse turned off: no drawer job even for cash.
+    e.core.settings_save(t, "local.printer", json!({ "mode": "file", "target": out.to_string_lossy(), "drawer_pulse": false })).unwrap();
+    let cash2 = sell(&e, "06291100001234");
+    assert_eq!(jobs(&e, &cash2.sale_id), vec![("sale".into(), "printed".into())]);
+    // ESC p (kick pin 2) is what the printer receives for a pulse.
+    assert_eq!(amwapos_core::receipt::drawer_pulse_bytes()[2..4], [0x1B, 0x70]);
+}

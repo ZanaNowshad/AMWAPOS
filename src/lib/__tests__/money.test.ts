@@ -8,6 +8,7 @@ import {
   parseMoney,
   parsePercent,
   parseQty,
+  mulDivRound,
 } from "../money";
 
 describe("money formatting", () => {
@@ -52,5 +53,19 @@ describe("exact decimal parsing", () => {
 
   it("round-trips every fils value in a range", () => {
     for (let v = 0; v < 5000; v += 7) expect(parseMoney(formatAmount(v))).toBe(v);
+  });
+});
+
+describe("mulDivRound matches the backend (half away from zero)", () => {
+  it("rounds halves away from zero in both directions", () => {
+    expect(mulDivRound(250, 1000, 10000)).toBe(25); // exact
+    expect(mulDivRound(5, 5000, 10000)).toBe(3); // 2.5 -> 3
+    expect(mulDivRound(5, -5000, 10000)).toBe(-3); // -2.5 -> -3 (Math.round gives -2)
+    expect(mulDivRound(1234, 1500, 1000)).toBe(1851); // 1851.0
+    expect(mulDivRound(333, 1, 2)).toBe(167); // 166.5 -> 167
+    expect(mulDivRound(-333, 1, 2)).toBe(-167);
+  });
+  it("is exact beyond 2^53 intermediates", () => {
+    expect(mulDivRound(9_000_000_000_000, 10_000, 10_000)).toBe(9_000_000_000_000);
   });
 });

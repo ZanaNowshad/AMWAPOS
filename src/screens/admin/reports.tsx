@@ -269,8 +269,8 @@ export function AnalyticsPage() {
     if (dead.rows.length) {
       out.push({
         title: t("Dead stock"),
-        evidence: `${dead.rows.length} stocked product(s) had no sales in 60 days.`,
-        impact: `${formatMoney(deadValue)} tied up at average cost.`,
+        evidence: t("{0} stocked product(s) had no sales in 60 days.", dead.rows.length),
+        impact: t("{0} tied up at average cost.", formatMoney(deadValue)),
         confidence: t("High — based on recorded sales and stock levels."),
         action: t("Promote, return to supplier or stop reordering the top items."),
         link: "/admin/reports/dead_stock",
@@ -280,11 +280,15 @@ export function AnalyticsPage() {
     if (negative.length) {
       out.push({
         title: t("Sold below cost"),
-        evidence: `${negative.length} product(s) had negative gross profit in the last 30 days (e.g. ${negative
-          .slice(0, 3)
-          .map((r) => r.name)
-          .join(", ")}).`,
-        impact: `${formatMoney(negative.reduce((a, r) => a + Number(r.profit), 0))} gross profit.`,
+        evidence: t(
+          "{0} product(s) had negative gross profit in the last 30 days (e.g. {1}).",
+          negative.length,
+          negative
+            .slice(0, 3)
+            .map((r) => r.name)
+            .join(", "),
+        ),
+        impact: t("{0} gross profit.", formatMoney(negative.reduce((a, r) => a + Number(r.profit), 0))),
         confidence: t("Medium — depends on the accuracy of recorded costs."),
         action: t("Review selling prices and recent supplier costs for these products."),
         link: "/admin/reports/margin",
@@ -298,10 +302,14 @@ export function AnalyticsPage() {
     if (risk.length) {
       out.push({
         title: t("Stockout risk"),
-        evidence: `${risk.length} selling product(s) are at or below their reorder point (e.g. ${risk
-          .slice(0, 3)
-          .map((r) => r.name)
-          .join(", ")}).`,
+        evidence: t(
+          "{0} selling product(s) are at or below their reorder point (e.g. {1}).",
+          risk.length,
+          risk
+            .slice(0, 3)
+            .map((r) => r.name)
+            .join(", "),
+        ),
         impact: t("Lost sales when shelves are empty."),
         confidence: t("High — based on current stock and 30-day sales."),
         action: t("Create purchase orders for these items."),
@@ -316,8 +324,8 @@ export function AnalyticsPage() {
       if (totalRef > 0 && v * 100 >= totalRef * 60 && refunds.rows.length >= 5) {
         out.push({
           title: t("Refund concentration"),
-          evidence: `${u} processed ${Math.round((v * 100) / totalRef)}% of refund value in 30 days.`,
-          impact: `${formatMoney(v)} refunded.`,
+          evidence: t("{0} processed {1}% of refund value in 30 days.", u, Math.round((v * 100) / totalRef)),
+          impact: t("{0} refunded.", formatMoney(v)),
           confidence: t("Low — may reflect shift patterns rather than a problem."),
           action: t("Review the refund list and approvals for this user."),
           link: "/admin/refunds",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogOut } from "lucide-react";
+import { LogOut, RefreshCw } from "lucide-react";
 import { api } from "../../api";
 import type { DeliveryRow } from "../../api/types";
 import { useSession } from "../../state/session";
@@ -23,6 +23,9 @@ export function DeliveryDesk() {
       .catch((e) => setError(explain(e).message));
   useEffect(() => {
     void load();
+    // New assignments arrive without the rider having to reload.
+    const id = setInterval(() => void load(), 30000);
+    return () => clearInterval(id);
   }, []);
   const next: Record<string, string> = { pending: "preparing", preparing: "dispatched", dispatched: "delivered" };
   return (
@@ -33,6 +36,9 @@ export function DeliveryDesk() {
         </div>
         <div className="grow" />
         <div className="hitem">{session?.display_name}</div>
+        <Button size="sm" icon={<RefreshCw size={15} />} onClick={() => void load()}>
+          {t("Refresh")}
+        </Button>
         <Button size="sm" icon={<LogOut size={15} />} onClick={() => void logout()}>
           {t("Logout")}
         </Button>
@@ -77,7 +83,7 @@ export function DeliveryDesk() {
                     }
                   }}
                 >
-                  {t("Mark {0}", next[d.status])}
+                  {t("Mark {0}", codeLabel(next[d.status]))}
                 </Button>
               ) : null}
             </div>

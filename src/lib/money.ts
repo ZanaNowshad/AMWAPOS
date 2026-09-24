@@ -65,3 +65,17 @@ export function formatPercent(bp: number | null | undefined): string {
 export function parsePercent(s: string): number | null {
   return parseDecimal(s.replace("%", ""), 2);
 }
+
+/**
+ * a × b ÷ d, rounded half away from zero — the same rule as the backend's
+ * `div_round`. Exact for any safe integers (BigInt intermediate).
+ */
+export function mulDivRound(a: number, b: number, d: number): number {
+  const n = BigInt(a) * BigInt(b);
+  const den = BigInt(d);
+  let q = n / den; // BigInt division truncates toward zero
+  const r = n % den;
+  const abs = (x: bigint) => (x < 0n ? -x : x);
+  if (abs(r) * 2n >= abs(den)) q += n < 0n !== den < 0n ? -1n : 1n;
+  return Number(q);
+}

@@ -6,7 +6,7 @@ import type { MovementRow, PosSearchRow, ProductRow, StocktakeRow } from "../../
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { newOperationId } from "../../lib/ids";
-import { formatAmount, formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
+import { formatAmount, formatMoney, formatQty, parseMoney, parseQty, mulDivRound } from "../../lib/money";
 import { formatShort, todayLocal } from "../../lib/time";
 import {
   Banner,
@@ -766,7 +766,7 @@ export function ReceivingPage() {
   const total = lines.reduce((a, l) => {
     const q = parseQty(l.qty);
     const c = parseMoney(l.cost);
-    return q !== null && c !== null ? a + Math.round((c * q) / 1000) : a;
+    return q !== null && c !== null ? a + mulDivRound(c, q, 1000) : a;
   }, 0);
   const valid = lines.length > 0 && lines.every((l) => (parseQty(l.qty) ?? 0) > 0 && parseMoney(l.cost) !== null);
   return (
@@ -885,7 +885,7 @@ export function ReceivingPage() {
                         aria-label={t("Unit cost")}
                       />
                     </td>
-                    <td className="num">{q !== null && c !== null ? formatMoney(Math.round((c * q) / 1000)) : "—"}</td>
+                    <td className="num">{q !== null && c !== null ? formatMoney(mulDivRound(c, q, 1000)) : "—"}</td>
                     <td className="num">
                       <Button
                         size="sm"

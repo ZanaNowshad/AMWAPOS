@@ -14,6 +14,7 @@ import {
   parseMoney,
   parsePercent,
   parseQty,
+  mulDivRound,
 } from "../../lib/money";
 import { formatShort } from "../../lib/time";
 import {
@@ -445,7 +446,7 @@ export function PoEditorPage() {
     for (const l of lines) {
       const q = parseQty(l.qty);
       const c = parseMoney(l.cost);
-      if (q !== null && c !== null) sub += Math.round((c * q) / 1000);
+      if (q !== null && c !== null) sub += mulDivRound(c, q, 1000);
     }
     return sub;
   }, [lines]);
@@ -738,7 +739,7 @@ export function PoEditorPage() {
                         `${l.tax}%`
                       )}
                     </td>
-                    <td className="num">{q !== null && c !== null ? formatMoney(Math.round((c * q) / 1000)) : "—"}</td>
+                    <td className="num">{q !== null && c !== null ? formatMoney(mulDivRound(c, q, 1000)) : "—"}</td>
                     {po && !editable ? <td className="num">{pl ? formatQty(pl.qty_received_milli) : "—"}</td> : null}
                     <td className="num">
                       {editable ? (

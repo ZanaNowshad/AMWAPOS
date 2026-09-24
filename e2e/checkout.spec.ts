@@ -235,6 +235,23 @@ test("cashier: no admin access; over-limit discount needs manager approval", asy
   await page.getByTestId("pay-amount").fill("0.680");
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("receipt-number")).toHaveText(/T01-0000003/);
+  await page.getByTestId("new-sale").click();
+
+  // Scanner burst: five scans at scanner speed with no waiting in between.
+  // None may be dropped and the field must not swallow the next code.
+  await page.getByTestId("scan-input").focus();
+  for (const code of ["6281007031126", "6281006511339", "6281007031126", "6281006511339", "6281007031126"]) {
+    await page.keyboard.type(code, { delay: 2 });
+    await page.keyboard.press("Enter");
+  }
+  await expect(page.getByTestId("cart-total")).toHaveText("BHD 3.150"); // 3 × 0.850 + 2 × 0.300
+  // Only consecutive scans of the same item merge (by design), so alternating scans make 5 lines.
+  await expect(page.getByTestId("line-count")).toContainText("5 lines · 5 items");
+  await expect(page.getByTestId("scan-input")).toHaveValue("");
+  await page.keyboard.press("F6");
+  await page.getByTestId("pay-amount").fill("3.150");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("receipt-number")).toHaveText(/T01-0000004/);
 
   // The approval is attributed in the audit trail.
   const t2 = (await rpc(page, "auth.login", { user_id: owner.user_id, pin: "4826" })).token;
@@ -268,7 +285,7 @@ test("Arabic RTL: cashier sale and admin are usable right-to-left", async ({ pag
   await expect(page.getByTestId("change")).toContainText("BHD 0.150");
   await shot(page, "22-ar-payment");
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("receipt-number")).toHaveText(/T01-0000004/);
+  await expect(page.getByTestId("receipt-number")).toHaveText(/T01-0000005/);
   await shot(page, "23-ar-success");
   await page.getByTestId("new-sale").click();
 
