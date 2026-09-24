@@ -5,9 +5,9 @@
 //! (`data_changed`), and whether retrying the same request is safe
 //! (`retryable`). Messages never include secrets.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     /// Input failed validation.
@@ -56,16 +56,18 @@ pub enum ErrorCode {
     Internal,
 }
 
-#[derive(Debug, Clone, Serialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 #[error("{code:?}: {message}")]
 pub struct AppError {
     pub code: ErrorCode,
     pub message: String,
     /// True only if the failed operation may have persisted changes.
+    #[serde(default)]
     pub data_changed: bool,
     /// True if retrying the identical request is safe and may succeed.
+    #[serde(default)]
     pub retryable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
 

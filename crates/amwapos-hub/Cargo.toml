@@ -1,0 +1,21 @@
+[package]
+name = "amwapos-hub"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "AMWAPOS LAN hub server, terminal sync client and discovery"
+
+[dependencies]
+amwapos-core = { path = "../amwapos-core" }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+ulid.workspace = true
+chrono.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
