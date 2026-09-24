@@ -148,10 +148,12 @@ impl Sidecar {
             let c = core.clone();
             tokio::task::spawn_blocking(move || Self::token(&c)).await.map_err(|e| AppError::internal(e.to_string()))??
         };
-        let mut cmd = Command::new(&paths.node);
-        cmd.arg(&paths.script).arg("--data-dir").arg(&core.data_dir).arg("--port").arg("0");
+        // Windows `\\?\` paths (from canonicalize or the resource dir) break
+        // Node's ES-module loader, so pass plain drive-letter paths.
+        let mut cmd = Command::new(dunce::simplified(&paths.node));
+        cmd.arg(dunce::simplified(&paths.script)).arg("--data-dir").arg(dunce::simplified(&core.data_dir)).arg("--port").arg("0");
         if let Some(m) = &paths.models {
-            cmd.arg("--models").arg(m);
+            cmd.arg("--models").arg(dunce::simplified(m));
         }
         cmd.env("AMWAPOS_SIDECAR_TOKEN", &token).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         #[cfg(windows)]
@@ -166,14 +168,22 @@ impl Sidecar {
             unavailable(m)
         })?;
         let stdout = child.stdout.take().ok_or_else(|| AppError::internal("sidecar stdout missing"))?;
-        if let Some(stderr) = child.stderr.take() {
+        // The last stderr lines explain a failed start in the status message.
+        let tail: Arc<std::sync::Mutex<std::collections::VecDeque<String>>> = Arc::default();
+        let stderr_task = child.stderr.take().map(|stderr| {
+            let tail = tail.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(l)) = lines.next_line().await {
                     tracing::info!(target: "sidecar", "{l}");
+                    let mut t = tail.lock().unwrap();
+                    if t.len() == 12 {
+                        t.pop_front();
+                    }
+                    t.push_back(l.chars().take(400).collect());
                 }
-            });
-        }
+            })
+        });
         let mut lines = BufReader::new(stdout).lines();
         let ready = tokio::time::timeout(Duration::from_secs(45), async {
             while let Ok(Some(l)) = lines.next_line().await {
@@ -189,11 +199,18 @@ impl Sidecar {
             other => {
                 let _ = child.start_kill();
                 let code = child.wait().await.ok().and_then(|s| s.code());
-                let m = match (other, code) {
+                if let Some(h) = stderr_task {
+                    let _ = tokio::time::timeout(Duration::from_secs(2), h).await;
+                }
+                let detail = tail.lock().unwrap().iter().cloned().collect::<Vec<_>>().join("\n");
+                let mut m = match (other, code) {
                     (_, Some(3)) => "Another AMWAPOS sidecar is already running for this data folder.".to_string(),
                     (Err(_), _) => "The sidecar did not start within 45 seconds.".to_string(),
-                    _ => format!("The sidecar exited during start-up (code {code:?}). See the log for details."),
+                    _ => format!("The sidecar exited during start-up (code {code:?})."),
                 };
+                if !detail.is_empty() {
+                    m = format!("{m}\n{detail}");
+                }
                 st.last_error = Some(m.clone());
                 return Err(unavailable(m));
             }
