@@ -6,16 +6,29 @@
 
 pub mod audit;
 pub mod auth;
+pub mod backup;
+pub mod catalog;
 pub mod db;
 pub mod error;
 pub mod idempotency;
 pub mod ids;
+pub mod inventory;
 pub mod money;
+pub mod pos;
 pub mod pricing;
+pub mod printing;
+pub mod receipt;
+pub mod refunds;
+pub mod sales;
 pub mod service;
 pub mod settings;
 pub mod setup;
+pub mod shifts;
+pub mod sync;
+pub mod system;
 pub mod time;
+pub mod users;
+pub mod validate;
 
 pub use error::{AppError, AppResult, ErrorCode};
 pub use service::AppCore;

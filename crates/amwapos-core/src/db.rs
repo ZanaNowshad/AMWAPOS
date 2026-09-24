@@ -241,7 +241,7 @@ fn current_version(c: &Connection) -> AppResult<i64> {
     Ok(c.query_row("SELECT COALESCE(MAX(version),0) FROM schema_migrations", [], |r| r.get(0))?)
 }
 
-fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationReport> {
+pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationReport> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,

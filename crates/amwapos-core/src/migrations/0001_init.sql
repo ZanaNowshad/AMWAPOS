@@ -192,6 +192,59 @@ CREATE VIRTUAL TABLE products_fts USING fts5(
   prefix = '2 3 4'
 );
 
+-- FTS maintenance. products_fts rowids come from products_fts_map (a normal
+-- column), because implicit rowids of TEXT-keyed tables may change on VACUUM.
+CREATE TABLE products_fts_map (
+  product_id TEXT PRIMARY KEY,
+  fts_rowid  INTEGER NOT NULL UNIQUE
+);
+
+CREATE TRIGGER trg_fts_products_ai AFTER INSERT ON products BEGIN
+  INSERT INTO products_fts_map(product_id, fts_rowid)
+    VALUES (NEW.product_id, (SELECT COALESCE(MAX(fts_rowid), 0) + 1 FROM products_fts_map));
+  INSERT INTO products_fts(rowid, product_id, name, sku, barcodes)
+    SELECT m.fts_rowid, NEW.product_id, NEW.name || ' ' || COALESCE(NEW.name_ar, ''), NEW.sku,
+           COALESCE((SELECT group_concat(barcode, ' ') FROM product_barcodes WHERE product_id = NEW.product_id), '')
+    FROM products_fts_map m WHERE m.product_id = NEW.product_id;
+END;
+
+CREATE TRIGGER trg_fts_products_au AFTER UPDATE OF name, name_ar, sku ON products BEGIN
+  DELETE FROM products_fts WHERE rowid = (SELECT fts_rowid FROM products_fts_map WHERE product_id = NEW.product_id);
+  INSERT INTO products_fts(rowid, product_id, name, sku, barcodes)
+    SELECT m.fts_rowid, NEW.product_id, NEW.name || ' ' || COALESCE(NEW.name_ar, ''), NEW.sku,
+           COALESCE((SELECT group_concat(barcode, ' ') FROM product_barcodes WHERE product_id = NEW.product_id), '')
+    FROM products_fts_map m WHERE m.product_id = NEW.product_id;
+END;
+
+CREATE TRIGGER trg_fts_products_ad AFTER DELETE ON products BEGIN
+  DELETE FROM products_fts WHERE rowid = (SELECT fts_rowid FROM products_fts_map WHERE product_id = OLD.product_id);
+  DELETE FROM products_fts_map WHERE product_id = OLD.product_id;
+END;
+
+CREATE TRIGGER trg_fts_barcodes_ai AFTER INSERT ON product_barcodes BEGIN
+  DELETE FROM products_fts WHERE rowid = (SELECT fts_rowid FROM products_fts_map WHERE product_id = NEW.product_id);
+  INSERT INTO products_fts(rowid, product_id, name, sku, barcodes)
+    SELECT m.fts_rowid, p.product_id, p.name || ' ' || COALESCE(p.name_ar, ''), p.sku,
+           COALESCE((SELECT group_concat(barcode, ' ') FROM product_barcodes WHERE product_id = p.product_id), '')
+    FROM products p JOIN products_fts_map m ON m.product_id = p.product_id WHERE p.product_id = NEW.product_id;
+END;
+
+CREATE TRIGGER trg_fts_barcodes_ad AFTER DELETE ON product_barcodes BEGIN
+  DELETE FROM products_fts WHERE rowid = (SELECT fts_rowid FROM products_fts_map WHERE product_id = OLD.product_id);
+  INSERT INTO products_fts(rowid, product_id, name, sku, barcodes)
+    SELECT m.fts_rowid, p.product_id, p.name || ' ' || COALESCE(p.name_ar, ''), p.sku,
+           COALESCE((SELECT group_concat(barcode, ' ') FROM product_barcodes WHERE product_id = p.product_id), '')
+    FROM products p JOIN products_fts_map m ON m.product_id = p.product_id WHERE p.product_id = OLD.product_id;
+END;
+
+CREATE TRIGGER trg_fts_barcodes_au AFTER UPDATE OF barcode, product_id ON product_barcodes BEGIN
+  DELETE FROM products_fts WHERE rowid IN (SELECT fts_rowid FROM products_fts_map WHERE product_id IN (OLD.product_id, NEW.product_id));
+  INSERT INTO products_fts(rowid, product_id, name, sku, barcodes)
+    SELECT m.fts_rowid, p.product_id, p.name || ' ' || COALESCE(p.name_ar, ''), p.sku,
+           COALESCE((SELECT group_concat(barcode, ' ') FROM product_barcodes WHERE product_id = p.product_id), '')
+    FROM products p JOIN products_fts_map m ON m.product_id = p.product_id WHERE p.product_id IN (OLD.product_id, NEW.product_id);
+END;
+
 CREATE TABLE stock_levels (
   product_id       TEXT NOT NULL REFERENCES products(product_id),
   branch_id        TEXT NOT NULL REFERENCES branches(branch_id),
