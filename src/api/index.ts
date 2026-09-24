@@ -80,6 +80,8 @@ export const api = {
     list: (from?: string, to?: string) => call<Record<string, unknown>[]>("refunds.list", { from, to }),
   },
   receipts: {
+    pdf: (kind: "sale" | "refund", ref_id: string) =>
+      call<{ file_name: string; path: string; base64: string }>("receipts.pdf", { kind, ref_id }),
     preview: (kind: "sale" | "refund" | "shift_report", ref_id: string) =>
       call<{ text: string; width_chars: number }>("receipts.preview", { kind, ref_id }),
   },
@@ -300,6 +302,76 @@ export const api = {
     deadLetters: () => call<Record<string, unknown>[]>("sync.dead_letters"),
     retryDeadLetter: (dead_id: string) => call<Record<string, unknown>>("sync.retry_dead_letter", { dead_id }),
     unblock: (accept_new_hub: boolean) => call<Record<string, unknown>>("sync.unblock", { accept_new_hub }),
+  },
+  sidecar: {
+    status: () => call<T.SidecarStatus>("sidecar.status"),
+    restart: () => call<unknown>("sidecar.restart"),
+  },
+  whatsapp: {
+    connect: () => call<T.WaLinkStatus>("whatsapp.connect"),
+    disconnect: () => call<unknown>("whatsapp.disconnect"),
+    unlink: () => call<unknown>("whatsapp.unlink"),
+    queue: (req: T.WaQueueRequest) => call<T.WaOutboxRow>("whatsapp.queue", req),
+    outbox: (status?: string) => call<T.WaOutboxRow[]>("whatsapp.outbox", { status }),
+    outboxAction: (message_id: string, action: "retry" | "cancel") =>
+      call<T.WaOutboxRow>("whatsapp.outbox_action", { message_id, action }),
+    conversations: () => call<T.WaConversation[]>("whatsapp.conversations"),
+    thread: (chat: string) => call<T.WaThread>("whatsapp.thread", { chat }),
+    media: (seq: number) => call<T.FileBlob>("whatsapp.media", { seq }),
+    markRead: (chat: string) => call<number>("whatsapp.mark_read", { chat }),
+    summary: () => call<{ unread: number; queued: number; failed: number }>("whatsapp.summary"),
+  },
+  payreviews: {
+    list: (status?: string) => call<T.PaymentReview[]>("payreviews.list", { status }),
+    get: (review_id: string) =>
+      call<{ review: T.PaymentReview; image: T.FileBlob | null }>("payreviews.get", { review_id }),
+    upload: (a: { file_name: string; data: string; expected_minor?: number | null; delivery_id?: string | null }) =>
+      call<T.PaymentReview>("payreviews.upload", a),
+    setExpected: (review_id: string, expected_minor: number | null, delivery_id?: string | null) =>
+      call<T.PaymentReview>("payreviews.set_expected", { review_id, expected_minor, delivery_id }),
+    decide: (a: {
+      review_id: string;
+      decision: "confirm" | "reject";
+      note?: string | null;
+      delivery_id?: string | null;
+    }) => call<T.PaymentReview>("payreviews.decide", a),
+  },
+  invoiceScan: {
+    import: (a: { file_name: string; data: string; supplier_id?: string | null }) =>
+      call<T.InvoiceScan>("invoicescan.import", a),
+    list: (status?: string) => call<T.InvoiceScan[]>("invoicescan.list", { status }),
+    get: (scan_id: string) => call<T.InvoiceScanDetail>("invoicescan.get", { scan_id }),
+    updateLine: (a: {
+      scan_id: string;
+      line_no: number;
+      product_id?: string | null;
+      clear_product?: boolean;
+      qty_milli?: number | null;
+      unit_cost_minor?: number | null;
+      include?: boolean | null;
+    }) => call<T.InvoiceScanDetail>("invoicescan.update_line", a),
+    confirm: (scan_id: string, supplier_id: string) =>
+      call<T.InvoiceScanDetail>("invoicescan.confirm", { scan_id, supplier_id }),
+    reject: (scan_id: string, reason: string) => call<T.InvoiceScan>("invoicescan.reject", { scan_id, reason }),
+  },
+  ai: {
+    status: () => call<T.AiStatus>("ai.status"),
+    configure: (settings: T.AiSettings, api_key?: string | null) =>
+      call<T.AiStatus>("ai.configure", { settings, api_key }),
+    ask: (message: string, conversation_id?: string | null) =>
+      call<T.AiConversation>("ai.ask", { message, conversation_id }),
+    conversations: () =>
+      call<{ conversation_id: string; title: string; updated_at: string; open_proposals: number }[]>(
+        "ai.conversations",
+      ),
+    conversation: (conversation_id: string) => call<T.AiConversation>("ai.conversation", { conversation_id }),
+    proposals: (status?: string) => call<T.AiProposal[]>("ai.proposals", { status }),
+    confirm: (proposal_id: string) => call<T.AiProposal>("ai.proposal_confirm", { proposal_id }),
+    reject: (proposal_id: string) => call<T.AiProposal>("ai.proposal_reject", { proposal_id }),
+    undo: (proposal_id: string) => call<T.AiProposal>("ai.proposal_undo", { proposal_id }),
+  },
+  ocr: {
+    retry: (kind: "invoice" | "payment", id: string) => call<void>("ocr.retry", { kind, id }),
   },
 };
 

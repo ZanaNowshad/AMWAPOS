@@ -386,26 +386,25 @@ fn evaluate(expected: Option<i64>, detected: Option<i64>, confidence: Option<i64
     }
 }
 
-fn sha256_file(p: &Path) -> AppResult<String> {
-    Ok(hex::encode(Sha256::digest(std::fs::read(p)?)))
-}
-
-fn copy_into(dir: &Path, src: &Path, id: &str) -> AppResult<(std::path::PathBuf, String)> {
-    let ext = src.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+/// Save an uploaded image (sent by the UI as base64) inside the data folder.
+fn store_image(dir: &Path, file_name: &str, data_b64: &str, id: &str) -> AppResult<(std::path::PathBuf, String)> {
+    let ext = Path::new(file_name).extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
     if !IMAGE_EXT.contains(&ext.as_str()) {
         return Err(AppError::validation(
             "Choose an image file (PNG, JPG, WEBP, BMP or TIFF). For a PDF invoice, save a page as an image first.",
         ));
     }
-    let meta = std::fs::metadata(src).map_err(|_| AppError::validation("The selected file could not be opened."))?;
-    if meta.len() > 20 * 1024 * 1024 {
+    if data_b64.len() > 28 * 1024 * 1024 {
         return Err(AppError::validation("The image is larger than 20 MB."));
+    }
+    let bytes = crate::ids::b64_decode(data_b64).ok_or_else(|| AppError::validation("The image could not be read."))?;
+    if bytes.is_empty() {
+        return Err(AppError::validation("The image is empty."));
     }
     std::fs::create_dir_all(dir)?;
     let dst = dir.join(format!("{id}.{ext}"));
-    std::fs::copy(src, &dst)?;
-    let sha = sha256_file(&dst)?;
-    Ok((dst, sha))
+    std::fs::write(&dst, &bytes)?;
+    Ok((dst, hex::encode(Sha256::digest(&bytes))))
 }
 
 /// Latest open delivery for a phone/customer with money still due.
@@ -587,12 +586,19 @@ impl AppCore {
     }
 
     /// Upload a screenshot received another way.
-    pub fn pr_upload(&self, token: &str, path: &str, expected_minor: Option<i64>, delivery_id: Option<String>) -> AppResult<PaymentReview> {
+    pub fn pr_upload(
+        &self,
+        token: &str,
+        file_name: &str,
+        data_b64: &str,
+        expected_minor: Option<i64>,
+        delivery_id: Option<String>,
+    ) -> AppResult<PaymentReview> {
         let s = self.session(token)?;
         s.require("payments.review")?;
         self.require_feature("payment_reviews")?;
         let id = new_id();
-        let (dst, sha) = copy_into(&self.data_dir.join("payment-reviews"), Path::new(path), &id)?;
+        let (dst, sha) = store_image(&self.data_dir.join("payment-reviews"), file_name, data_b64, &id)?;
         if let Some(e) = expected_minor {
             validate::money_non_negative(e, "Expected amount")?;
         }
@@ -762,13 +768,12 @@ impl AppCore {
 
     // ------------------------------------------------------------ invoice scans
 
-    pub fn inv_import(&self, token: &str, path: &str, supplier_id: Option<String>) -> AppResult<InvoiceScan> {
+    pub fn inv_import(&self, token: &str, file_name: &str, data_b64: &str, supplier_id: Option<String>) -> AppResult<InvoiceScan> {
         let s = self.session(token)?;
         s.require("ocr.scan")?;
         self.require_feature("ocr")?;
         let id = new_id();
-        let src = Path::new(path);
-        let (dst, sha) = copy_into(&self.data_dir.join("invoice-scans"), src, &id)?;
+        let (dst, sha) = store_image(&self.data_dir.join("invoice-scans"), file_name, data_b64, &id)?;
         let supplier = supplier_id.filter(|x| !x.is_empty()).map(|x| validate::id(&x, "Supplier")).transpose()?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
@@ -780,7 +785,7 @@ impl AppCore {
             tx.execute(
                 "INSERT INTO invoice_scans(scan_id, scan_number, supplier_id, image_path, image_sha256, file_name, status, created_by, created_at, updated_at)
                  VALUES (?1,?2,?3,?4,?5,?6,'imported',?7,?8,?8)",
-                params![id, number, supplier, dst.to_string_lossy(), sha, src.file_name().map(|f| f.to_string_lossy().to_string()), s.user_id, now],
+                params![id, number, supplier, dst.to_string_lossy(), sha, file_name.chars().take(200).collect::<String>(), s.user_id, now],
             )?;
             audit::record(tx, &actor, "invoice_scan.imported", "invoice_scan", Some(&id), None, Some(&json!({ "number": number })))?;
             Ok(())

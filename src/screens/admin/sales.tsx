@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, Printer } from "lucide-react";
+import { AlertTriangle, FileDown, Printer } from "lucide-react";
 import { api } from "../../api";
 import type { SaleRow, ShiftSummary } from "../../api/types";
 import { useSession } from "../../state/session";
@@ -7,7 +7,8 @@ import { useToast } from "../../components/toast";
 import { formatMoney, formatQty } from "../../lib/money";
 import { formatDateTime, formatShort, todayLocal } from "../../lib/time";
 import { Banner, Button, Chip, Money, PageHeader, Skeleton } from "../../components/ui";
-import { DataTable, DateRange, Drawer, Pager, useLoad } from "./common";
+import { DataTable, DateRange, Drawer, Pager, downloadBase64, useLoad } from "./common";
+import { WhatsAppSendButton } from "./automation";
 import { methodLabel } from "../pos/labels";
 import { t } from "../../i18n";
 
@@ -22,22 +23,41 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
       title={s ? t("Receipt {0}", s.receipt_number) : t("Sale")}
       onClose={onClose}
       actions={
-        has("pos.reprint") ? (
-          <Button
-            size="sm"
-            icon={<Printer size={14} />}
-            onClick={async () => {
-              const r = await api.sales.reprint(saleId);
-              toast(
-                r.status === "printed" ? "success" : "warning",
-                r.status === "printed" ? t("Reprinted") : t("Not printed"),
-                r.message ?? undefined,
-              );
-            }}
-          >
-            {t("Reprint")}
-          </Button>
-        ) : null
+        <>
+          <WhatsAppSendButton kind="receipt" saleId={saleId} size="sm" />
+          {has("sales.view") ? (
+            <Button
+              size="sm"
+              icon={<FileDown size={14} />}
+              onClick={async () => {
+                try {
+                  const f = await api.receipts.pdf("sale", saleId);
+                  downloadBase64(f.file_name, f.base64, "application/pdf");
+                } catch (e) {
+                  toast("error", t("PDF not created"), e instanceof Error ? e.message : undefined);
+                }
+              }}
+            >
+              {t("PDF")}
+            </Button>
+          ) : null}
+          {has("pos.reprint") ? (
+            <Button
+              size="sm"
+              icon={<Printer size={14} />}
+              onClick={async () => {
+                const r = await api.sales.reprint(saleId);
+                toast(
+                  r.status === "printed" ? "success" : "warning",
+                  r.status === "printed" ? t("Reprinted") : t("Not printed"),
+                  r.message ?? undefined,
+                );
+              }}
+            >
+              {t("Reprint")}
+            </Button>
+          ) : null}
+        </>
       }
     >
       {error ? <Banner tone="danger">{error}</Banner> : null}

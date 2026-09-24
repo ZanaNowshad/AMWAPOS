@@ -1,3 +1,4 @@
+import { WhatsAppSendButton } from "./automation";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, MessageCircle, Plus } from "lucide-react";
@@ -515,6 +516,12 @@ export function DeliveriesPage() {
                 >
                   {t("Delivered")}
                 </Button>
+              ) : null}
+              {["pending", "preparing", "dispatched"].includes(open.status) ? (
+                <WhatsAppSendButton kind="dispatch" deliveryId={open.delivery_id} phone={open.phone} />
+              ) : null}
+              {open.payment_status !== "paid" && open.status !== "cancelled" ? (
+                <WhatsAppSendButton kind="reminder" deliveryId={open.delivery_id} phone={open.phone} />
               ) : null}
               {["pending", "preparing", "dispatched"].includes(open.status) && has("deliveries.manage") ? (
                 <Button

@@ -74,7 +74,8 @@ async fn sidecar_supervised_states_and_ocr_job() {
 
     // Invoice image → OCR by the loop → lines ready for review.
     let img = root.join("sidecar/test/fixtures/invoice.png");
-    let scan = call(&rt, "invoicescan.import", Some(&t), json!({ "path": img.to_string_lossy() })).await;
+    let data = amwapos_core::ids::b64(&std::fs::read(&img).unwrap());
+    let scan = call(&rt, "invoicescan.import", Some(&t), json!({ "file_name": "invoice.png", "data": data })).await;
     let id = scan["scan_id"].as_str().unwrap().to_string();
     let mut v = Value::Null;
     for _ in 0..120 {

@@ -366,6 +366,18 @@ export function DateRange({
   );
 }
 
+export function downloadBase64(filename: string, base64: string, type: string) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export function download(filename: string, content: string, type = "text/csv;charset=utf-8") {
   const blob = new Blob(["﻿", content], { type });
   const url = URL.createObjectURL(blob);

@@ -821,3 +821,224 @@ export interface PrintJobRow {
   last_error: string | null;
   created_at: string;
 }
+
+// ---- WhatsApp / OCR (sidecar) ----
+
+export interface FileBlob {
+  mime: string;
+  base64: string;
+  size: number;
+}
+
+export interface WaLinkStatus {
+  state: "stopped" | "starting" | "pairing" | "connecting" | "connected" | "ready" | "logged_out" | "error";
+  connected: boolean;
+  ready: boolean;
+  linked: boolean;
+  qr_data_url: string | null;
+  me: { id: string; name: string | null } | null;
+  last_error: string | null;
+  inbox_seq: number;
+}
+
+export interface OcrStatus {
+  enabled: boolean;
+  languages: string[];
+  models: Record<string, { present: boolean; verified: boolean }>;
+  reason: string | null;
+}
+
+export interface SidecarStatus {
+  installed: boolean;
+  process: "running" | "stopped" | "failed";
+  pid: number | null;
+  port: number | null;
+  version: string | null;
+  health: boolean;
+  identity: boolean;
+  whatsapp: WaLinkStatus | null;
+  ocr: OcrStatus | null;
+  last_error: string | null;
+  starts: number;
+  autostart: boolean;
+  features: { whatsapp: boolean; ocr: boolean; payment_reviews: boolean };
+}
+
+export interface WaQueueRequest {
+  operation_id: string;
+  kind: "receipt" | "dispatch" | "reminder" | "text";
+  to_phone?: string | null;
+  customer_id?: string | null;
+  sale_id?: string | null;
+  delivery_id?: string | null;
+  lang?: "en" | "ar" | null;
+  text?: string | null;
+}
+
+export interface WaOutboxRow {
+  message_id: string;
+  kind: string;
+  to_phone: string;
+  customer_id: string | null;
+  customer_name: string | null;
+  sale_id: string | null;
+  delivery_id: string | null;
+  lang: string;
+  body: string;
+  document_name: string | null;
+  status: "queued" | "sending" | "sent" | "failed" | "cancelled";
+  attempts: number;
+  last_error: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export interface WaConversation {
+  chat: string;
+  phone: string | null;
+  name: string | null;
+  customer_id: string | null;
+  last_at: string;
+  last_text: string | null;
+  unread: number;
+}
+
+export interface WaInboxRow {
+  seq: number;
+  chat: string;
+  phone: string | null;
+  push_name: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  received_at: string;
+  kind: "text" | "image" | "document" | "other";
+  body: string | null;
+  caption: string | null;
+  has_media: boolean;
+  media_mime: string | null;
+  read_at: string | null;
+}
+
+export interface WaThread {
+  chat: string;
+  phone: string | null;
+  inbound: WaInboxRow[];
+  outbound: WaOutboxRow[];
+}
+
+export interface PaymentReview {
+  review_id: string;
+  review_number: string;
+  source: "whatsapp" | "upload";
+  inbox_seq: number | null;
+  phone: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  sale_id: string | null;
+  delivery_id: string | null;
+  delivery_number: string | null;
+  expected_minor: number | null;
+  detected_minor: number | null;
+  detected_reference: string | null;
+  ocr_confidence: number | null;
+  ocr_text: string | null;
+  duplicate_of: string | null;
+  status: "pending" | "matched" | "mismatch" | "needs_review" | "confirmed" | "rejected";
+  reason: string | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+export interface InvoiceScan {
+  scan_id: string;
+  scan_number: string;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  file_name: string | null;
+  status: "imported" | "read" | "review" | "confirmed" | "rejected" | "failed";
+  ocr_confidence: number | null;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  total_minor: number | null;
+  lines_total_minor: number;
+  po_id: string | null;
+  po_number: string | null;
+  error: string | null;
+  duplicate_of: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface InvoiceScanLine {
+  line_no: number;
+  raw_text: string;
+  description: string | null;
+  code: string | null;
+  qty_milli: number | null;
+  unit_cost_minor: number | null;
+  line_total_minor: number | null;
+  product_id: string | null;
+  product_name: string | null;
+  current_cost_minor: number | null;
+  match_kind: "barcode" | "sku" | "name" | "manual" | "none";
+  match_score: number;
+  include: boolean;
+}
+
+export interface InvoiceScanDetail {
+  scan: InvoiceScan;
+  lines: InvoiceScanLine[];
+  ocr_text: string | null;
+  image: FileBlob | null;
+}
+
+// ---- AI assistant ----
+
+export interface AiSettings {
+  provider: "anthropic" | "openai_compatible";
+  model: string;
+  base_url: string;
+  max_tokens: number;
+  fallbacks: boolean;
+  consent: boolean;
+  consent_by?: string | null;
+  consent_at?: string | null;
+}
+
+export interface AiStatus {
+  settings: AiSettings;
+  key_configured: boolean;
+  enabled: boolean;
+  mutations: boolean;
+  can_mutate: boolean;
+  ready: boolean;
+}
+
+export interface AiProposal {
+  proposal_id: string;
+  proposal_number: string;
+  conversation_id: string;
+  kind: "price_change" | "stock_adjustment" | "purchase_order";
+  params: Record<string, unknown>;
+  preview: Record<string, unknown>;
+  risk: "low" | "medium" | "high";
+  risk_reasons: string[];
+  status: "proposed" | "executing" | "executed" | "rejected" | "failed" | "undone" | "expired";
+  result: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  undone_at: string | null;
+}
+
+export interface AiConversation {
+  conversation_id: string;
+  title: string;
+  untrusted_seen: boolean;
+  messages: { role: "user" | "assistant"; text: string; tools: string[]; at: string; stop_reason: string | null }[];
+  proposals: AiProposal[];
+}

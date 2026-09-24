@@ -212,6 +212,11 @@ impl Runtime {
                     json!({ "addresses": discovery::local_addresses().into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port, "running": running }),
                 )
             }
+            "ai.ask" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let conv = args.get("conversation_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                crate::ai_client::ask(self.core.clone(), t, conv, arg(&args, "message")?).await
+            }
             "sidecar.status" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let c = self.core.clone();

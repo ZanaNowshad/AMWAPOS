@@ -65,7 +65,8 @@ import {
   DiagnosticsPage,
   UpdatesPage,
 } from "./system";
-import { WhatsAppPage, AiAssistantPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
+import { WhatsAppPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
+import { AiAssistantPage } from "./ai";
 import { t } from "../../i18n";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { BackupAlert } from "../../components/BackupAlert";

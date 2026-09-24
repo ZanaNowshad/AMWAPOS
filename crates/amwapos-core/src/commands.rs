@@ -268,6 +268,15 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "diagnostics.export" => out(core.diagnostics_export(tk()?)),
         "backup.list" => out(core.backups_list(tk()?)),
         "backup.health" => out(core.backup_health(tk()?)),
+        // AI assistant (the question/answer loop itself is "ai.ask" in the runtime)
+        "ai.status" => out(core.ai_status(tk()?)),
+        "ai.configure" => out(core.ai_configure(tk()?, req(&args, "settings")?, opt(&args, "api_key")?)),
+        "ai.conversations" => out(core.ai_conversations(tk()?)),
+        "ai.conversation" => out(core.ai_conversation(tk()?, &req::<String>(&args, "conversation_id")?)),
+        "ai.proposals" => out(core.ai_proposals(tk()?, opt(&args, "status")?)),
+        "ai.proposal_confirm" => out(core.ai_proposal_confirm(tk()?, &req::<String>(&args, "proposal_id")?)),
+        "ai.proposal_reject" => out(core.ai_proposal_reject(tk()?, &req::<String>(&args, "proposal_id")?)),
+        "ai.proposal_undo" => out(core.ai_proposal_undo(tk()?, &req::<String>(&args, "proposal_id")?)),
         // receipts as PDF
         "receipts.pdf" => out(core.receipt_pdf(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "ref_id")?)),
         // WhatsApp (link state and sending are handled by the runtime + sidecar)
@@ -284,15 +293,21 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         // payment screenshot reviews
         "payreviews.list" => out(core.pr_list(tk()?, opt(&args, "status")?)),
         "payreviews.get" => out(core.pr_get(tk()?, &req::<String>(&args, "review_id")?)),
-        "payreviews.upload" => {
-            out(core.pr_upload(tk()?, &req::<String>(&args, "path")?, opt(&args, "expected_minor")?, opt(&args, "delivery_id")?))
-        }
+        "payreviews.upload" => out(core.pr_upload(
+            tk()?,
+            &req::<String>(&args, "file_name")?,
+            &req::<String>(&args, "data")?,
+            opt(&args, "expected_minor")?,
+            opt(&args, "delivery_id")?,
+        )),
         "payreviews.set_expected" => {
             out(core.pr_set_expected(tk()?, &req::<String>(&args, "review_id")?, opt(&args, "expected_minor")?, opt(&args, "delivery_id")?))
         }
         "payreviews.decide" => out(core.pr_decide(tk()?, all(&args)?)),
         // invoice scans (OCR → review → draft purchase order)
-        "invoicescan.import" => out(core.inv_import(tk()?, &req::<String>(&args, "path")?, opt(&args, "supplier_id")?)),
+        "invoicescan.import" => {
+            out(core.inv_import(tk()?, &req::<String>(&args, "file_name")?, &req::<String>(&args, "data")?, opt(&args, "supplier_id")?))
+        }
         "invoicescan.list" => out(core.inv_list(tk()?, opt(&args, "status")?)),
         "invoicescan.get" => out(core.inv_get(tk()?, &req::<String>(&args, "scan_id")?)),
         "invoicescan.update_line" => out(core.inv_update_line(tk()?, all(&args)?)),

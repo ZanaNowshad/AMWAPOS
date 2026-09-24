@@ -24,3 +24,9 @@ pub fn b64(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
+
+pub fn b64_decode(s: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let s = s.split_once("base64,").map(|x| x.1).unwrap_or(s);
+    base64::engine::general_purpose::STANDARD.decode(s.trim()).ok()
+}

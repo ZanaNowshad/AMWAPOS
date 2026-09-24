@@ -1,3 +1,4 @@
+import { WhatsAppSendButton } from "../admin/automation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, Check, CreditCard, Landmark, Plus, Smartphone, Split, Trash2, Truck, Printer } from "lucide-react";
 import { api } from "../../api";
@@ -409,6 +410,9 @@ export function SaleSuccess({
           <Button icon={<Printer size={16} />} onClick={() => (setPaused(true), onReprint())}>
             {t("Reprint")}
           </Button>
+          <span onClickCapture={() => setPaused(true)}>
+            <WhatsAppSendButton kind="receipt" saleId={sale.sale_id} />
+          </span>
           <Button icon={<Truck size={16} />} onClick={() => (setPaused(true), onDelivery())}>
             {t("Delivery")}
           </Button>

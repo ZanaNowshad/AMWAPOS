@@ -158,11 +158,10 @@ fn invoice_scan_creates_only_a_draft_order() {
     let milk = e.product("Milk Full Cream 1L", "6291041500213", 600, 400, 0);
     let rice = e.product("Basmati Rice 5kg", "6290000000011", 4_000, 3_000, 0);
     let sup = e.core.supplier_save(t, None, serde_json::from_value(json!({ "name": "ACME" })).unwrap()).unwrap();
-    let img = e.dir.path().join("invoice.jpg");
-    std::fs::write(&img, b"jpeg").unwrap();
-    assert_eq!(e.core.inv_import(t, &img.to_string_lossy(), None).unwrap_err().details.unwrap()["kind"], "feature_disabled");
+    let data = amwapos_core::ids::b64(b"jpeg");
+    assert_eq!(e.core.inv_import(t, "invoice.jpg", &data, None).unwrap_err().details.unwrap()["kind"], "feature_disabled");
     features(&e, json!({ "ocr": true }));
-    let scan = e.core.inv_import(t, &img.to_string_lossy(), Some(sup.supplier_id.clone())).unwrap();
+    let scan = e.core.inv_import(t, "invoice.jpg", &data, Some(sup.supplier_id.clone())).unwrap();
     assert_eq!(scan.status, "imported");
     let text = "Invoice No: INV-7\n6291041500213 Milk 12 x 0.420 5.040\nRice Basmati 5kg 2 3.100 6.200\nMystery item 1.000\nTotal 12.240";
     e.core.ocr_result("invoice", &scan.scan_id, Ok((text.into(), 88))).unwrap();

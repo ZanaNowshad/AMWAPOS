@@ -28,6 +28,8 @@ import type {
 import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../state/session";
 import { FEATURE_LABELS, useFeature } from "../../components/FeatureGate";
+import { AiSettingsSection } from "./ai";
+import { WaTemplates } from "./automation";
 import { useToast } from "../../components/toast";
 import { isDesktop } from "../../api/transport";
 import { newOperationId } from "../../lib/ids";
@@ -1209,6 +1211,8 @@ type Section =
   | "backup"
   | "appearance"
   | "features"
+  | "whatsapp"
+  | "ai"
   | "about";
 
 export function SettingsPage() {
@@ -1227,6 +1231,8 @@ export function SettingsPage() {
     ["backup", t("Backups")],
     ["appearance", t("Appearance")],
     ["features", t("Features")],
+    ["whatsapp", t("WhatsApp")],
+    ["ai", t("AI assistant")],
     ["about", t("About")],
   ];
   return (
@@ -1253,6 +1259,8 @@ export function SettingsPage() {
           {section === "backup" ? <JsonSettings k="local.backup" /> : null}
           {section === "appearance" ? <AppearanceSettings /> : null}
           {section === "features" ? <FeaturesSettings /> : null}
+          {section === "whatsapp" ? <WaTemplates /> : null}
+          {section === "ai" ? <AiSettingsSection /> : null}
           {section === "about" ? <AboutSettings /> : null}
         </div>
       </div>
