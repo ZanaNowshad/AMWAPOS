@@ -95,6 +95,10 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "barcodes.remove" => out(core.barcode_remove(tk()?, &req::<String>(&args, "barcode_id")?)),
         "barcodes.set_primary" => out(core.barcode_set_primary(tk()?, &req::<String>(&args, "barcode_id")?)),
         "barcodes.unknown_list" => out(core.unknown_barcodes_list(tk()?, opt(&args, "status")?)),
+        "barcodes.unknown_merge" => {
+            out(core.unknown_barcodes_merge(tk()?, &req::<String>(&args, "product_id")?, req::<Vec<String>>(&args, "barcodes")?))
+        }
+        "barcodes.unknown_reopen" => out(core.unknown_barcode_reopen(tk()?, &req::<String>(&args, "barcode")?)),
         "barcodes.unknown_dismiss" => out(core.unknown_barcode_dismiss(tk()?, &req::<String>(&args, "barcode")?)),
         "categories.list" => out(core.categories_list(tk()?, opt(&args, "include_inactive")?.unwrap_or(false))),
         "categories.save" => out(core.category_save(

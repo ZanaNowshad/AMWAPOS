@@ -278,3 +278,34 @@ fn stocktake_blind_hides_expected() {
     let st = e.core.stocktake_get(t, &st.header.stocktake_id).unwrap();
     assert_eq!(st.lines[0].expected_qty_milli, Some(5_000));
 }
+
+#[test]
+fn ghost_barcodes_merge_into_one_product_atomically() {
+    let e = env();
+    let t = &e.owner_token;
+    let milk = e.product("Milk 1L", "6281000000011", 850, 500, 10_000);
+    let other = e.product("Juice 1L", "6281000000028", 900, 500, 10_000);
+    e.open_shift(t, 0);
+    for code in ["0000111122223", "0000111122224", "6281000000028"] {
+        let _ = e.core.pos_scan(t, code, None);
+    }
+    let unknown = e.core.unknown_barcodes_list(t, Some("open".into())).unwrap();
+    assert_eq!(unknown.len(), 2);
+
+    // A code owned by another product aborts the whole merge: nothing changes.
+    let err = e.core.unknown_barcodes_merge(t, &milk, vec!["0000111122223".into(), "6281000000028".into()]).unwrap_err();
+    assert_eq!(err.code, amwapos_core::ErrorCode::Duplicate);
+    assert_eq!(e.core.unknown_barcodes_list(t, Some("open".into())).unwrap().len(), 2);
+
+    // A cashier cannot resolve ghost barcodes.
+    let (_, cashier) = e.user("Sara", amwapos_core::auth::ROLE_CASHIER, "7391");
+    assert!(e.core.unknown_barcodes_merge(&cashier, &milk, vec!["0000111122223".into()]).is_err());
+
+    let r = e.core.unknown_barcodes_merge(t, &milk, vec!["0000111122223".into(), "0000111122224".into()]).unwrap();
+    assert_eq!(r["added"], 2);
+    assert!(e.core.unknown_barcodes_list(t, Some("open".into())).unwrap().is_empty());
+    // Both codes now sell the merged product.
+    let cart = e.core.pos_scan(t, "0000111122224", None).unwrap().cart;
+    assert_eq!(cart.lines.last().unwrap().product_id.as_deref(), Some(milk.as_str()));
+    let _ = other;
+}

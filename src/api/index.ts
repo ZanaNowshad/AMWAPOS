@@ -139,6 +139,12 @@ export const api = {
     setPrimary: (barcode_id: string) => call<T.ProductDetail>("barcodes.set_primary", { barcode_id }),
     unknown: (status?: string) => call<T.UnknownBarcodeRow[]>("barcodes.unknown_list", { status }),
     dismiss: (barcode: string) => call<void>("barcodes.unknown_dismiss", { barcode }),
+    reopen: (barcode: string) => call<void>("barcodes.unknown_reopen", { barcode }),
+    merge: (product_id: string, barcodes: string[]) =>
+      call<{ product_id: string; product_name: string; added: number; resolved: number }>("barcodes.unknown_merge", {
+        product_id,
+        barcodes,
+      }),
   },
   categories: {
     list: (include_inactive = false) => call<T.CategoryRow[]>("categories.list", { include_inactive }),

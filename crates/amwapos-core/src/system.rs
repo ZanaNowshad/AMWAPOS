@@ -111,7 +111,7 @@ impl AppCore {
             let v = match key {
                 settings::KEY_POS => serde_json::to_value(settings::get::<settings::PosSettings>(c, key)?)?,
                 settings::KEY_SHIFT => serde_json::to_value(settings::get::<settings::ShiftSettings>(c, key)?)?,
-                settings::KEY_PAYMENTS => serde_json::to_value(settings::get::<settings::PaymentSettings>(c, key)?)?,
+                settings::KEY_PAYMENTS => serde_json::to_value(settings::payments(c)?)?,
                 settings::KEY_RECEIPT => serde_json::to_value(settings::get::<settings::ReceiptSettings>(c, key)?)?,
                 settings::KEY_SECURITY => serde_json::to_value(settings::get::<settings::SecuritySettings>(c, key)?)?,
                 settings::KEY_INVENTORY => serde_json::to_value(settings::get::<settings::InventorySettings>(c, key)?)?,
@@ -146,7 +146,7 @@ impl AppCore {
         self.session(token)?;
         self.db.read(|c| {
             let pos: settings::PosSettings = settings::get(c, settings::KEY_POS)?;
-            let pay: settings::PaymentSettings = settings::get(c, settings::KEY_PAYMENTS)?;
+            let pay: settings::PaymentSettings = settings::payments(c)?;
             let shift: settings::ShiftSettings = settings::get(c, settings::KEY_SHIFT)?;
             let appearance: settings::AppearanceSettings = settings::get(c, settings::KEY_APPEARANCE)?;
             let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;

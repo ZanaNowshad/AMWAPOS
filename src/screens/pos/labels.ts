@@ -7,6 +7,8 @@ export function methodLabel(m: string): string {
       return t("Card");
     case "benefitpay":
       return t("BenefitPay");
+    case "wallet":
+      return t("Wallet");
     case "bank_transfer":
       return t("Bank Transfer");
     default:

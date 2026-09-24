@@ -88,10 +88,24 @@ impl Default for PaymentSettings {
                 t("card", "Card", true, false),
                 t("benefitpay", "BenefitPay", true, false),
                 t("bank_transfer", "Bank Transfer", false, false),
+                // A manual wallet (e.g. a mobile wallet) recorded like any other tender; no live settlement.
+                t("wallet", "Wallet", false, false),
             ],
         }
     }
 }
+/// Payment settings with any built-in tender added since the store was set up
+/// appended (disabled), so new tender types appear in Settings for old stores.
+pub fn payments(c: &Connection) -> AppResult<PaymentSettings> {
+    let mut p: PaymentSettings = get(c, KEY_PAYMENTS)?;
+    for d in PaymentSettings::default().tenders {
+        if p.tender(&d.method).is_none() {
+            p.tenders.push(TenderConfig { enabled: false, ..d });
+        }
+    }
+    Ok(p)
+}
+
 impl PaymentSettings {
     pub fn tender(&self, method: &str) -> Option<&TenderConfig> {
         self.tenders.iter().find(|t| t.method == method)

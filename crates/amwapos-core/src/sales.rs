@@ -295,7 +295,7 @@ impl AppCore {
             return Ok(r);
         }
         let pos_cfg: settings::PosSettings = self.db.read(|c| settings::get(c, settings::KEY_POS))?;
-        let pay_cfg: settings::PaymentSettings = self.db.read(|c| settings::get(c, settings::KEY_PAYMENTS))?;
+        let pay_cfg: settings::PaymentSettings = self.db.read(settings::payments)?;
         for t in &req.tenders {
             let cfg = pay_cfg
                 .tender(&t.method)

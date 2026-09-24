@@ -26,7 +26,7 @@ import { formatMoney, formatQty } from "../../lib/money";
 import { formatClock } from "../../lib/time";
 import { BurstDetector, DuplicateGuard, looksLikeBarcode } from "../../lib/scanner";
 import { setSoundEnabled, sounds } from "../../lib/sound";
-import { Banner, Button, Chip } from "../../components/ui";
+import { Banner, Button, Chip, Modal } from "../../components/ui";
 import { Logo } from "../../components/Logo";
 import { ConnectionPill } from "./ConnectionPill";
 import { CartPanel } from "./CartPanel";
@@ -47,7 +47,7 @@ import {
 } from "./dialogs";
 import { RefundFlow } from "./RefundFlow";
 import { ShiftClose } from "./ShiftScreens";
-import { getLang, switchLang, t } from "../../i18n";
+import { getLang, switchLang, t, tb } from "../../i18n";
 import { BackupPill } from "../../components/BackupAlert";
 
 type ModalState =
@@ -67,7 +67,8 @@ type ModalState =
   | { kind: "recent" }
   | { kind: "delivery"; saleId: string | null }
   | { kind: "close_shift" }
-  | { kind: "print_queue" };
+  | { kind: "print_queue" }
+  | { kind: "price_changes"; notices: string[] };
 
 const EMPTY_CART: Cart = {
   cart_id: null,
@@ -866,10 +867,40 @@ export function PosScreen({
           onClose={closeModal}
           onRestored={(c) => {
             applyCart(c);
-            closeModal();
+            // Prices changed while the sale was held: the cashier must acknowledge
+            // the recalculated basket before continuing (spec 9.2).
+            if (c.notices.length) setModal({ kind: "price_changes", notices: c.notices });
+            else closeModal();
           }}
           currentHasLines={hasLines}
         />
+      ) : null}
+      {modal.kind === "price_changes" ? (
+        <Modal
+          title={t("Prices changed since this sale was held")}
+          size="sm"
+          onClose={closeModal}
+          footer={
+            <Button variant="primary" className="right" autoFocus onClick={closeModal} data-testid="ack-price-changes">
+              {t("Continue with current prices")}
+            </Button>
+          }
+        >
+          <div className="col gap-8">
+            <Banner tone="warning">
+              {t("The basket was recalculated with today's prices. Tell the customer before taking payment.")}
+            </Banner>
+            <ul className="small" style={{ paddingInlineStart: 18 }}>
+              {modal.notices.map((n) => (
+                <li key={n}>{tb(n)}</li>
+              ))}
+            </ul>
+            <div className="row">
+              <span className="muted">{t("New total")}</span>
+              <strong className="right money">{formatMoney(cart.totals.total_minor)}</strong>
+            </div>
+          </div>
+        </Modal>
       ) : null}
       {modal.kind === "customer" ? (
         <CustomerPicker

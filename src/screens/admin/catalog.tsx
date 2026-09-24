@@ -1398,6 +1398,8 @@ export function UnknownBarcodesPage() {
   const [status, setStatus] = useState("open");
   const { data, loading, error, reload } = useLoad(() => api.barcodes.unknown(status), [status]);
   const [open, setOpen] = useState<UnknownBarcodeRow | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [merging, setMerging] = useState(false);
   const [q, setQ] = useState("");
   const results = useLoad(() => (q.trim() ? api.products.search({ q, limit: 10 }) : Promise.resolve(null)), [q]);
   const act = useAction();
@@ -1415,11 +1417,25 @@ export function UnknownBarcodesPage() {
         ))}
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
+      {sel.size > 0 ? (
+        <div className="bulk-bar row" style={{ marginBottom: 12 }}>
+          <strong>{t("{0} selected", sel.size)}</strong>
+          <Button variant="primary" onClick={() => (setMerging(true), setQ(""))}>
+            {t("Assign selected to one product")}
+          </Button>
+          <Button variant="ghost" onClick={() => setSel(new Set())}>
+            {t("Clear selection")}
+          </Button>
+        </div>
+      ) : null}
       <DataTable<UnknownBarcodeRow>
         rows={data}
         loading={loading}
         rowKey={(r) => r.barcode}
-        onRowClick={(r) => r.status === "open" && (setOpen(r), setQ(""))}
+        selectable={status === "open"}
+        selected={sel}
+        onSelect={setSel}
+        onRowClick={(r) => (r.status === "open" || r.status === "dismissed") && (setOpen(r), setQ(""))}
         empty={<div className="empty">{t("No unknown barcodes. Every scanned barcode was recognised.")}</div>}
         columns={[
           { key: "b", label: t("Barcode"), render: (r) => <span className="mono">{r.barcode}</span> },
@@ -1452,6 +1468,20 @@ export function UnknownBarcodesPage() {
             <div className="small muted">
               {t("Scanned {0} time(s), last on {1}.", open.scan_count, formatDateTime(open.last_seen_at))}
             </div>
+            {open.status === "dismissed" ? (
+              <Button
+                onClick={async () => {
+                  const r = await act.run(() => api.barcodes.reopen(open.barcode));
+                  if (r !== undefined) {
+                    toast("success", t("Barcode reopened"));
+                    setOpen(null);
+                    void reload();
+                  }
+                }}
+              >
+                {t("Reopen")}
+              </Button>
+            ) : null}
             <h3>{t("Assign to an existing product")}</h3>
             <input
               className="input"
@@ -1472,7 +1502,11 @@ export function UnknownBarcodesPage() {
                   size="sm"
                   variant="primary"
                   onClick={async () => {
-                    const r = await act.run(() => api.barcodes.add(p.product_id, open.barcode, false));
+                    const r = await act.run<unknown>(() =>
+                      open.status === "dismissed"
+                        ? api.barcodes.merge(p.product_id, [open.barcode])
+                        : api.barcodes.add(p.product_id, open.barcode, false),
+                    );
                     if (r) {
                       toast("success", t("Barcode assigned to {0}", p.name));
                       setOpen(null);
@@ -1495,6 +1529,7 @@ export function UnknownBarcodesPage() {
               <Button
                 variant="danger-outline"
                 className="right"
+                disabled={open.status !== "open"}
                 onClick={async () => {
                   const r = await act.run(() => api.barcodes.dismiss(open.barcode));
                   if (r !== undefined) {
@@ -1506,6 +1541,44 @@ export function UnknownBarcodesPage() {
                 {t("Dismiss")}
               </Button>
             </div>
+            {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+          </div>
+        </Drawer>
+      ) : null}
+      {merging ? (
+        <Drawer title={t("Assign {0} barcode(s) to one product", sel.size)} onClose={() => setMerging(false)}>
+          <div className="col gap-16">
+            <div className="mono small">{[...sel].join(" · ")}</div>
+            <input
+              className="input"
+              placeholder={t("Search product by name or SKU…")}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+            {(results.data?.rows ?? []).map((p) => (
+              <div key={p.product_id} className="result-row">
+                <div className="grow">
+                  <div style={{ fontWeight: 600 }}>{p.name}</div>
+                  <div className="tiny">{p.sku}</div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={async () => {
+                    const r = await act.run(() => api.barcodes.merge(p.product_id, [...sel]));
+                    if (r) {
+                      toast("success", t("{0} barcode(s) assigned to {1}", r.resolved, r.product_name));
+                      setMerging(false);
+                      setSel(new Set());
+                      void reload();
+                    }
+                  }}
+                >
+                  {t("Assign")}
+                </Button>
+              </div>
+            ))}
             {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
           </div>
         </Drawer>

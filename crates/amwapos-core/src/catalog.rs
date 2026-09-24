@@ -1285,6 +1285,86 @@ impl AppCore {
         })
     }
 
+    /// Merge several ghost barcodes into one product in a single audited
+    /// transaction (for example all the pack sizes a supplier labels
+    /// differently). Each code becomes an alternate barcode of the product and
+    /// its unknown-barcode record is resolved. Codes already on this product
+    /// are simply resolved; codes owned by another product abort the merge.
+    pub fn unknown_barcodes_merge(&self, token: &str, product_id: &str, barcodes: Vec<String>) -> AppResult<serde_json::Value> {
+        let s = self.session(token)?;
+        if !s.has("barcodes.resolve") && !s.has("products.manage") {
+            return Err(AppError::forbidden("barcodes.resolve"));
+        }
+        self.require_back_office_writable()?;
+        if barcodes.is_empty() || barcodes.len() > 200 {
+            return Err(AppError::validation("Select between 1 and 200 barcodes."));
+        }
+        let pid = validate::id(product_id, "Product")?;
+        let codes = barcodes.iter().map(|b| validate::barcode(b)).collect::<AppResult<Vec<_>>>()?;
+        let actor = self.actor(&s, None);
+        let now = time::now_str();
+        self.db.write(|tx| {
+            let name: String = tx
+                .query_row("SELECT name FROM products WHERE product_id=?1 AND active=1", [&pid], |r| r.get(0))
+                .optional()?
+                .ok_or_else(|| AppError::not_found("Active product"))?;
+            let mut added = 0;
+            for b in &codes {
+                match barcode_owner(tx, b)? {
+                    Some((owner, _)) if owner == pid => {}
+                    Some((_, other)) => {
+                        return Err(AppError::duplicate(format!("Barcode {b} already belongs to {other}."))
+                            .with_details(json!({ "barcode": b, "product_name": other })))
+                    }
+                    None => {
+                        tx.execute(
+                            "INSERT INTO product_barcodes(barcode_id, product_id, barcode, is_primary, source, created_at, created_by)
+                             VALUES (?1,?2,?3,0,'unknown_barcode',?4,?5)",
+                            params![new_id(), pid, b, now, s.user_id],
+                        )?;
+                        added += 1;
+                    }
+                }
+                tx.execute(
+                    "UPDATE unknown_barcodes SET status='resolved', resolved_product_id=?2, resolved_by=?3, resolved_at=?4
+                     WHERE barcode=?1 AND status IN ('open','dismissed')",
+                    params![b, pid, s.user_id, now],
+                )?;
+            }
+            audit::record(
+                tx,
+                &actor,
+                "unknown_barcode.merged",
+                "product",
+                Some(&pid),
+                None,
+                Some(&json!({ "barcodes": codes, "added": added, "product": name })),
+            )?;
+            Ok(json!({ "product_id": pid, "product_name": name, "added": added, "resolved": codes.len() }))
+        })
+    }
+
+    /// Put a dismissed ghost barcode back on the open list.
+    pub fn unknown_barcode_reopen(&self, token: &str, barcode: &str) -> AppResult<()> {
+        let s = self.session(token)?;
+        if !s.has("barcodes.resolve") && !s.has("products.manage") {
+            return Err(AppError::forbidden("barcodes.resolve"));
+        }
+        let actor = self.actor(&s, None);
+        let b = validate::barcode(barcode)?;
+        self.db.write(|tx| {
+            let n = tx.execute(
+                "UPDATE unknown_barcodes SET status='open', resolved_by=NULL, resolved_at=NULL WHERE barcode=?1 AND status='dismissed'",
+                [&b],
+            )?;
+            if n == 0 {
+                return Err(AppError::conflict("Only dismissed barcodes can be reopened."));
+            }
+            audit::record(tx, &actor, "unknown_barcode.reopened", "barcode", Some(&b), None, None)?;
+            Ok(())
+        })
+    }
+
     /// Export the catalogue as CSV (barcodes as text, money as decimals).
     pub fn products_export_csv(&self, token: &str, include_archived: bool) -> AppResult<String> {
         let s = self.session(token)?;

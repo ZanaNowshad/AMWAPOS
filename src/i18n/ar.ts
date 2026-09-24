@@ -66,6 +66,7 @@ export const AR: Record<string, string> = {
   "Action not possible": "لا يمكن تنفيذ الإجراء",
   Activate: "تفعيل",
   Active: "نشط",
+  "Active product": "منتج نشط",
   "Active products": "المنتجات النشطة",
   Add: "إضافة",
   "Add Barcode": "إضافة باركود",
@@ -154,7 +155,9 @@ export const AR: Record<string, string> = {
   "Ask a manager.": "اطلب من المدير.",
   Assign: "تعيين",
   "Assign rider": "تعيين مندوب",
+  "Assign selected to one product": "ربط المحدد بمنتج واحد",
   "Assign to an existing product": "ربط بمنتج موجود",
+  "Assign {0} barcode(s) to one product": "ربط {0} باركود(ات) بمنتج واحد",
   "Assigned deliveries": "التوصيلات المعيّنة",
   "At least one active owner must remain.": "يجب أن يبقى مالك نشط واحد على الأقل.",
   "At least one payment method must be enabled.": "يجب تفعيل طريقة دفع واحدة على الأقل.",
@@ -207,6 +210,7 @@ export const AR: Record<string, string> = {
   "Barcode '{0}': {1}": "الباركود '{0}': {1}",
   "Barcode assigned to {0}": "تم ربط الباركود بـ {0}",
   "Barcode not found": "الباركود غير موجود",
+  "Barcode reopened": "أُعيد فتح الباركود",
   "Barcode {0} already belongs to {1}.": "الباركود {0} مرتبط مسبقاً بـ {1}.",
   "Barcode {0} has {1} digits (EAN/UPC codes have 8, 12, 13 or 14). Leading zeros may have been lost.":
     "الباركود {0} يتكوّن من {1} أرقام (رموز EAN/UPC تتكوّن من 8 أو 12 أو 13 أو 14). ربما فُقدت الأصفار البادئة.",
@@ -363,6 +367,7 @@ export const AR: Record<string, string> = {
   "Contact name": "اسم جهة الاتصال",
   "Contact person": "مسؤول الاتصال",
   Continue: "متابعة",
+  "Continue with current prices": "المتابعة بالأسعار الحالية",
   Cost: "التكلفة",
   "Cost (snapshot)": "التكلفة (لقطة)",
   "Cost for {0}": "التكلفة لـ {0}",
@@ -832,6 +837,7 @@ export const AR: Record<string, string> = {
   "New store as hub": "متجر جديد كخادم",
   "New supplier": "مورّد جديد",
   "New tax rule": "قاعدة ضريبية جديدة",
+  "New total": "الإجمالي الجديد",
   "New unit price": "سعر الوحدة الجديد",
   "New user": "مستخدم جديد",
   Next: "التالي",
@@ -932,6 +938,7 @@ export const AR: Record<string, string> = {
   "On-hand quantity and value at average cost": "الكمية المتوفرة والقيمة بمتوسط التكلفة",
   "Only cash may give change.": "لا يُعطى الباقي إلا من النقد.",
   "Only differences": "الفروقات فقط",
+  "Only dismissed barcodes can be reopened.": "يمكن إعادة فتح الباركودات المُتجاهلة فقط.",
   "Only draft purchase orders can be edited.": "لا يمكن تعديل إلا أوامر الشراء المسودة.",
   "Only ordered purchase orders can be received. Place the order first.":
     "لا يمكن استلام إلا أوامر الشراء المطلوبة. قدّم الطلب أولاً.",
@@ -1065,6 +1072,7 @@ export const AR: Record<string, string> = {
   "Price changed": "تم تغيير السعر",
   "Price dispute": "خلاف على السعر",
   Prices: "الأسعار",
+  "Prices changed since this sale was held": "تغيّرت الأسعار منذ تعليق هذا البيع",
   "Prices include VAT": "الأسعار تشمل الضريبة",
   "Prices include this tax": "الأسعار تشمل هذه الضريبة",
   Pricing: "التسعير",
@@ -1207,6 +1215,7 @@ export const AR: Record<string, string> = {
   "Remove scanned lines from a sale": "إزالة أسطر ممسوحة من البيع",
   "Remove {0}": "إزالة {0}",
   Rename: "إعادة تسمية",
+  Reopen: "إعادة فتح",
   Reorder: "إعادة الطلب",
   "Reorder point": "حدّ إعادة الطلب",
   "Reorder point cannot be negative.": "لا يمكن أن يكون حدّ إعادة الطلب سالباً.",
@@ -1360,6 +1369,7 @@ export const AR: Record<string, string> = {
   "Select at least one item to refund.": "اختر صنفاً واحداً على الأقل للاسترجاع.",
   "Select at most 5,000 products at a time.": "اختر 5,000 منتج كحد أقصى في كل مرة.",
   "Select between 1 and 20,000 products.": "اختر بين 1 و20,000 منتج.",
+  "Select between 1 and 200 barcodes.": "اختر بين 1 و200 باركود.",
   "Select between 1 and 5,000 products.": "اختر بين 1 و5,000 منتج.",
   "Select manager…": "اختر المدير…",
   "Select reason…": "اختر السبب…",
@@ -1534,6 +1544,8 @@ export const AR: Record<string, string> = {
     "يحتوي الباركود على أحرف غير صالحة. يمكن أن تحتوي الباركودات على حروف وأرقام ورموز فقط.",
   "The barcode is empty.": "الباركود فارغ.",
   "The barcode is longer than 64 characters.": "الباركود أطول من 64 حرفاً.",
+  "The basket was recalculated with today's prices. Tell the customer before taking payment.":
+    "أُعيد حساب السلة بأسعار اليوم. أخبر العميل قبل استلام الدفع.",
   "The category will be hidden from pickers. Historical sales keep their category.":
     "ستُخفى الفئة من القوائم. تحتفظ المبيعات السابقة بفئتها.",
   "The currency cannot be changed after sales have been recorded.": "لا يمكن تغيير العملة بعد تسجيل مبيعات.",
@@ -1792,6 +1804,7 @@ export const AR: Record<string, string> = {
   "View stock levels and movements": "عرض مستويات المخزون وحركاته",
   "View the audit trail": "عرض سجل التدقيق",
   Waiting: "بالانتظار",
+  Wallet: "محفظة",
   Warning: "تحذير",
   Wednesday: "الأربعاء",
   Weekday: "يوم الأسبوع",
@@ -1855,6 +1868,7 @@ export const AR: Record<string, string> = {
   "{0} active product(s) use this tax rule. Move them first.":
     "{0} منتج(ات) نشطة تستخدم هذه القاعدة الضريبية. انقلها أولاً.",
   "{0} amount": "مبلغ {0}",
+  "{0} barcode(s) assigned to {1}": "رُبط {0} باركود(ات) بـ {1}",
   "{0} barcode(s) look like they were converted by a spreadsheet (e.g. 6.29E+12). Re-export with the barcode column formatted as Text.":
     "يبدو أن {0} باركود(ات) حوّلها برنامج جداول البيانات (مثل 6.29E+12). أعد التصدير مع تنسيق عمود الباركود كنص.",
   "{0} cannot be negative.": "لا يمكن أن يكون {0} سالباً.",
@@ -1904,6 +1918,7 @@ export const AR: Record<string, string> = {
   "{0} requires a reference.": "{0} يتطلب مرجعاً.",
   "{0} row(s) have errors. Fix them or choose to skip rows with errors.":
     "{0} صف(وف) بها أخطاء. صحّحها أو اختر تخطي الصفوف التي بها أخطاء.",
+  "{0} selected": "{0} محدد",
   "{0} selling product(s) are at or below their reorder point (e.g. {1}).":
     "{0} منتج(ات) مباعة عند حدّ إعادة الطلب أو دونه (مثل {1}).",
   "{0} shift(s) closed with a cash variance today": "{0} وردية أُغلقت اليوم بفرق نقدي",

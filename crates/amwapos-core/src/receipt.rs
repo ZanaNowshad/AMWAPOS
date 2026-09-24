@@ -436,6 +436,7 @@ pub fn method_label(m: &str) -> String {
         "card" => "Card".into(),
         "benefitpay" => "BenefitPay".into(),
         "bank_transfer" => "Bank Transfer".into(),
+        "wallet" => "Wallet".into(),
         other => other.to_string(),
     }
 }

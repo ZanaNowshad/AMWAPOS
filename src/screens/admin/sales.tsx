@@ -197,7 +197,7 @@ export function SalesPage() {
           aria-label={t("Payment method")}
         >
           <option value="">{t("All payments")}</option>
-          {["cash", "card", "benefitpay", "bank_transfer"].map((m) => (
+          {["cash", "card", "benefitpay", "bank_transfer", "wallet"].map((m) => (
             <option key={m} value={m}>
               {methodLabel(m)}
             </option>
