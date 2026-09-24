@@ -15,3 +15,4 @@ coverage/
 .DS_Store
 /.amwapos-dev/
 /.amwapos-e2e/
+*.tsbuildinfo

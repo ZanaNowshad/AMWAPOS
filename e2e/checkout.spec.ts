@@ -12,6 +12,9 @@ async function rpc(page: Page, cmd: string, args: Record<string, unknown> = {}, 
   return body.data;
 }
 
+// The tests share one backend and run in order: the second builds on the store set up by the first.
+test.describe.configure({ mode: "serial" });
+
 test("first run → products → offline checkout → refund → shift close", async ({ page }) => {
   await page.goto("/");
   // ---- Setup wizard ----
@@ -176,4 +179,58 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("link", { name: "Diagnostics" }).click();
   await expect(page.getByText("SQLite integrity: OK")).toBeVisible();
   await shot(page, "15-diagnostics");
+});
+
+test("cashier: no admin access; over-limit discount needs manager approval", async ({ page }) => {
+  // Owner creates a cashier through the API.
+  const users = await rpc(page, "auth.users");
+  const owner = users.find((u: { display_name: string }) => u.display_name === "Zana");
+  const ownerToken = (await rpc(page, "auth.login", { user_id: owner.user_id, pin: "4826" })).token;
+  const roles = await rpc(page, "roles.list", {}, ownerToken);
+  const cashierRole = roles.find((r: { name: string }) => r.name === "Cashier").role_id;
+  await rpc(page, "users.create", { user: { display_name: "Sara", role_id: cashierRole, pin: "7391" } }, ownerToken);
+  await rpc(page, "auth.logout", {}, ownerToken);
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /Sara/ }).click();
+  await page.getByLabel("PIN").fill("7391");
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
+  await page.getByLabel("Opening float (cash in drawer)").fill("10.000");
+  await page.getByRole("button", { name: "Open Shift" }).click();
+  await expect(page.getByTestId("pos")).toBeVisible();
+
+  await page.getByTestId("scan-input").focus();
+  await page.keyboard.type("6281007031126", { delay: 5 });
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("cart-total")).toHaveText("BHD 0.850");
+
+  // 20% exceeds the cashier's 10% limit → manager approval in place.
+  await page.getByRole("listitem").filter({ hasText: "Almarai Fresh Milk 1L" }).click();
+  await page.getByRole("button", { name: "Discount", exact: true }).click();
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByText("Manager Approval")).toBeVisible();
+  await shot(page, "16-approval");
+  // A wrong PIN is refused and nothing changes.
+  await page.getByLabel("Approved by").selectOption(owner.user_id);
+  await page.getByLabel("Manager PIN").fill("1111");
+  await page.getByRole("button", { name: "Approve" }).click();
+  await expect(page.locator(".banner.danger")).toBeVisible();
+  await expect(page.getByTestId("cart-total")).toHaveText("BHD 0.850");
+  await page.getByLabel("Manager PIN").fill("4826");
+  await page.getByRole("button", { name: "Approve" }).click();
+  await expect(page.getByTestId("cart-total")).toHaveText("BHD 0.680");
+
+  await page.keyboard.press("F6");
+  await page.getByTestId("pay-amount").fill("0.680");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("receipt-number")).toHaveText(/T01-0000003/);
+
+  // The approval is attributed in the audit trail.
+  const t2 = (await rpc(page, "auth.login", { user_id: owner.user_id, pin: "4826" })).token;
+  const audit = await rpc(page, "audit.list", { limit: 50 }, t2);
+  const rows = audit.rows as { event_type: string; user_name: string | null; approver_name: string | null }[];
+  expect(rows.some((r) => r.user_name === "Sara" && r.approver_name === "Zana")).toBe(true);
 });
