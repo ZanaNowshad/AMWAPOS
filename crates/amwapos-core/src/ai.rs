@@ -486,7 +486,11 @@ impl AppCore {
             settings: st,
             api_key: key,
             system: system_prompt(&business, &currency, digits, &tz, mutations),
-            tools: tool_catalogue(f.is_on("whatsapp") && s.has("whatsapp.manage"), f.is_on("ocr") && s.has("ocr.scan"), mutations),
+            tools: tool_catalogue(
+                f.is_on("whatsapp.enabled") && s.has("whatsapp.manage"),
+                f.is_on("ocr.enabled") && s.has("ocr.scan"),
+                mutations,
+            ),
             messages,
         })
     }
@@ -605,7 +609,7 @@ impl AppCore {
                 Ok(envelope(serde_json::to_value(p)?, false))
             }
             "recent_whatsapp_messages" => {
-                if !f.is_on("whatsapp") {
+                if !f.is_on("whatsapp.enabled") {
                     return Err(AppError::conflict("WhatsApp is not enabled."));
                 }
                 s.require("whatsapp.manage")?;
@@ -627,7 +631,7 @@ impl AppCore {
                 Ok(envelope(json!({ "messages": msgs }), true))
             }
             "invoice_scan_text" => {
-                if !f.is_on("ocr") {
+                if !f.is_on("ocr.enabled") {
                     return Err(AppError::conflict("OCR is not enabled."));
                 }
                 s.require("ocr.scan")?;

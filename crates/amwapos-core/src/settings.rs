@@ -219,12 +219,25 @@ pub struct AppearanceSettings {
 pub struct FeatureFlags {
     /// Multi-terminal: this computer may become a hub.
     pub hub: bool,
-    /// WhatsApp sidecar (pairing, messages, receipts, delivery updates).
-    pub whatsapp: bool,
-    /// Local OCR (invoice scan, payment screenshots).
-    pub ocr: bool,
-    /// Payment-screenshot review pipeline (needs OCR for extraction).
-    pub payment_reviews: bool,
+    /// WhatsApp (unofficial in-process Web client): pairing, inbox, sends.
+    /// Older installs stored this as `whatsapp`.
+    #[serde(rename = "whatsapp.enabled", alias = "whatsapp")]
+    pub whatsapp_enabled: bool,
+    /// Send receipts on WhatsApp after a sale commits (needs `whatsapp.enabled`).
+    #[serde(rename = "whatsapp.send_receipts")]
+    pub whatsapp_send_receipts: bool,
+    /// Send dispatch / delivered notices (needs `whatsapp.enabled`).
+    #[serde(rename = "whatsapp.delivery_notices")]
+    pub whatsapp_delivery_notices: bool,
+    /// Local OCR worker (bundled Tesseract). Older installs stored `ocr`.
+    #[serde(rename = "ocr.enabled", alias = "ocr")]
+    pub ocr_enabled: bool,
+    /// Payment-screenshot reviews (needs `ocr.enabled`). Older: `payment_reviews`.
+    #[serde(rename = "ocr.payment_screenshots", alias = "payment_reviews")]
+    pub ocr_payment_screenshots: bool,
+    /// Supplier invoice scanning to draft purchase orders (needs `ocr.enabled`).
+    #[serde(rename = "ocr.supplier_invoices")]
+    pub ocr_supplier_invoices: bool,
     /// AI assistant (read-only tools).
     pub ai: bool,
     /// AI may propose changes (always preview + confirm + deterministic execution).
@@ -243,9 +256,12 @@ impl FeatureFlags {
     pub fn is_on(&self, name: &str) -> bool {
         match name {
             "hub" => self.hub,
-            "whatsapp" => self.whatsapp,
-            "ocr" => self.ocr,
-            "payment_reviews" => self.payment_reviews,
+            "whatsapp.enabled" => self.whatsapp_enabled,
+            "whatsapp.send_receipts" => self.whatsapp_enabled && self.whatsapp_send_receipts,
+            "whatsapp.delivery_notices" => self.whatsapp_enabled && self.whatsapp_delivery_notices,
+            "ocr.enabled" => self.ocr_enabled,
+            "ocr.payment_screenshots" => self.ocr_enabled && self.ocr_payment_screenshots,
+            "ocr.supplier_invoices" => self.ocr_enabled && self.ocr_supplier_invoices,
             "ai" => self.ai,
             "ai_mutations" => self.ai && self.ai_mutations,
             "customer_credit" => self.customer_credit,
@@ -275,9 +291,16 @@ pub struct WhatsAppSettings {
     pub attach_pdf: bool,
     /// Mark inbound messages as read on the phone when opened in AMWAPOS.
     pub send_read_receipts: bool,
+    /// Send the payment acknowledgement automatically after a person confirms
+    /// a payment screenshot.
+    pub auto_payment_ack: bool,
     pub receipt: MessageTemplate,
     pub dispatch: MessageTemplate,
+    pub delivered: MessageTemplate,
+    /// Payment reminder.
     pub reminder: MessageTemplate,
+    /// Payment acknowledgement (after a person confirmed the payment).
+    pub payment_ack: MessageTemplate,
 }
 
 impl Default for WhatsAppSettings {
@@ -286,6 +309,7 @@ impl Default for WhatsAppSettings {
             default_lang: "en".into(),
             attach_pdf: true,
             send_read_receipts: true,
+            auto_payment_ack: false,
             receipt: MessageTemplate {
                 en: "Thank you for shopping at {business}.\nReceipt {receipt}\nTotal: {total}\nDate: {date}".into(),
                 ar: "شكراً لتسوقك من {business}.\nالإيصال {receipt}\nالإجمالي: {total}\nالتاريخ: {date}".into(),
@@ -294,9 +318,17 @@ impl Default for WhatsAppSettings {
                 en: "Hello {customer}, your order {delivery} from {business} is on its way.\nAmount due: {amount}".into(),
                 ar: "مرحباً {customer}، طلبك {delivery} من {business} في الطريق إليك.\nالمبلغ المستحق: {amount}".into(),
             },
+            delivered: MessageTemplate {
+                en: "Hello {customer}, your order {delivery} from {business} has been delivered. Thank you.".into(),
+                ar: "مرحباً {customer}، تم توصيل طلبك {delivery} من {business}. شكراً لك.".into(),
+            },
             reminder: MessageTemplate {
                 en: "Hello {customer}, this is a reminder from {business}: {amount} is due for order {delivery}. Thank you.".into(),
                 ar: "مرحباً {customer}، تذكير من {business}: المبلغ {amount} مستحق للطلب {delivery}. شكراً لك.".into(),
+            },
+            payment_ack: MessageTemplate {
+                en: "Hello {customer}, {business} has received your payment of {amount} (ref {reference}). Thank you.".into(),
+                ar: "مرحباً {customer}، استلم {business} دفعتك بمبلغ {amount} (المرجع {reference}). شكراً لك.".into(),
             },
         }
     }

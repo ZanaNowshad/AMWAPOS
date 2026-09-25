@@ -565,6 +565,8 @@ impl AppCore {
             // Post-commit hardware I/O. Failures are reported, never raised.
             self.print_pending_for(&result.sale_id);
             self.receipt_pdf_after_commit("sale", &result.sale_id);
+            // Only queues a row; WhatsApp sending happens elsewhere.
+            self.wa_after_sale(&s, &result.sale_id);
             result.print = self.db.read(|c| crate::printing::latest_job_outcome(c, "sale", &result.sale_id)).unwrap_or(None);
         } else {
             result.print = self.db.read(|c| crate::printing::latest_job_outcome(c, "sale", &result.sale_id)).unwrap_or(None);

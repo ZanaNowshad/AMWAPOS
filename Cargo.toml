@@ -9,7 +9,7 @@ license = "LicenseRef-AMWAPOS-Proprietary"
 rust-version = "1.80"
 
 [workspace.dependencies]
-rusqlite = { version = "0.40", features = ["bundled", "backup", "functions"] }
+rusqlite = { version = "0.39", features = ["bundled", "backup", "functions"] }
 argon2 = "0.5"
 ulid = "1"
 sha2 = "0.10"
@@ -30,4 +30,6 @@ hmac = "0.12"
 [profile.release]
 lto = "thin"
 codegen-units = 4
+# unwind (not abort): a panic in the WhatsApp or OCR task is contained by its
+# supervisor and never takes down the till.
 panic = "unwind"

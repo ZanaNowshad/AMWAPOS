@@ -324,6 +324,8 @@ pub struct PaymentReview {
     pub ocr_confidence: Option<i64>,
     pub ocr_text: Option<String>,
     pub duplicate_of: Option<String>,
+    /// OCR assessment: ocr_match | likely_match | mismatch | needs_review.
+    pub ocr_status: Option<String>,
     pub status: String,
     pub reason: Option<String>,
     pub decided_by_name: Option<String>,
@@ -336,7 +338,7 @@ fn load_review(c: &Connection, id: &str) -> AppResult<PaymentReview> {
     c.query_row(
         "SELECT p.review_id, p.review_number, p.source, p.inbox_seq, p.phone, p.customer_id, cu.name, p.sale_id, p.delivery_id, d.delivery_number,
                 p.expected_minor, p.detected_minor, p.detected_reference, p.ocr_confidence, p.ocr_text, p.duplicate_of, p.status, p.reason,
-                u.display_name, p.decided_at, p.note, p.created_at
+                u.display_name, p.decided_at, p.note, p.created_at, p.ocr_status
          FROM payment_reviews p LEFT JOIN customers cu ON cu.customer_id=p.customer_id
          LEFT JOIN delivery_orders d ON d.delivery_id=p.delivery_id LEFT JOIN users u ON u.user_id=p.decided_by
          WHERE p.review_id=?1",
@@ -365,6 +367,7 @@ fn load_review(c: &Connection, id: &str) -> AppResult<PaymentReview> {
                 decided_at: r.get(19)?,
                 note: r.get(20)?,
                 created_at: r.get(21)?,
+                ocr_status: r.get(22)?,
             })
         },
     )
@@ -372,8 +375,16 @@ fn load_review(c: &Connection, id: &str) -> AppResult<PaymentReview> {
     .ok_or_else(|| AppError::not_found("Payment review"))
 }
 
-/// Compare what OCR found with what we expect.
-fn evaluate(expected: Option<i64>, detected: Option<i64>, confidence: Option<i64>, duplicate: bool) -> (&'static str, &'static str) {
+/// Compare what OCR found with what we expect. OCR is assistance only: the
+/// result is `ocr_match | likely_match | mismatch | needs_review`, and a person
+/// still confirms or rejects. A screenshot never settles a sale by itself.
+fn evaluate(
+    expected: Option<i64>,
+    detected: Option<i64>,
+    confidence: Option<i64>,
+    has_reference: bool,
+    duplicate: bool,
+) -> (&'static str, &'static str) {
     if duplicate {
         return ("needs_review", "duplicate_image");
     }
@@ -381,8 +392,9 @@ fn evaluate(expected: Option<i64>, detected: Option<i64>, confidence: Option<i64
         (_, None) => ("needs_review", "amount_not_found"),
         (None, Some(_)) => ("needs_review", "no_expected_amount"),
         (Some(e), Some(d)) if e != d => ("mismatch", "amount_differs"),
-        _ if confidence.unwrap_or(0) < MIN_CONFIDENCE => ("needs_review", "low_confidence"),
-        _ => ("matched", "amount_matches"),
+        _ if confidence.unwrap_or(0) < MIN_CONFIDENCE => ("likely_match", "low_confidence"),
+        _ if !has_reference => ("likely_match", "no_reference"),
+        _ => ("ocr_match", "amount_matches"),
     }
 }
 
@@ -564,7 +576,7 @@ impl AppCore {
 
     /// Runtime: open reviews for new WhatsApp images (payment_reviews module on).
     pub fn pr_from_inbox(&self, seqs: &[i64]) -> AppResult<Vec<String>> {
-        if seqs.is_empty() || !self.features().map(|f| f.is_on("payment_reviews")).unwrap_or(false) {
+        if seqs.is_empty() || !self.features().map(|f| f.is_on("ocr.payment_screenshots")).unwrap_or(false) {
             return Ok(vec![]);
         }
         self.db.write(|tx| {
@@ -596,7 +608,7 @@ impl AppCore {
     ) -> AppResult<PaymentReview> {
         let s = self.session(token)?;
         s.require("payments.review")?;
-        self.require_feature("payment_reviews")?;
+        self.require_feature("ocr.payment_screenshots")?;
         let id = new_id();
         let (dst, sha) = store_image(&self.data_dir.join("payment-reviews"), file_name, data_b64, &id)?;
         if let Some(e) = expected_minor {
@@ -629,7 +641,7 @@ impl AppCore {
         s.require("payments.review")?;
         self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT review_id FROM payment_reviews WHERE (?1 IS NULL OR status=?1 OR (?1='open' AND status IN ('pending','matched','mismatch','needs_review')))
+                "SELECT review_id FROM payment_reviews WHERE (?1 IS NULL OR status=?1 OR (?1='open' AND status IN ('pending','ocr_match','likely_match','mismatch','needs_review')))
                  ORDER BY created_at DESC LIMIT 500",
             )?;
             let ids = st.query_map([status.filter(|x| !x.is_empty())], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
@@ -688,13 +700,14 @@ impl AppCore {
                 validate::money_non_negative(e, "Expected amount")?;
             }
             let (status, reason) = if r.ocr_text.is_some() {
-                evaluate(expected, r.detected_minor, r.ocr_confidence, r.duplicate_of.is_some())
+                evaluate(expected, r.detected_minor, r.ocr_confidence, r.detected_reference.is_some(), r.duplicate_of.is_some())
             } else {
                 ("pending", "awaiting_ocr")
             };
+            let ocr_status = (status != "pending").then_some(status);
             tx.execute(
-                "UPDATE payment_reviews SET expected_minor=?2, delivery_id=COALESCE(?3, delivery_id), status=?4, reason=?5, updated_at=?6 WHERE review_id=?1",
-                params![id, expected, delivery.map(|d| d.0), status, reason, time::now_str()],
+                "UPDATE payment_reviews SET expected_minor=?2, delivery_id=COALESCE(?3, delivery_id), status=?4, reason=?5, ocr_status=?6, updated_at=?7 WHERE review_id=?1",
+                params![id, expected, delivery.map(|d| d.0), status, reason, ocr_status, time::now_str()],
             )?;
             audit::record(tx, &actor, "payment_review.expected_set", "payment_review", Some(&id), None, Some(&json!({ "expected_minor": expected })))?;
             Ok(())
@@ -717,7 +730,7 @@ impl AppCore {
             let now = time::now_str();
             match d.decision.as_str() {
                 "confirm" => {
-                    if r.status != "matched" && note.is_none() {
+                    if r.status != "ocr_match" && note.is_none() {
                         return Err(AppError::validation("Add a note explaining why you confirm a payment that did not match automatically."));
                     }
                     let delivery = d.delivery_id.clone().filter(|x| !x.is_empty()).map(|x| validate::id(&x, "Delivery")).transpose()?.or(r.delivery_id.clone());
@@ -763,6 +776,9 @@ impl AppCore {
             }
             Ok(())
         })?;
+        if d.decision == "confirm" {
+            self.wa_after_payment_confirmed(&s, &id);
+        }
         self.db.read(|c| load_review(c, &id))
     }
 
@@ -771,7 +787,7 @@ impl AppCore {
     pub fn inv_import(&self, token: &str, file_name: &str, data_b64: &str, supplier_id: Option<String>) -> AppResult<InvoiceScan> {
         let s = self.session(token)?;
         s.require("ocr.scan")?;
-        self.require_feature("ocr")?;
+        self.require_feature("ocr.supplier_invoices")?;
         let id = new_id();
         let (dst, sha) = store_image(&self.data_dir.join("invoice-scans"), file_name, data_b64, &id)?;
         let supplier = supplier_id.filter(|x| !x.is_empty()).map(|x| validate::id(&x, "Supplier")).transpose()?;
@@ -978,7 +994,7 @@ impl AppCore {
                 }
                 "payment" => {
                     s.require("payments.review")?;
-                    tx.execute("UPDATE payment_reviews SET ocr_text=NULL, status='pending', reason='awaiting_ocr' WHERE review_id=?1 AND status NOT IN ('confirmed','rejected')", [&id])?
+                    tx.execute("UPDATE payment_reviews SET ocr_text=NULL, ocr_status=NULL, status='pending', reason='awaiting_ocr' WHERE review_id=?1 AND status NOT IN ('confirmed','rejected')", [&id])?
                 }
                 _ => return Err(AppError::validation("Unknown OCR record type.")),
             };
@@ -994,17 +1010,19 @@ impl AppCore {
     /// Runtime: images waiting for OCR (only when the OCR module is on).
     pub fn ocr_pending(&self, limit: i64) -> AppResult<Vec<OcrJob>> {
         let f = self.features()?;
-        if !f.is_on("ocr") {
+        if !f.is_on("ocr.enabled") {
             return Ok(vec![]);
         }
         self.db.read(|c| {
             let mut jobs = vec![];
-            let mut st = c.prepare("SELECT scan_id, image_path FROM invoice_scans WHERE status='imported' ORDER BY created_at LIMIT ?1")?;
-            for r in st.query_map([limit], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
-                let (id, path) = r?;
-                jobs.push(OcrJob { kind: "invoice", id, path });
+            if f.is_on("ocr.supplier_invoices") {
+                let mut st = c.prepare("SELECT scan_id, image_path FROM invoice_scans WHERE status='imported' ORDER BY created_at LIMIT ?1")?;
+                for r in st.query_map([limit], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+                    let (id, path) = r?;
+                    jobs.push(OcrJob { kind: "invoice", id, path });
+                }
             }
-            if f.is_on("payment_reviews") {
+            if f.is_on("ocr.payment_screenshots") {
                 let mut st = c.prepare("SELECT review_id, image_path FROM payment_reviews WHERE status='pending' AND ocr_text IS NULL ORDER BY created_at LIMIT ?1")?;
                 for r in st.query_map([limit], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
                     let (id, path) = r?;
@@ -1060,16 +1078,16 @@ impl AppCore {
                         None => None,
                     };
                     let dup = dup.or(ref_dup);
-                    let (status, reason) = evaluate(expected, ex.amount_minor, Some(conf), dup.is_some());
+                    let (status, reason) = evaluate(expected, ex.amount_minor, Some(conf), ex.reference.is_some(), dup.is_some());
                     tx.execute(
-                        "UPDATE payment_reviews SET ocr_text=?2, ocr_confidence=?3, detected_minor=?4, detected_reference=?5, duplicate_of=?6, status=?7, reason=?8, updated_at=?9
+                        "UPDATE payment_reviews SET ocr_text=?2, ocr_confidence=?3, detected_minor=?4, detected_reference=?5, duplicate_of=?6, status=?7, ocr_status=?7, reason=?8, updated_at=?9
                          WHERE review_id=?1 AND status='pending'",
                         params![id, text.chars().take(20_000).collect::<String>(), conf, ex.amount_minor, ex.reference, dup, status, reason, now],
                     )?;
                 }
                 ("payment", Err(e)) => {
                     tx.execute(
-                        "UPDATE payment_reviews SET ocr_text='', status='needs_review', reason='ocr_failed', note=COALESCE(note, ?2), updated_at=?3 WHERE review_id=?1 AND status='pending'",
+                        "UPDATE payment_reviews SET ocr_text='', status='needs_review', ocr_status='needs_review', reason='ocr_failed', note=COALESCE(note, ?2), updated_at=?3 WHERE review_id=?1 AND status='pending'",
                         params![id, e.chars().take(300).collect::<String>(), now],
                     )?;
                 }
@@ -1135,12 +1153,13 @@ mod tests {
 
     #[test]
     fn review_evaluation() {
-        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(90), false).0, "matched");
-        assert_eq!(evaluate(Some(12_500), Some(12_000), Some(90), false).0, "mismatch");
-        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(40), false).0, "needs_review");
-        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(90), true).1, "duplicate_image");
-        assert_eq!(evaluate(None, Some(1), Some(90), false).1, "no_expected_amount");
-        assert_eq!(evaluate(Some(1), None, Some(90), false).1, "amount_not_found");
+        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(90), true, false).0, "ocr_match");
+        assert_eq!(evaluate(Some(12_500), Some(12_000), Some(90), true, false).0, "mismatch");
+        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(40), true, false), ("likely_match", "low_confidence"));
+        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(90), false, false), ("likely_match", "no_reference"));
+        assert_eq!(evaluate(Some(12_500), Some(12_500), Some(90), true, true).1, "duplicate_image");
+        assert_eq!(evaluate(None, Some(1), Some(90), true, false).1, "no_expected_amount");
+        assert_eq!(evaluate(Some(1), None, Some(90), true, false).1, "amount_not_found");
     }
 
     #[test]

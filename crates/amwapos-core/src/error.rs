@@ -52,6 +52,8 @@ pub enum ErrorCode {
     Duplicate,
     /// Not enough disk space for the operation.
     InsufficientDisk,
+    /// The bundled OCR models are missing or damaged; OCR stays off.
+    OcrModelMissing,
     /// Unexpected internal failure.
     Internal,
 }

@@ -2,7 +2,7 @@
 //! gates, permissions, send-once semantics and "OCR never posts stock".
 mod common;
 
-use amwapos_core::messaging::QueueRequest;
+use amwapos_core::messaging::{Inbound, QueueRequest};
 use amwapos_core::pricing::TenderInput;
 use amwapos_core::sales::FinalizeRequest;
 use amwapos_core::ErrorCode;
@@ -53,14 +53,22 @@ fn whatsapp_receipt_is_gated_queued_once_and_retried() {
     let err = e.core.wa_queue(t, receipt_req(&sale_id, &op_id)).unwrap_err();
     assert_eq!(err.code, ErrorCode::Conflict);
     assert_eq!(err.details.unwrap()["kind"], "feature_disabled");
+    // `whatsapp.enabled` alone does not allow receipts; the old `whatsapp` key still reads as enabled.
     features(&e, json!({ "whatsapp": true }));
+    assert!(e.core.features().unwrap().is_on("whatsapp.enabled"));
+    let err = e.core.wa_queue(t, receipt_req(&sale_id, &op_id)).unwrap_err();
+    assert_eq!(err.details.unwrap()["feature"], "whatsapp.send_receipts");
+    features(&e, json!({ "whatsapp.enabled": true, "whatsapp.send_receipts": true }));
     let m = e.core.wa_queue(t, receipt_req(&sale_id, &op_id)).unwrap();
     assert_eq!(m.status, "queued");
     assert_eq!(m.to_phone, "+97333334444");
     assert!(m.body.contains("الإيصال"), "{}", m.body);
     assert!(m.document_name.as_deref().unwrap().ends_with(".pdf"));
-    // Same operation id → same message.
+    // Same key + same payload → same message; same key + different payload → refused.
     assert_eq!(e.core.wa_queue(t, receipt_req(&sale_id, &op_id)).unwrap().message_id, m.message_id);
+    let mut other = receipt_req(&sale_id, &op_id);
+    other.to_phone = Some("33335555".into());
+    assert_eq!(e.core.wa_queue(t, other).unwrap_err().code, ErrorCode::IdempotencyMismatch);
     assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_outbox"), 1);
     // The PDF exists and is a PDF.
     let jobs = e.core.wa_claim_due(10).unwrap();
@@ -102,7 +110,7 @@ fn pdf_receipt_failure_never_affects_the_sale() {
 fn payment_screenshot_review_flow() {
     let e = env();
     let t = &e.owner_token;
-    features(&e, json!({ "whatsapp": true, "ocr": true, "payment_reviews": true }));
+    features(&e, json!({ "whatsapp.enabled": true, "ocr.enabled": true, "ocr.payment_screenshots": true }));
     let d = e
         .core
         .delivery_create(
@@ -111,35 +119,58 @@ fn payment_screenshot_review_flow() {
                 .unwrap(),
         )
         .unwrap();
-    let img = e.dir.path().join("wa-shot.png");
-    std::fs::write(&img, b"fake png bytes").unwrap();
-    let msg = |id: &str| {
-        json!({ "id": id, "chat": "97333334444@s.whatsapp.net", "ts": 1_790_000_000, "type": "image", "caption": "paid",
-                "media": { "path": img.to_string_lossy(), "mime": "image/png", "sha256": "abc123" } })
+    let msg = |id: &str| Inbound {
+        wa_id: id.into(),
+        chat: "97333334444@s.whatsapp.net".into(),
+        ts: 1_790_000_000,
+        kind: "image".into(),
+        caption: Some("paid".into()),
+        media_mime: Some("image/png".into()),
+        media_ref: Some(format!("ref-{id}")),
+        ..Default::default()
+    };
+    // Inbound media is committed first and downloaded later, then reviewed.
+    let fetch = |e: &Env| -> Vec<String> {
+        let mut ids = vec![];
+        for j in e.core.wa_media_pending(10).unwrap() {
+            ids.extend(e.core.wa_media_saved(j.seq, b"same screenshot bytes", j.mime.as_deref()).unwrap());
+        }
+        ids
     };
     // An unknown sender becomes a customer on contact import (once).
-    e.core
-        .wa_ingest(&[json!({ "id": "T1", "chat": "97339998888@s.whatsapp.net", "ts": 1_790_000_000, "type": "text", "text": "hi", "push_name": "Maryam" })])
-        .unwrap();
+    let hello = Inbound {
+        wa_id: "T1".into(),
+        chat: "97339998888@s.whatsapp.net".into(),
+        ts: 1_790_000_000,
+        kind: "text".into(),
+        text: Some("hi".into()),
+        push_name: Some("Maryam".into()),
+        ..Default::default()
+    };
+    e.core.wa_ingest(&[hello]).unwrap();
     let r = e.core.wa_import_contacts(t, None).unwrap();
     assert_eq!(r["created"], 1);
     assert_eq!(count(&e, "SELECT COUNT(*) FROM customers WHERE name='Maryam' AND phone='+97339998888'"), 1);
     assert_eq!(e.core.wa_import_contacts(t, None).unwrap()["created"], 0);
-    let imgs = e.core.wa_ingest(&[msg("M1"), msg("M1")]).unwrap();
-    assert_eq!(imgs.len(), 1, "same WhatsApp message is stored once");
-    let ids = e.core.pr_from_inbox(&imgs).unwrap();
+    assert_eq!(e.core.wa_ingest(&[msg("M1"), msg("M1")]).unwrap(), 1, "same WhatsApp message is stored once");
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_inbox WHERE media_state='pending'"), 1);
+    let ids = fetch(&e);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_inbox WHERE media_state='saved' AND media_path IS NOT NULL"), 1);
     let r = &e.core.pr_list(t, Some("open".into())).unwrap()[0];
     assert_eq!(r.review_id, ids[0]);
     assert_eq!(r.expected_minor, Some(12_500), "expected amount comes from the open delivery for that phone");
     assert_eq!(r.delivery_id.as_deref(), Some(d.delivery_id.as_str()));
     let jobs = e.core.ocr_pending(5).unwrap();
     assert_eq!(jobs.iter().filter(|j| j.kind == "payment").count(), 1);
-    e.core.ocr_result("payment", &ids[0], Ok(("BenefitPay\nAmount BHD 12.500\nRef 99887766".into(), 91))).unwrap();
+    e.core.ocr_result("payment", &ids[0], Ok(("BenefitPay\nAmount BHD 12.500\nReference No: 998877665544".into(), 91))).unwrap();
     let r = &e.core.pr_list(t, None).unwrap()[0];
-    assert_eq!((r.status.as_str(), r.detected_minor), ("matched", Some(12_500)));
+    assert_eq!((r.status.as_str(), r.detected_minor), ("ocr_match", Some(12_500)));
+    assert_eq!(r.ocr_status.as_deref(), Some("ocr_match"));
+    // Matching is never settlement: the delivery is still unpaid until a person confirms.
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM delivery_orders WHERE payment_status='paid'"), 0);
     // The same image again is flagged as a duplicate, never auto-matched.
-    let imgs = e.core.wa_ingest(&[msg("M2")]).unwrap();
-    let dup = e.core.pr_from_inbox(&imgs).unwrap();
+    e.core.wa_ingest(&[msg("M2")]).unwrap();
+    let dup = fetch(&e);
     e.core.ocr_result("payment", &dup[0], Ok(("Amount BHD 12.500".into(), 95))).unwrap();
     let r2 = e.core.pr_list(t, None).unwrap().into_iter().find(|x| x.review_id == dup[0]).unwrap();
     assert_eq!((r2.status.as_str(), r2.reason.as_deref()), ("needs_review", Some("duplicate_image")));
@@ -149,14 +180,88 @@ fn payment_screenshot_review_flow() {
     assert_eq!(e.core.pr_decide(t, decide(&dup[0], None)).unwrap_err().code, ErrorCode::Validation);
     let (_, cashier) = e.user("Sara", "role_cashier", "2468");
     assert_eq!(e.core.pr_decide(&cashier, decide(&ids[0], None)).unwrap_err().code, ErrorCode::Forbidden);
-    // Confirm the matched one: delivery becomes paid, with an event and audit row.
+    // Confirm the matched one: delivery becomes paid, with an event and audit row,
+    // and (setting on) a payment acknowledgement is queued after the commit.
+    let mut wa: amwapos_core::settings::WhatsAppSettings = e.core.db.read(|c| amwapos_core::settings::get(c, "whatsapp")).unwrap();
+    wa.auto_payment_ack = true;
+    e.core.settings_save(t, "whatsapp", serde_json::to_value(&wa).unwrap()).unwrap();
     e.core.pr_decide(t, decide(&ids[0], None)).unwrap();
+    let ack = e.core.wa_outbox_list(t, None, None).unwrap().into_iter().find(|m| m.kind == "payment_ack").unwrap();
+    assert!(ack.body.contains("12.500") && ack.body.contains("PR-"), "{}", ack.body);
     assert_eq!(
         count(&e, &format!("SELECT COUNT(*) FROM delivery_orders WHERE delivery_id='{}' AND payment_status='paid'", d.delivery_id)),
         1
     );
     assert_eq!(count(&e, "SELECT COUNT(*) FROM audit_logs WHERE event_type='payment_review.confirmed'"), 1);
     assert_eq!(e.core.pr_decide(t, decide(&ids[0], None)).unwrap_err().code, ErrorCode::Conflict);
+    // Right amount but low confidence: likely_match, which still needs a note to confirm.
+    e.core.wa_ingest(&[msg("M3")]).unwrap();
+    for j in e.core.wa_media_pending(10).unwrap() {
+        e.core.wa_media_saved(j.seq, b"another screenshot", j.mime.as_deref()).unwrap();
+    }
+    let open = e.core.pr_list(t, Some("pending".into())).unwrap();
+    let low = &open[0];
+    e.core.pr_set_expected(t, &low.review_id, Some(3_000), None).unwrap();
+    e.core.ocr_result("payment", &low.review_id, Ok(("Amount BHD 3.000\nReference No: 111122223333".into(), 40))).unwrap();
+    let r3 = e.core.pr_list(t, None).unwrap().into_iter().find(|x| x.review_id == low.review_id).unwrap();
+    assert_eq!((r3.status.as_str(), r3.reason.as_deref()), ("likely_match", Some("low_confidence")));
+    assert_eq!(e.core.pr_decide(t, decide(&low.review_id, None)).unwrap_err().code, ErrorCode::Validation);
+}
+
+#[test]
+fn receipts_and_delivery_notices_are_queued_after_commit() {
+    let e = env();
+    let t = &e.owner_token;
+    let cust = e
+        .core
+        .customer_save(t, None, serde_json::from_value(json!({ "name": "Ali", "phone": "33337777", "whatsapp": "33337777" })).unwrap())
+        .unwrap();
+    // Flags off: a sale with a customer queues nothing.
+    let sale_for = |e: &Env| {
+        let t = &e.owner_token;
+        e.core.pos_scan(t, "7001", Some(1000)).unwrap();
+        let cart = e.core.pos_set_customer(t, Some(cust.customer_id.clone())).unwrap();
+        let cart_id = cart.cart_id.clone().unwrap();
+        let total = cart.totals.total_minor;
+        e.core
+            .pos_finalize(
+                t,
+                FinalizeRequest {
+                    cart_id,
+                    operation_id: op(),
+                    tenders: vec![TenderInput { method: "cash".into(), amount_minor: total, reference: None }],
+                    approval_token: None,
+                    expected_total_minor: Some(total),
+                },
+            )
+            .unwrap()
+            .sale_id
+    };
+    e.open_shift(t, 0);
+    e.product("Laban 1L", "7001", 450, 300, 10_000);
+    sale_for(&e);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_outbox"), 0);
+    features(&e, json!({ "whatsapp.enabled": true, "whatsapp.send_receipts": true, "whatsapp.delivery_notices": true }));
+    let sid = sale_for(&e);
+    assert_eq!(
+        count(&e, &format!("SELECT COUNT(*) FROM wa_outbox WHERE kind='receipt' AND sale_id='{sid}' AND to_phone='+97333337777'")),
+        1
+    );
+    // Delivery: dispatched and delivered notices, once each.
+    let d = e
+        .core
+        .delivery_create(
+            t,
+            serde_json::from_value(json!({ "customer_id": cust.customer_id, "phone": "33337777", "area": "Riffa", "amount_minor": 1_000 }))
+                .unwrap(),
+        )
+        .unwrap();
+    e.core.delivery_update(t, &d.delivery_id, Some("dispatched".into()), None, None, None).unwrap();
+    e.core.delivery_update(t, &d.delivery_id, Some("delivered".into()), None, None, None).unwrap();
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_outbox WHERE kind='dispatch'"), 1);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM wa_outbox WHERE kind='delivered'"), 1);
+    // WhatsApp never touched the sale: it is committed whatever happens to the message.
+    assert_eq!(count(&e, &format!("SELECT COUNT(*) FROM sales WHERE sale_id='{sid}'")), 1);
 }
 
 #[test]
@@ -168,7 +273,9 @@ fn invoice_scan_creates_only_a_draft_order() {
     let sup = e.core.supplier_save(t, None, serde_json::from_value(json!({ "name": "ACME" })).unwrap()).unwrap();
     let data = amwapos_core::ids::b64(b"jpeg");
     assert_eq!(e.core.inv_import(t, "invoice.jpg", &data, None).unwrap_err().details.unwrap()["kind"], "feature_disabled");
-    features(&e, json!({ "ocr": true }));
+    features(&e, json!({ "ocr.enabled": true }));
+    assert_eq!(e.core.inv_import(t, "invoice.jpg", &data, None).unwrap_err().details.unwrap()["feature"], "ocr.supplier_invoices");
+    features(&e, json!({ "ocr.enabled": true, "ocr.supplier_invoices": true }));
     let scan = e.core.inv_import(t, "invoice.jpg", &data, Some(sup.supplier_id.clone())).unwrap();
     assert_eq!(scan.status, "imported");
     let text = "Invoice No: INV-7\n6291041500213 Milk 12 x 0.420 5.040\nRice Basmati 5kg 2 3.100 6.200\nMystery item 1.000\nTotal 12.240";

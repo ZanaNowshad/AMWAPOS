@@ -8,5 +8,6 @@ Bundled offline OCR models (Tesseract LSTM, integerized "best"):
 Source: npm `@tesseract.js-data/eng@1.0.0` and `@tesseract.js-data/ara@1.0.0` (`4.0.0_best_int`),
 which repackage tesseract-ocr/tessdata_best. License: Apache-2.0.
 
-At startup the sidecar checks each file against `models.json`. OCR stays disabled when the English
-model is missing or its hash does not match.
+The OCR worker (`crates/amwapos-hub/src/ocr_worker.rs`) checks each file against `models.json`,
+unpacks it into `<data>/ocr/tessdata` and runs the bundled Tesseract with it. OCR reports
+`ocr_model_missing` and stays disabled when the English model is missing or its hash does not match.

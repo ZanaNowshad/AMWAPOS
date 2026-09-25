@@ -17,4 +17,4 @@ coverage/
 /.amwapos-e2e/
 *.tsbuildinfo
 *.cdx.json
-src-tauri/resources/node/
+src-tauri/resources/tesseract/

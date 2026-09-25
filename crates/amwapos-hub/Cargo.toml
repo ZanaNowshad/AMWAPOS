@@ -8,7 +8,7 @@ description = "AMWAPOS LAN hub server, terminal sync client and discovery"
 [dependencies]
 amwapos-core = { path = "../amwapos-core" }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "process", "io-util", "fs"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -21,6 +21,13 @@ rand.workspace = true
 ed25519-dalek = "2"
 sha2.workspace = true
 base64 = "0.22"
+# Unofficial WhatsApp Web client, in-process. Pinned exactly: the API changes
+# between minor versions (0.6 samples do not apply).
+whatsapp-rust = { version = "=0.7.0", default-features = false, features = ["sqlite-storage", "tokio-transport", "tokio-runtime", "tokio-native", "ureq-client"] }
+async-trait = "0.1"
+anyhow = "1"
+flate2 = "1"
+rusqlite.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

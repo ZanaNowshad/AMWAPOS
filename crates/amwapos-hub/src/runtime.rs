@@ -12,7 +12,8 @@ use amwapos_core::{AppCore, AppError, AppResult};
 use serde_json::{json, Value};
 use tokio::task::JoinHandle;
 
-use crate::sidecar::{Sidecar, SidecarPaths};
+use crate::ocr_worker::{OcrPaths, OcrWorker};
+use crate::whatsapp::{RustWhatsAppAdapter, WhatsAppAdapter, WhatsAppService};
 use crate::{client, discovery, server};
 
 /// Result of an OS step-up check (Windows Hello) for a sensitive action.
@@ -29,8 +30,15 @@ pub type StepUpHook = Arc<dyn Fn(&str) -> StepUp + Send + Sync>;
 
 /// Commands that also need the step-up when the `windows_hello` module is on.
 /// The staff PIN (or manager approval) is always still required.
-pub const STEP_UP_COMMANDS: &[&str] =
-    &["auth.approve", "backup.restore", "ai.proposal_confirm", "customers.account_adjust", "updates.install", "sync.reset_hub_credentials"];
+pub const STEP_UP_COMMANDS: &[&str] = &[
+    "auth.approve",
+    "backup.restore",
+    "ai.proposal_confirm",
+    "customers.account_adjust",
+    "updates.install",
+    "sync.reset_hub_credentials",
+    "whatsapp.session_backup",
+];
 
 struct HubTasks {
     server: JoinHandle<()>,
@@ -43,15 +51,14 @@ pub struct Runtime {
     hub: Mutex<Option<HubTasks>>,
     sync_loop: Mutex<Option<JoinHandle<()>>>,
     maintenance: Mutex<Option<JoinHandle<()>>>,
-    automation: Mutex<Option<JoinHandle<()>>>,
-    /// WhatsApp/OCR sidecar supervisor.
-    pub sidecar: Arc<Sidecar>,
+    /// WhatsApp (in-process adapter + supervisor), feature `whatsapp.enabled`.
+    pub whatsapp: Arc<WhatsAppService>,
+    /// OCR worker (bundled Tesseract), feature `ocr.enabled`.
+    pub ocr: Arc<OcrWorker>,
     /// Signed update checker/installer.
     pub updater: Arc<crate::updater::Updater>,
     /// OS step-up provider (set by the desktop shell on Windows).
     pub step_up: Mutex<Option<StepUpHook>>,
-    /// Reconnect a linked WhatsApp automatically (off after a manual disconnect).
-    wa_autostart: Arc<std::sync::atomic::AtomicBool>,
     /// Override for the hub bind address (tests use 127.0.0.1 and port 0-style ports).
     pub bind_ip: Ipv4Addr,
     pub sync_interval: Duration,
@@ -68,15 +75,14 @@ fn arg(args: &Value, k: &str) -> AppResult<String> {
 impl Runtime {
     pub fn new(core: Arc<AppCore>) -> Arc<Self> {
         Arc::new(Self {
-            core,
+            core: core.clone(),
             hub: Mutex::new(None),
             sync_loop: Mutex::new(None),
             maintenance: Mutex::new(None),
-            automation: Mutex::new(None),
-            sidecar: Sidecar::new(SidecarPaths::discover(None)),
+            whatsapp: WhatsAppService::new(core.clone(), Arc::new(RustWhatsAppAdapter::new())),
+            ocr: OcrWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
-            wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: Ipv4Addr::UNSPECIFIED,
             sync_interval: Duration::from_secs(5),
         })
@@ -84,15 +90,14 @@ impl Runtime {
 
     pub fn with_bind(core: Arc<AppCore>, ip: Ipv4Addr, sync_interval: Duration) -> Arc<Self> {
         Arc::new(Self {
-            core,
+            core: core.clone(),
             hub: Mutex::new(None),
             sync_loop: Mutex::new(None),
             maintenance: Mutex::new(None),
-            automation: Mutex::new(None),
-            sidecar: Sidecar::new(SidecarPaths::discover(None)),
+            whatsapp: WhatsAppService::new(core.clone(), Arc::new(RustWhatsAppAdapter::new())),
+            ocr: OcrWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
-            wa_autostart: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             bind_ip: ip,
             sync_interval,
         })
@@ -133,13 +138,14 @@ impl Runtime {
         }
     }
 
-    /// Point the supervisor at the installed sidecar (Tauri resource folder).
-    pub fn set_sidecar_resources(&self, resource_dir: Option<&std::path::Path>) {
-        self.sidecar.set_paths(SidecarPaths::discover(resource_dir));
+    /// Point the OCR worker at the installed engine and models (Tauri resource folder).
+    pub fn set_resources(&self, resource_dir: Option<&std::path::Path>) {
+        self.ocr.set_paths(OcrPaths::discover(resource_dir));
     }
 
-    fn automation_wanted(&self) -> bool {
-        self.core.features().map(|f| f.is_on("whatsapp") || f.is_on("ocr")).unwrap_or(false)
+    /// Use another WhatsApp adapter (tests use `FakeAdapter`).
+    pub fn set_whatsapp_adapter(&self, a: Arc<dyn WhatsAppAdapter>) {
+        self.whatsapp.set_adapter(a);
     }
 
     /// Start or stop services to match the current device mode. Idempotent.
@@ -184,24 +190,23 @@ impl Runtime {
                 *g = Some(client::spawn_sync_loop(self.core.clone(), self.sync_interval));
             }
         }
-        // WhatsApp / OCR automation (sidecar) when either module is on.
-        {
-            let mut g = self.automation.lock().unwrap();
-            let running = g.as_ref().map(|h| !h.is_finished()).unwrap_or(false);
-            if self.automation_wanted() && !running {
-                *g = Some(tokio::spawn(crate::automation::run(self.core.clone(), self.sidecar.clone(), self.wa_autostart.clone())));
-            }
-        }
+        // Optional modules; each runs on its own tasks and never blocks selling.
+        self.whatsapp.ensure();
+        self.ocr.ensure();
         // Maintenance: scheduled backups.
         let mut g = self.maintenance.lock().unwrap();
         if g.as_ref().map(|h| h.is_finished()).unwrap_or(true) {
             let core = self.core.clone();
             let updater = self.updater.clone();
+            let (wa, ocr) = (self.whatsapp.clone(), self.ocr.clone());
             *g = Some(tokio::spawn(async move {
                 let mut minutes: u64 = 0;
                 loop {
                     tokio::time::sleep(Duration::from_secs(60)).await;
                     minutes += 1;
+                    // Watchdog: restart a WhatsApp or OCR task that died.
+                    wa.ensure();
+                    ocr.ensure();
                     // Daily signed-update check when the owner turned it on.
                     if minutes % 1440 == 5 {
                         let c = core.clone();
@@ -309,59 +314,82 @@ impl Runtime {
                 let conv = args.get("conversation_id").and_then(|v| v.as_str()).map(|s| s.to_string());
                 crate::ai_client::ask(self.core.clone(), t, conv, arg(&args, "message")?).await
             }
-            "sidecar.status" => {
+            "whatsapp.status" | "ocr.status" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let c = self.core.clone();
-                let features = blocking(move || {
+                let (features, summary) = blocking(move || {
                     let s = c.session(&t)?;
-                    if !(s.has("whatsapp.manage") || s.has("ocr.scan") || s.has("payments.review") || s.has("diagnostics.view")) {
+                    let ok =
+                        ["whatsapp.manage", "whatsapp.send", "ocr.scan", "payments.review", "diagnostics.view"].iter().any(|p| s.has(p));
+                    if !ok {
                         s.require("whatsapp.manage")?;
                     }
-                    c.features()
+                    let summary = c.wa_summary(&t).unwrap_or(Value::Null);
+                    Ok((c.features()?, summary))
                 })
                 .await?;
-                let mut st = self.sidecar.status().await;
-                st["features"] = json!({ "whatsapp": features.is_on("whatsapp"), "ocr": features.is_on("ocr"), "payment_reviews": features.is_on("payment_reviews") });
-                st["autostart"] = json!(self.wa_autostart.load(std::sync::atomic::Ordering::Relaxed));
-                Ok(st)
+                self.whatsapp.ensure();
+                let w = self.ocr.clone();
+                let _ = tokio::task::spawn_blocking(move || w.prepare()).await;
+                let flag = |n: &str| features.is_on(n);
+                Ok(json!({
+                    "whatsapp": self.whatsapp.status(),
+                    "ocr": self.ocr.status(),
+                    "queue": summary,
+                    "features": {
+                        "whatsapp.enabled": flag("whatsapp.enabled"),
+                        "whatsapp.send_receipts": flag("whatsapp.send_receipts"),
+                        "whatsapp.delivery_notices": flag("whatsapp.delivery_notices"),
+                        "ocr.enabled": flag("ocr.enabled"),
+                        "ocr.payment_screenshots": flag("ocr.payment_screenshots"),
+                        "ocr.supplier_invoices": flag("ocr.supplier_invoices"),
+                    },
+                }))
             }
-            "whatsapp.connect" | "whatsapp.disconnect" | "whatsapp.unlink" | "sidecar.restart" => {
+            "whatsapp.start" | "whatsapp.pair_code" | "whatsapp.stop" | "whatsapp.logout" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let action = cmd.split('.').nth(1).unwrap_or_default().to_string();
+                let (c, a2) = (self.core.clone(), action.clone());
+                blocking(move || c.wa_link_action(&t, &a2)).await?;
+                match action.as_str() {
+                    "start" => self.whatsapp.start(None).await?,
+                    "pair_code" => {
+                        let phone = arg(&args, "phone")?;
+                        let p = amwapos_core::customers::normalize_phone(&phone)?
+                            .ok_or_else(|| AppError::validation("Enter the WhatsApp number of the shop's phone."))?;
+                        self.whatsapp.start(Some(p)).await?
+                    }
+                    "stop" => self.whatsapp.stop().await?,
+                    _ => self.whatsapp.logout().await?,
+                }
+                Ok(serde_json::to_value(self.whatsapp.status()).unwrap_or(Value::Null))
+            }
+            "whatsapp.session_backup" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                if args.get("acknowledge_risk").and_then(|v| v.as_bool()) != Some(true) {
+                    return Err(AppError::validation(
+                        "Confirm that you understand the risk: anyone with this file can read and send this shop's WhatsApp messages.",
+                    ));
+                }
                 let c = self.core.clone();
-                let a2 = action.clone();
-                blocking(move || if a2 == "restart" { c.session(&t)?.require("settings.manage") } else { c.wa_link_action(&t, &a2) })
-                    .await?;
-                use std::sync::atomic::Ordering;
-                let long = Duration::from_secs(20);
-                let r = match action.as_str() {
-                    "connect" => {
-                        self.wa_autostart.store(true, Ordering::Relaxed);
-                        self.sidecar.ensure(&self.core).await?;
-                        self.ensure_services();
-                        self.sidecar.call("/whatsapp/start", Some(json!({})), long).await?
-                    }
-                    "disconnect" => {
-                        self.wa_autostart.store(false, Ordering::Relaxed);
-                        self.sidecar.call("/whatsapp/stop", Some(json!({})), long).await.unwrap_or(Value::Null)
-                    }
-                    "unlink" => {
-                        self.wa_autostart.store(false, Ordering::Relaxed);
-                        self.sidecar.ensure(&self.core).await?;
-                        self.sidecar.call("/whatsapp/logout", Some(json!({})), long).await?
-                    }
-                    _ => {
-                        self.sidecar.stop().await;
-                        if self.automation_wanted() {
-                            self.sidecar.ensure(&self.core).await?;
-                        }
-                        self.ensure_services();
-                        Value::Null
-                    }
-                };
-                Ok(r)
+                blocking(move || {
+                    c.session(&t)?.require("settings.manage")?;
+                    c.wa_link_action(&t, "session_backup")
+                })
+                .await?;
+                let (sp, dir) = (self.whatsapp.session_path().clone(), self.core.data_dir.join("backups").join("whatsapp-session"));
+                let path = blocking(move || sp.backup_to(&dir)).await?;
+                Ok(json!({ "path": path.display().to_string() }))
             }
             _ => {
+                // Turning OCR on needs the bundled models; otherwise it stays off.
+                if cmd == "settings.save"
+                    && args.get("key").and_then(|k| k.as_str()) == Some("features")
+                    && args.get("value").and_then(|v| v.get("ocr.enabled")).and_then(|v| v.as_bool()) == Some(true)
+                {
+                    let w = self.ocr.clone();
+                    tokio::task::spawn_blocking(move || w.prepare()).await.map_err(|e| AppError::internal(e.to_string()))??;
+                }
                 let core = self.core.clone();
                 let c = cmd.to_string();
                 let res = blocking(move || match c.as_str() {
@@ -378,8 +406,18 @@ impl Runtime {
                     _ => commands::dispatch(&core, &c, token.as_deref(), args),
                 })
                 .await;
-                if matches!(cmd, "setup.initialize" | "sync.enable_hub" | "backup.restore" | "settings.save") && res.is_ok() {
-                    self.ensure_services();
+                if res.is_ok() {
+                    match cmd {
+                        "setup.initialize" | "sync.enable_hub" | "backup.restore" | "settings.save" => self.ensure_services(),
+                        "whatsapp.queue"
+                        | "whatsapp.mark_read"
+                        | "whatsapp.outbox_action"
+                        | "payreviews.decide"
+                        | "deliveries.update"
+                        | "pos.finalize" => self.whatsapp.poke.notify_one(),
+                        "invoicescan.import" | "payreviews.upload" | "ocr.retry" => self.ocr.poke.notify_one(),
+                        _ => {}
+                    }
                 }
                 res
             }

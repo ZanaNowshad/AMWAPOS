@@ -311,6 +311,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "whatsapp.media" => out(core.wa_media(tk()?, req(&args, "seq")?)),
         "whatsapp.mark_read" => out(core.wa_mark_read(tk()?, &req::<String>(&args, "chat")?)),
         "whatsapp.summary" => out(core.wa_summary(tk()?)),
+        "whatsapp.recent" => out(core.wa_recent(tk()?, opt(&args, "limit")?)),
         "whatsapp.import_contacts" => out(core.wa_import_contacts(tk()?, opt(&args, "chats")?)),
         // payment screenshot reviews
         "payreviews.list" => out(core.pr_list(tk()?, opt(&args, "status")?)),

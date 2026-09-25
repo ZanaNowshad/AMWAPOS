@@ -23,6 +23,7 @@ export type ErrorCode =
   | "sync"
   | "duplicate"
   | "insufficient_disk"
+  | "ocr_model_missing"
   | "internal"
   | "transport";
 

@@ -480,6 +480,9 @@ impl AppCore {
                 Some(&json!({ "status": status, "assigned_user_id": assigned_user_id, "payment_status": payment_status })))?;
             Ok(())
         })?;
+        if let Some(st) = status.as_deref() {
+            self.wa_after_delivery(&s, &id, st);
+        }
         self.db.read(|c| load_delivery(c, &id))
     }
 }
