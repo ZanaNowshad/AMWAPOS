@@ -83,6 +83,11 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("whatsapp.send", "Automation", "Send receipts and delivery updates on WhatsApp"),
     ("payments.review", "Automation", "Review payment screenshots"),
     ("ocr.scan", "Automation", "Scan supplier invoices"),
+    ("inventory.transfer", "Inventory", "Create, ship and receive stock transfers"),
+    ("loyalty.adjust", "Customers", "Adjust loyalty points by hand"),
+    ("orders.manage", "Customers", "Record and confirm digital orders"),
+    ("branches.manage", "System", "Create branches and assign staff to branches"),
+    ("branches.all", "System", "Work in every branch"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -97,7 +102,12 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
     let manager: Vec<&str> = all
         .iter()
         .copied()
-        .filter(|p| !matches!(*p, "roles.manage" | "backup.restore" | "sync.manage" | "ai.mutate" | "devices.manage"))
+        .filter(|p| {
+            !matches!(
+                *p,
+                "roles.manage" | "backup.restore" | "sync.manage" | "ai.mutate" | "devices.manage" | "branches.manage" | "branches.all"
+            )
+        })
         .collect();
     let cashier = vec![
         "pos.sell",
@@ -136,8 +146,9 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "purchasing.manage",
         "barcodes.resolve",
         "ocr.scan",
+        "inventory.transfer",
     ];
-    let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view", "whatsapp.send"];
+    let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view", "whatsapp.send", "orders.manage"];
     vec![
         (ROLE_OWNER, "Owner", "Full access", all),
         (ROLE_MANAGER, "Manager", "Store operations and overrides", manager),

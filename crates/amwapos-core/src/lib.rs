@@ -19,6 +19,7 @@ pub mod idempotency;
 pub mod ids;
 pub mod importer;
 pub mod inventory;
+pub mod loyalty;
 pub mod messaging;
 pub mod migration;
 pub mod money;
@@ -40,6 +41,7 @@ pub mod shifts;
 pub mod sync;
 pub mod system;
 pub mod time;
+pub mod transfers;
 pub mod users;
 pub mod validate;
 

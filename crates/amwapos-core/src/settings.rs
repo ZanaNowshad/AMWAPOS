@@ -261,6 +261,21 @@ pub struct FeatureFlags {
     pub pdf_receipts: bool,
     /// Check for signed updates.
     pub updates: bool,
+    /// Stock locations inside a branch and stock transfers.
+    #[serde(rename = "inventory.locations")]
+    pub inventory_locations: bool,
+    /// Loyalty points (earn on committed sales, redeem as a discount).
+    #[serde(rename = "loyalty.enabled")]
+    pub loyalty: bool,
+    /// Digital order intake (phone / WhatsApp / web) converted to sales on a till.
+    #[serde(rename = "orders.digital")]
+    pub orders_digital: bool,
+    /// Several branches in one organisation (branch stock, prices, users).
+    #[serde(rename = "org.multi_branch")]
+    pub multi_branch: bool,
+    /// Read-only owner companion page served by the hub on the LAN.
+    #[serde(rename = "pwa.companion")]
+    pub pwa_companion: bool,
 }
 
 impl FeatureFlags {
@@ -280,6 +295,11 @@ impl FeatureFlags {
             "windows_hello" => self.windows_hello,
             "pdf_receipts" => self.pdf_receipts,
             "updates" => self.updates,
+            "inventory.locations" => self.inventory_locations,
+            "loyalty.enabled" => self.loyalty,
+            "orders.digital" => self.orders_digital,
+            "org.multi_branch" => self.multi_branch,
+            "pwa.companion" => self.pwa_companion,
             _ => false,
         }
     }
@@ -346,6 +366,27 @@ impl Default for WhatsAppSettings {
     }
 }
 
+/// Loyalty points (module `loyalty.enabled`). Amounts are in minor units
+/// (fils for BHD).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct LoyaltySettings {
+    /// One point per this much paid (after discounts), e.g. 100 = 1 point per 0.100.
+    pub earn_minor_per_point: i64,
+    /// Value of one point when redeemed as a discount, e.g. 5 = 0.005.
+    pub redeem_minor_per_point: i64,
+    /// Lines that already carry a discount earn no points.
+    pub exclude_discounted_lines: bool,
+    /// Smallest redemption.
+    pub min_redeem_points: i64,
+}
+impl Default for LoyaltySettings {
+    fn default() -> Self {
+        Self { earn_minor_per_point: 100, redeem_minor_per_point: 5, exclude_discounted_lines: true, min_redeem_points: 100 }
+    }
+}
+pub const KEY_LOYALTY: &str = "loyalty";
+
 /// Where to look for signed updates. The verifying key is built into the app.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
@@ -383,6 +424,7 @@ pub const EDITABLE_KEYS: &[&str] = &[
     KEY_APPEARANCE,
     KEY_FEATURES,
     KEY_WHATSAPP,
+    KEY_LOYALTY,
 ];
 
 pub fn get<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> AppResult<T> {
@@ -438,6 +480,16 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
                 return Err(AppError::validation("The update address must use https://."));
             }
             serde_json::to_value(UpdateSettings { feed_url: f.to_string(), auto_check: u.auto_check })?
+        }
+        KEY_LOYALTY => {
+            let l: LoyaltySettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            if !(1..=1_000_000).contains(&l.earn_minor_per_point) || !(1..=1_000_000).contains(&l.redeem_minor_per_point) {
+                return Err(AppError::validation("Earn and redeem rates must be positive amounts."));
+            }
+            if !(0..=1_000_000).contains(&l.min_redeem_points) {
+                return Err(AppError::validation("The minimum redemption must be between 0 and 1,000,000 points."));
+            }
+            serde_json::to_value(l)?
         }
         KEY_WHATSAPP => {
             let w: WhatsAppSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;

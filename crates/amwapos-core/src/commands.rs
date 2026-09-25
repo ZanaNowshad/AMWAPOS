@@ -155,6 +155,11 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "reason")?,
             opt(&args, "approval_token")?,
         )),
+        "pos.loyalty_redeem" => out(core.pos_loyalty_redeem(tk()?, req(&args, "points")?)),
+        "loyalty.customer" => out(core.loyalty_customer(tk()?, &req::<String>(&args, "customer_id")?)),
+        "loyalty.adjust" => {
+            out(core.loyalty_adjust(tk()?, &req::<String>(&args, "customer_id")?, req(&args, "points")?, &req::<String>(&args, "note")?))
+        }
         "pos.set_customer" => out(core.pos_set_customer(tk()?, opt(&args, "customer_id")?)),
         "pos.hold" => out(core.pos_hold(tk()?, opt(&args, "note")?)),
         "pos.held" => out(core.pos_held_list(tk()?)),
@@ -341,6 +346,19 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "receive")?.unwrap_or(false),
         )),
         "invoicescan.reject" => out(core.inv_reject(tk()?, &req::<String>(&args, "scan_id")?, &req::<String>(&args, "reason")?)),
+        // stock locations and transfers (inventory.locations)
+        "locations.list" => out(core.locations_list(tk()?)),
+        "locations.save" => out(core.location_save(tk()?, opt(&args, "location_id")?, req(&args, "location")?)),
+        "locations.stock" => out(core.location_stock(tk()?, &req::<String>(&args, "location_id")?)),
+        "transfers.create" => out(core.transfer_create(tk()?, all(&args)?)),
+        "transfers.ship" => out(core.transfer_ship(tk()?, &req::<String>(&args, "transfer_id")?, &req::<String>(&args, "operation_id")?)),
+        "transfers.receive" => {
+            out(core.transfer_receive(tk()?, &req::<String>(&args, "transfer_id")?, &req::<String>(&args, "operation_id")?))
+        }
+        "transfers.cancel" => out(core.transfer_cancel(tk()?, &req::<String>(&args, "transfer_id")?)),
+        "transfers.list" => out(core.transfers_list(tk()?, opt(&args, "status")?)),
+        "transfers.get" => out(core.transfer_get(tk()?, &req::<String>(&args, "transfer_id")?)),
+        "transfers.in_transit" => out(core.transfers_in_transit(tk()?)),
         "ocr.retry" => out(core.ocr_retry(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "id")?)),
         "backup.create" => out(core.backup_create(tk()?, opt(&args, "directory")?)),
         "backup.inspect" => out(core.backup_inspect(tk()?, &req::<String>(&args, "path")?)),

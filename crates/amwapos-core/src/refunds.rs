@@ -286,6 +286,7 @@ impl AppCore {
                     &crate::credit::refund_op(&req.operation_id),
                 )?;
             }
+            crate::loyalty::record_refund(tx, &s, &self.actor(&s, None), &sid, &rid, comp.total)?;
             crate::printing::enqueue(tx, "refund", &rid, None, Some(&s.user_id))?;
             if tenders.iter().any(|t| t.method == "cash") {
                 crate::printing::enqueue_drawer_pulse(tx, Some(&s.user_id), &rid)?;

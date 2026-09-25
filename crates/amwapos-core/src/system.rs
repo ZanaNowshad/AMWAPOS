@@ -120,6 +120,7 @@ impl AppCore {
                 settings::KEY_APPEARANCE => serde_json::to_value(settings::get::<settings::AppearanceSettings>(c, key)?)?,
                 settings::KEY_FEATURES => serde_json::to_value(settings::get::<settings::FeatureFlags>(c, key)?)?,
                 settings::KEY_WHATSAPP => serde_json::to_value(settings::get::<settings::WhatsAppSettings>(c, key)?)?,
+                settings::KEY_LOYALTY => serde_json::to_value(settings::get::<settings::LoyaltySettings>(c, key)?)?,
                 settings::KEY_UPDATES => serde_json::to_value(settings::get::<settings::UpdateSettings>(c, key)?)?,
                 _ => Value::Null,
             };

@@ -40,6 +40,8 @@ pub struct CartLineView {
     pub tax_inclusive: bool,
     pub is_custom: bool,
     pub stock_milli: Option<i64>,
+    /// Reorder point of a tracked product (for the low-stock hint on the line).
+    pub reorder_point_milli: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +64,9 @@ pub struct CartView {
     pub hold_note: Option<String>,
     pub version: i64,
     pub notices: Vec<String>,
+    /// Loyalty (module on and a customer on the sale): balance, points
+    /// redeemed on this sale and their discount value.
+    pub loyalty: Option<serde_json::Value>,
 }
 
 impl CartView {
@@ -78,6 +83,7 @@ impl CartView {
             hold_note: None,
             version: 0,
             notices: vec![],
+            loyalty: None,
         }
     }
 }
@@ -271,16 +277,27 @@ pub(crate) fn line_inputs(lines: &[LineRecord]) -> Vec<LineInput> {
 }
 
 pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec<String>) -> AppResult<CartView> {
-    let (status, customer_id, cd_minor, cd_bp, hold_no, hold_note, version): (String, Option<String>, i64, i64, Option<i64>, Option<String>, i64) = c
+    type CartHead = (String, Option<String>, i64, i64, Option<i64>, Option<String>, i64, i64);
+    let (status, customer_id, cd_minor, cd_bp, hold_no, hold_note, version, points): CartHead = c
         .query_row(
-            "SELECT status, customer_id, cart_discount_minor, cart_discount_bp, hold_number, hold_note, version FROM carts WHERE cart_id=?1",
+            "SELECT status, customer_id, cart_discount_minor, cart_discount_bp, hold_number, hold_note, version, loyalty_points FROM carts WHERE cart_id=?1",
             [cart_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
         )
         .optional()?
         .ok_or_else(|| AppError::not_found("Sale"))?;
     let lines = load_lines(c, cart_id)?;
-    let (priced, totals) = pricing::price_cart(&line_inputs(&lines), cd_minor, cd_bp)?;
+    let lp = crate::loyalty::price(c, &lines, cd_minor, cd_bp, customer_id.as_deref(), points)?;
+    let loyalty = match &customer_id {
+        Some(cid) if crate::loyalty::enabled(c)? => {
+            let cfg: crate::settings::LoyaltySettings = crate::settings::get(c, crate::settings::KEY_LOYALTY)?;
+            Some(serde_json::json!({ "balance": crate::loyalty::balance(c, cid)?, "points": lp.points, "discount_minor": lp.loyalty_minor,
+                "earn_estimate": crate::loyalty::earned(&cfg, &lp), "redeem_minor_per_point": cfg.redeem_minor_per_point,
+                "min_redeem_points": cfg.min_redeem_points }))
+        }
+        _ => None,
+    };
+    let (priced, totals) = (lp.lines, lp.totals);
     let customer = match customer_id {
         Some(cid) => c
             .query_row("SELECT customer_id, name, phone FROM customers WHERE customer_id=?1", [&cid], |r| {
@@ -293,6 +310,12 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
     for (l, p) in lines.iter().zip(priced) {
         let stock = match (&l.product_id, l.track_inventory) {
             (Some(pid), true) => Some(crate::inventory::current_qty(c, pid, &s.branch_id)?),
+            _ => None,
+        };
+        let reorder: Option<i64> = match (&l.product_id, l.track_inventory) {
+            (Some(pid), true) => {
+                c.query_row("SELECT reorder_point_milli FROM products WHERE product_id=?1", [pid], |r| r.get(0)).optional()?
+            }
             _ => None,
         };
         views.push(CartLineView {
@@ -317,6 +340,7 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
             tax_inclusive: l.tax_inclusive,
             is_custom: l.is_custom,
             stock_milli: stock,
+            reorder_point_milli: reorder,
         });
     }
     Ok(CartView {
@@ -331,6 +355,7 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
         hold_note,
         version,
         notices,
+        loyalty,
     })
 }
 
@@ -911,7 +936,38 @@ impl AppCore {
                 None => None,
             };
             let cart = if cid.is_some() { ensure_cart(tx, &s)? } else { cart_for_edit(tx, &s, None)? };
-            tx.execute("UPDATE carts SET customer_id=?2 WHERE cart_id=?1", params![cart, cid])?;
+            // A redemption belongs to the previous customer's points.
+            tx.execute("UPDATE carts SET customer_id=?2, loyalty_points=0 WHERE cart_id=?1", params![cart, cid])?;
+            touch(tx, &cart)?;
+            cart_view(tx, &s, &cart, vec![])
+        })
+    }
+
+    /// Redeem loyalty points on the current sale as a discount (0 clears it).
+    /// Capped to the customer's balance and to what the sale can absorb; the
+    /// ledger entry is written when the sale commits.
+    pub fn pos_loyalty_redeem(&self, token: &str, points: i64) -> AppResult<CartView> {
+        let s = self.session(token)?;
+        require_sell(&s)?;
+        self.require_feature("loyalty.enabled")?;
+        if points < 0 {
+            return Err(AppError::validation("Points cannot be negative."));
+        }
+        self.db.write(|tx| {
+            let cart = cart_for_edit(tx, &s, None)?;
+            let customer: Option<String> = tx.query_row("SELECT customer_id FROM carts WHERE cart_id=?1", [&cart], |r| r.get(0))?;
+            let cid = customer.ok_or_else(|| AppError::validation("Choose the customer first."))?;
+            if points > 0 {
+                let cfg: crate::settings::LoyaltySettings = crate::settings::get(tx, crate::settings::KEY_LOYALTY)?;
+                let bal = crate::loyalty::balance(tx, &cid)?;
+                if points > bal {
+                    return Err(AppError::validation(format!("The customer has {bal} points.")));
+                }
+                if points < cfg.min_redeem_points {
+                    return Err(AppError::validation(format!("Redeem at least {} points.", cfg.min_redeem_points)));
+                }
+            }
+            tx.execute("UPDATE carts SET loyalty_points=?2 WHERE cart_id=?1", params![cart, points])?;
             touch(tx, &cart)?;
             cart_view(tx, &s, &cart, vec![])
         })

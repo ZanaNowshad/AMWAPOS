@@ -12,7 +12,7 @@ use crate::idempotency::{self, Check};
 use crate::ids::{new_id, next_seq};
 use crate::inventory::{self, Movement};
 use crate::money;
-use crate::pos::{line_inputs, load_lines};
+use crate::pos::load_lines;
 use crate::pricing::{self, TenderInput};
 use crate::printing::PrintOutcome;
 use crate::service::AppCore;
@@ -393,11 +393,12 @@ impl AppCore {
                 }
                 Check::New { payload_hash } => payload_hash,
             };
-            let (status, dev, user, customer_id, cd_minor, cd_bp): (String, String, String, Option<String>, i64, i64) = tx
+            type Head = (String, String, String, Option<String>, i64, i64, i64);
+            let (status, dev, user, customer_id, cd_minor, cd_bp, loyalty_points): Head = tx
                 .query_row(
-                    "SELECT status, device_id, user_id, customer_id, cart_discount_minor, cart_discount_bp FROM carts WHERE cart_id=?1",
+                    "SELECT status, device_id, user_id, customer_id, cart_discount_minor, cart_discount_bp, loyalty_points FROM carts WHERE cart_id=?1",
                     [&cart_id],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
                 )
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Sale"))?;
@@ -412,7 +413,8 @@ impl AppCore {
             if lines.is_empty() {
                 return Err(AppError::validation("The sale is empty."));
             }
-            let (priced, totals) = pricing::price_cart(&line_inputs(&lines), cd_minor, cd_bp)?;
+            let lp = crate::loyalty::price(tx, &lines, cd_minor, cd_bp, customer_id.as_deref(), loyalty_points)?;
+            let (priced, totals) = (lp.lines.clone(), lp.totals.clone());
             if let Some(exp) = req.expected_total_minor {
                 if exp != totals.total_minor {
                     return Err(AppError::conflict("The sale total changed. Review the basket and take payment again.")
@@ -441,28 +443,29 @@ impl AppCore {
             tx.execute(
                 "INSERT INTO sales(sale_id, receipt_number, branch_id, device_id, shift_id, cashier_user_id, customer_id, status,
                     subtotal_minor, discount_minor, tax_minor, total_minor, paid_minor, change_minor, cost_total_minor, item_count_milli,
-                    cart_id, operation_id, business_date, completed_at, created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,'completed',?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?19)",
+                    cart_id, operation_id, business_date, completed_at, created_at, loyalty_discount_minor)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,'completed',?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?19,?20)",
                 params![
                     sale_id, receipt_number, s.branch_id, s.device_id, shift_id, s.user_id, customer_id,
                     totals.subtotal_minor, totals.discount_minor, totals.tax_minor, totals.total_minor, paid, change,
-                    cost_total, totals.item_count_milli, cart_id, req.operation_id, business_date, now_s
+                    cost_total, totals.item_count_milli, cart_id, req.operation_id, business_date, now_s, lp.loyalty_minor
                 ],
             )?;
-            for ((l, p), cost) in lines.iter().zip(&priced).zip(&costs) {
+            for (((l, p), cost), loyalty_share) in lines.iter().zip(&priced).zip(&costs).zip(&lp.loyalty_alloc) {
                 let item_id = new_id();
                 let approver = l.discount_approved_by.clone();
                 tx.execute(
                     "INSERT INTO sale_items(sale_item_id, sale_id, line_no, product_id, product_name_snapshot, sku_snapshot, barcode_snapshot,
                         category_id_snapshot, unit, qty_milli, original_unit_price_minor, effective_unit_price_minor, gross_minor, discount_minor,
                         tax_rule_id, tax_rate_bp, tax_inclusive, tax_minor, line_total_minor, cost_snapshot_minor, is_custom,
-                        price_override_by, discount_approved_by, product_name_ar_snapshot)
+                        price_override_by, discount_approved_by, product_name_ar_snapshot, loyalty_discount_minor)
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,
-                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4))",
+                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4),?24)",
                     params![
                         item_id, sale_id, l.line_no, l.product_id, l.name, l.sku, l.barcode, l.category_id, l.unit, l.qty_milli,
                         l.catalog_unit_price_minor, l.unit_price_minor, p.gross_minor, p.discount_minor, l.tax_rule_id, l.tax_rate_bp,
-                        l.tax_inclusive as i64, p.tax_minor, p.line_total_minor, cost, l.is_custom as i64, l.price_override_by, approver
+                        l.tax_inclusive as i64, p.tax_minor, p.line_total_minor, cost, l.is_custom as i64, l.price_override_by, approver,
+                        loyalty_share
                     ],
                 )?;
                 if l.track_inventory {
@@ -516,6 +519,8 @@ impl AppCore {
                 "UPDATE carts SET status='completed', sale_id=?2, shift_id=?3, updated_at=?4, version=version+1 WHERE cart_id=?1",
                 params![cart_id, sale_id, shift_id, now_s],
             )?;
+            // Loyalty ledger entries, inside this commit.
+            crate::loyalty::record_sale(tx, &s, &self.actor(&s, None), customer_id.as_deref(), &sale_id, &lp)?;
             let print_job = if tz_currency.1 {
                 Some(crate::printing::enqueue(tx, "sale", &sale_id, None, Some(&s.user_id))?)
             } else {

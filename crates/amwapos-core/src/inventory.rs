@@ -33,6 +33,12 @@ pub struct Movement<'a> {
 
 /// Append a movement and update the cached stock level. Returns the new balance.
 pub fn apply_movement(c: &Connection, m: &Movement) -> AppResult<i64> {
+    apply_movement_at(c, m, None)
+}
+
+/// As `apply_movement`, recording the stock location inside the branch
+/// (`None` = the branch's default stockroom).
+pub fn apply_movement_at(c: &Connection, m: &Movement, location_id: Option<&str>) -> AppResult<i64> {
     if m.qty_delta_milli == 0 {
         return current_qty(c, m.product_id, m.branch_id);
     }
@@ -45,8 +51,8 @@ pub fn apply_movement(c: &Connection, m: &Movement) -> AppResult<i64> {
     let balance = current_qty(c, m.product_id, m.branch_id)?;
     c.execute(
         "INSERT INTO stock_movements(movement_id, product_id, branch_id, type, qty_delta_milli, unit_cost_minor, balance_after_milli,
-             source_type, source_id, reason, user_id, device_id, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+             source_type, source_id, reason, user_id, device_id, created_at, location_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
         params![
             new_id(),
             m.product_id,
@@ -60,7 +66,8 @@ pub fn apply_movement(c: &Connection, m: &Movement) -> AppResult<i64> {
             m.reason,
             m.user_id,
             m.device_id,
-            now
+            now,
+            location_id
         ],
     )?;
     Ok(balance)
