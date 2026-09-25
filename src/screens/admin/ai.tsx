@@ -222,7 +222,7 @@ export function AiAssistantPage() {
         title={t("AI Assistant")}
         subtitle={t("Ask about sales, stock, margins and purchasing. The assistant reads data with your permissions.")}
       />
-      <FeatureGate feature="ai">
+      <FeatureGate feature="ai.enabled">
         {!st ? (
           <Skeleton />
         ) : !st.ready ? (
@@ -275,8 +275,13 @@ export function AiAssistantPage() {
                       "The assistant may propose price, stock and purchase-order changes. Nothing changes until a person confirms.",
                     )
                   : t("Read-only: the assistant cannot change anything.")}{" "}
-                {t("Provider")}: {st.settings.provider === "anthropic" ? "Anthropic" : t("OpenAI-compatible")} ·{" "}
-                {st.settings.model}
+                {t("Provider")}:{" "}
+                {st.settings.provider === "anthropic"
+                  ? "Anthropic"
+                  : st.settings.provider === "fake"
+                    ? t("Offline test model")
+                    : t("OpenAI-compatible")}{" "}
+                · {st.settings.model}
               </div>
               {conv?.untrusted_seen ? (
                 <Banner tone="warning">
@@ -398,11 +403,12 @@ export function AiSettingsSection() {
               setS({
                 ...s,
                 provider,
-                model: provider === "anthropic" ? "claude-opus-5" : s.model,
+                model: provider === "anthropic" ? "claude-opus-5" : provider === "fake" ? "fake-local" : s.model,
                 base_url: provider === "anthropic" ? "" : s.base_url,
               });
             }}
           >
+            <option value="fake">{t("Offline test model (no key, nothing sent)")}</option>
             <option value="anthropic">Anthropic (Claude)</option>
             <option value="openai_compatible">{t("OpenAI-compatible endpoint")}</option>
           </select>

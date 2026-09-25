@@ -138,7 +138,7 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("customers.view")?;
         let cid = validate::id(customer_id, "Customer")?;
-        let credit = self.features()?.is_on("customer_credit");
+        let credit = self.features()?.is_on("customers.credit");
         self.db.read(|c| {
             let mut st = c.prepare(
                 "SELECT address_id, label, area, address, notes, is_default FROM customer_addresses WHERE customer_id=?1 ORDER BY is_default DESC, label",
@@ -176,7 +176,7 @@ impl AppCore {
     pub fn customer_account_set(&self, token: &str, customer_id: &str, enabled: bool, credit_limit_minor: i64) -> AppResult<Value> {
         let s = self.session(token)?;
         s.require("customers.credit")?;
-        self.require_feature("customer_credit")?;
+        self.require_feature("customers.credit")?;
         let cid = validate::id(customer_id, "Customer")?;
         validate::money_non_negative(credit_limit_minor, "Credit limit")?;
         let actor = self.actor(&s, None);
@@ -209,7 +209,7 @@ impl AppCore {
     pub fn customer_account_payment(&self, token: &str, req: AccountPayment) -> AppResult<Value> {
         let s = self.session(token)?;
         s.require("customers.credit")?;
-        self.require_feature("customer_credit")?;
+        self.require_feature("customers.credit")?;
         let cid = validate::id(&req.customer_id, "Customer")?;
         validate::money_non_negative(req.amount_minor, "Amount")?;
         if req.amount_minor == 0 {
@@ -278,7 +278,7 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("customers.credit")?;
         s.require("customers.credit_override")?;
-        self.require_feature("customer_credit")?;
+        self.require_feature("customers.credit")?;
         let cid = validate::id(customer_id, "Customer")?;
         if amount_minor == 0 {
             return Err(AppError::validation("Enter a non-zero amount."));

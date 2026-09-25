@@ -30,20 +30,22 @@ pub type StepUpHook = Arc<dyn Fn(&str) -> StepUp + Send + Sync>;
 
 /// Commands that also need the step-up when the `windows_hello` module is on.
 /// The staff PIN (or manager approval) is always still required.
-pub const STEP_UP_COMMANDS: &[&str] = &[
-    "auth.approve",
-    "backup.restore",
-    "ai.proposal_confirm",
-    "customers.account_adjust",
-    "updates.install",
-    "sync.reset_hub_credentials",
-    "whatsapp.session_backup",
-];
+pub const STEP_UP_COMMANDS: &[&str] = &["auth.approve", "refunds.create", "cash.event", "whatsapp.session_backup"];
+
+/// Whether this call needs the step-up: manager overrides (approvals),
+/// refunds, cash paid out, and the WhatsApp session backup acknowledgement.
+pub fn needs_step_up(cmd: &str, args: &Value) -> bool {
+    match cmd {
+        "cash.event" => args.get("kind").or_else(|| args.get("event_type")).and_then(|k| k.as_str()) == Some("paid_out"),
+        c => STEP_UP_COMMANDS.contains(&c),
+    }
+}
 
 struct HubTasks {
     server: JoinHandle<()>,
     discovery: JoinHandle<()>,
     port: u16,
+    ip: Ipv4Addr,
 }
 
 pub struct Runtime {
@@ -103,6 +105,23 @@ impl Runtime {
         })
     }
 
+    /// Listen address: the test override, else the configured store-network
+    /// address when it still belongs to this computer, else all interfaces.
+    fn hub_ip(&self) -> Ipv4Addr {
+        if self.bind_ip != Ipv4Addr::UNSPECIFIED {
+            return self.bind_ip;
+        }
+        let want = self.core.terminal_sync_settings().map(|s| s.bind_address).unwrap_or_default();
+        match want.parse::<Ipv4Addr>() {
+            Ok(ip) if discovery::local_addresses().contains(&ip.to_string()) => ip,
+            Ok(ip) => {
+                tracing::warn!(%ip, "configured hub address is not on this computer; listening on all interfaces");
+                Ipv4Addr::UNSPECIFIED
+            }
+            Err(_) => Ipv4Addr::UNSPECIFIED,
+        }
+    }
+
     fn hub_port(&self) -> u16 {
         self.core.terminal_sync_settings().map(|s| if s.port == 0 { DEFAULT_PORT } else { s.port }).unwrap_or(DEFAULT_PORT)
     }
@@ -147,7 +166,10 @@ impl Runtime {
     /// with the live state of the service and worker.
     async fn live_diagnostics(&self, v: &mut Value) {
         let f = self.core.features().unwrap_or_default();
-        let wa = self.whatsapp.status();
+        let mut wa = self.whatsapp.status();
+        // A QR or pairing code would let someone link the number: never exported.
+        wa.qr = None;
+        wa.pair_code = None;
         let w = self.ocr.clone();
         let _ = tokio::task::spawn_blocking(move || w.prepare()).await;
         let ocr = self.ocr.status();
@@ -193,9 +215,10 @@ impl Runtime {
         // Hub server + discovery responder.
         if mode.as_deref() == Some("hub") {
             let port = self.hub_port();
+            let ip = self.hub_ip();
             let mut g = self.hub.lock().unwrap();
             let restart = match g.as_ref() {
-                Some(t) => t.port != port || t.server.is_finished(),
+                Some(t) => t.port != port || t.ip != ip || t.server.is_finished(),
                 None => true,
             };
             if restart {
@@ -204,7 +227,7 @@ impl Runtime {
                     t.discovery.abort();
                 }
                 let core = self.core.clone();
-                let addr = SocketAddr::from((self.bind_ip, port));
+                let addr = SocketAddr::from((ip, port));
                 let srv = tokio::spawn(async move {
                     if let Err(e) = server::serve(core, addr, std::future::pending()).await {
                         tracing::error!(%addr, error = %e, "hub API stopped");
@@ -216,7 +239,7 @@ impl Runtime {
                         tracing::warn!(error = %e, "discovery responder unavailable");
                     }
                 });
-                *g = Some(HubTasks { server: srv, discovery: disc, port });
+                *g = Some(HubTasks { server: srv, discovery: disc, port, ip });
             }
         } else if let Some(t) = self.hub.lock().unwrap().take() {
             t.server.abort();
@@ -246,6 +269,12 @@ impl Runtime {
                     // Watchdog: restart a WhatsApp or OCR task that died.
                     wa.ensure();
                     ocr.ensure();
+                    let c = core.clone();
+                    if let Ok(Ok((ok, _))) = tokio::task::spawn_blocking(move || c.receipt_pdf_retry_due()).await {
+                        if ok > 0 {
+                            tracing::info!(ok, "PDF receipt copies saved on retry");
+                        }
+                    }
                     // Daily signed-update check when the owner turned it on.
                     if minutes % 1440 == 5 {
                         let c = core.clone();
@@ -278,7 +307,7 @@ impl Runtime {
     /// Route a command. Network-backed commands are handled here; all others
     /// go to the core dispatcher.
     pub async fn dispatch(self: &Arc<Self>, cmd: &str, token: Option<String>, args: Value) -> AppResult<Value> {
-        if STEP_UP_COMMANDS.contains(&cmd) {
+        if needs_step_up(cmd, &args) {
             self.step_up_check(cmd, token.as_deref()).await?;
         }
         match cmd {
@@ -332,9 +361,12 @@ impl Runtime {
                 blocking(move || c.session(&t).map(|_| ())).await?;
                 let port = self.hub_port();
                 let running = self.hub.lock().map(|g| g.as_ref().map(|t| !t.server.is_finished()).unwrap_or(false)).unwrap_or(false);
-                Ok(
-                    json!({ "addresses": discovery::local_addresses().into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port, "running": running }),
-                )
+                let ips = discovery::local_addresses();
+                let bind = self.hub_ip();
+                let shown: Vec<String> = if bind == Ipv4Addr::UNSPECIFIED { ips.clone() } else { vec![bind.to_string()] };
+                let configured = self.core.terminal_sync_settings().map(|s| s.bind_address).unwrap_or_default();
+                Ok(json!({ "addresses": shown.into_iter().map(|a| format!("http://{a}:{port}")).collect::<Vec<_>>(), "port": port,
+                           "running": running, "ips": ips, "bind_address": configured }))
             }
             "updates.status" | "updates.check" | "updates.download" | "updates.install" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
@@ -352,6 +384,19 @@ impl Runtime {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let conv = args.get("conversation_id").and_then(|v| v.as_str()).map(|s| s.to_string());
                 crate::ai_client::ask(self.core.clone(), t, conv, arg(&args, "message")?).await
+            }
+            "sync.set_bind_address" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let address = args.get("address").and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+                if let Ok(ip) = address.parse::<Ipv4Addr>() {
+                    if !discovery::local_addresses().contains(&ip.to_string()) {
+                        return Err(AppError::validation("That address does not belong to this computer."));
+                    }
+                }
+                let c = self.core.clone();
+                let r = blocking(move || c.sync_set_bind_address(&t, &address)).await?;
+                self.ensure_services();
+                Ok(r)
             }
             "whatsapp.status" | "ocr.status" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
@@ -448,6 +493,12 @@ impl Runtime {
                 let res = match (cmd, res) {
                     ("diagnostics.get", Ok(mut v)) => {
                         self.live_diagnostics(&mut v).await;
+                        Ok(v)
+                    }
+                    ("diagnostics.export", Ok(mut v)) => {
+                        if let Some(items) = v.get_mut("items") {
+                            self.live_diagnostics(items).await;
+                        }
                         Ok(v)
                     }
                     (_, r) => r,

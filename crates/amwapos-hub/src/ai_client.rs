@@ -3,6 +3,9 @@
 //! signed-in user) and stores every message; this module only speaks HTTP.
 //!
 //! Providers:
+//! - `fake`: an offline, deterministic test model (the default until an owner
+//!   adds a key). It exercises the real tool loop and proposal flow with no
+//!   network and no data leaving the computer.
 //! - `anthropic`: Messages API (`POST /v1/messages`), manual tool loop,
 //!   adaptive thinking on current models, server-side refusal fallbacks.
 //! - `openai_compatible`: `POST {base}/chat/completions` with function tools,
@@ -97,6 +100,92 @@ async fn anthropic(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
     })
 }
 
+/// Offline test model. Understands a few phrasings and otherwise explains
+/// itself; tool calls go through the same permission-checked tools.
+fn fake(turn: &AiTurn) -> Reply {
+    let has = |n: &str| turn.tools.iter().any(|t| t["name"] == n);
+    let question = turn
+        .messages
+        .iter()
+        .rev()
+        .filter(|m| m["role"] == "user")
+        .find_map(|m| m["content"].as_array()?.iter().find(|b| b["type"] == "text")?.get("text")?.as_str().map(str::to_lowercase))
+        .unwrap_or_default();
+    let last = turn.messages.last().cloned().unwrap_or(Value::Null);
+    let results: Vec<Value> = if last["role"] == "user" {
+        last["content"].as_array().cloned().unwrap_or_default().into_iter().filter(|b| b["type"] == "tool_result").collect()
+    } else {
+        vec![]
+    };
+    let prev_tool = turn.messages.iter().rev().find(|m| m["role"] == "assistant").and_then(|m| {
+        m["content"].as_array()?.iter().find(|b| b["type"] == "tool_use").and_then(|b| b["name"].as_str().map(str::to_string))
+    });
+    // "price of <name> to <amount>"
+    let price_intent = question.split_once("price of ").and_then(|(_, rest)| {
+        let (name, amount) = rest.rsplit_once(" to ")?;
+        let amount = amount.split_whitespace().next()?.trim_end_matches(['.', '?']).to_string();
+        amount.parse::<f64>().ok()?;
+        Some((name.trim().to_string(), amount))
+    });
+    let n = turn.messages.len();
+    let call = |name: &str, input: Value| Reply {
+        content: json!([{ "type": "tool_use", "id": format!("fake_{n}"), "name": name, "input": input }]),
+        stop_reason: "tool_use".into(),
+        input_tokens: 0,
+        output_tokens: 0,
+    };
+    let say = |text: String| Reply {
+        content: json!([{ "type": "text", "text": text }]),
+        stop_reason: "end_turn".into(),
+        input_tokens: 0,
+        output_tokens: 0,
+    };
+    if let Some(r) = results.first() {
+        let body = r["content"].as_str().unwrap_or_default().to_string();
+        if prev_tool.as_deref() == Some("search_products") {
+            if let (Some((_, amount)), true) = (&price_intent, has("propose_price_change")) {
+                let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                let pid = find_key(&parsed, "product_id");
+                return match pid {
+                    Some(pid) => call(
+                        "propose_price_change",
+                        json!({ "product_id": pid, "new_price": amount, "reason": "Requested in the assistant (offline test model)" }),
+                    ),
+                    None => say("I could not find that product.".into()),
+                };
+            }
+        }
+        if prev_tool.as_deref().is_some_and(|t| t.starts_with("propose_")) {
+            return say("I prepared a proposal. Review it below and confirm it if it is right; nothing changes until you do.".into());
+        }
+        let short: String = body.chars().take(800).collect();
+        return say(format!("Here is what I found (offline test model):\n{short}"));
+    }
+    if let Some((name, _)) = &price_intent {
+        return call("search_products", json!({ "query": name, "limit": 1 }));
+    }
+    if question.contains("low stock") || question.contains("reorder") {
+        return call("low_stock", json!({ "limit": 20 }));
+    }
+    if question.contains("report") {
+        return call("list_reports", json!({}));
+    }
+    if let Some(q) = question.strip_prefix("find ").or_else(|| question.strip_prefix("search ")) {
+        return call("search_products", json!({ "query": q.trim(), "limit": 10 }));
+    }
+    say("This is the offline test model; it only understands: \"low stock\", \"reports\", \"find <product>\" and \"price of <product> to <amount>\". \
+         An owner can add a provider key in Settings → AI for real answers."
+        .into())
+}
+
+fn find_key(v: &Value, key: &str) -> Option<String> {
+    match v {
+        Value::Object(m) => m.get(key).and_then(|x| x.as_str()).map(str::to_string).or_else(|| m.values().find_map(|x| find_key(x, key))),
+        Value::Array(a) => a.iter().find_map(|x| find_key(x, key)),
+        _ => None,
+    }
+}
+
 /// Neutral (block) history → chat-completions messages.
 fn to_openai_messages(system: &str, messages: &[Value]) -> Vec<Value> {
     let mut out = vec![json!({ "role": "system", "content": system })];
@@ -168,6 +257,28 @@ async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<R
     })
 }
 
+/// One request without tools (extraction). Returns the text of the reply.
+pub async fn complete_once(turn: &AiTurn) -> AppResult<String> {
+    let http = reqwest::Client::builder().timeout(Duration::from_secs(180)).build().map_err(|e| AppError::internal(e.to_string()))?;
+    let reply = match turn.settings.provider.as_str() {
+        "openai_compatible" => openai_compatible(&http, turn).await?,
+        "anthropic" => anthropic(&http, turn).await?,
+        _ => return Err(AppError::conflict("No AI provider is configured.")),
+    };
+    Ok(reply
+        .content
+        .as_array()
+        .map(|a| a.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("\n"))
+        .unwrap_or_default())
+}
+
+/// The first JSON object in a model reply (tolerates code fences).
+pub fn json_object(text: &str) -> Option<Value> {
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    serde_json::from_str(text.get(start..=end)?).ok()
+}
+
 /// Ask a question: run the tool loop until the model finishes (or the round
 /// limit), storing every message. Returns the conversation for display.
 pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<String>, text: String) -> AppResult<Value> {
@@ -182,6 +293,7 @@ pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<Stri
     for _ in 0..MAX_ROUNDS {
         rounds += 1;
         let reply = match turn.settings.provider.as_str() {
+            "fake" => Ok(fake(&turn)),
             "openai_compatible" => openai_compatible(&http, &turn).await,
             _ => anthropic(&http, &turn).await,
         };

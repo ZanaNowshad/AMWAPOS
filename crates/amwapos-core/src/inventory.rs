@@ -237,6 +237,7 @@ pub(crate) fn receive_lines(
     }
     let mut total = 0i64;
     let now = time::now_str();
+    let costing = crate::settings::get::<crate::settings::InventorySettings>(c, crate::settings::KEY_INVENTORY)?.costing_method;
     for l in lines {
         let pid = validate::id(&l.product_id, "Product")?;
         let (track, dec, name): (i64, i64, String) = c
@@ -258,7 +259,29 @@ pub(crate) fn receive_lines(
              VALUES (?1,?2,?3,?4,'receiving',?5,?6,?7)",
             params![new_id(), pid, supplier_id, l.unit_cost_minor, receipt_id, now, s.user_id],
         )?;
-        update_avg_cost(c, &pid, &s.branch_id, l.qty_milli, l.unit_cost_minor)?;
+        // Cost changes only under the configured costing method, and every
+        // change is audited (old → new).
+        if costing == "weighted_average" {
+            let old = avg_cost(c, &pid, &s.branch_id)?;
+            let new = update_avg_cost(c, &pid, &s.branch_id, l.qty_milli, l.unit_cost_minor)?;
+            if new != old {
+                let actor = crate::audit::Actor {
+                    user_id: Some(s.user_id.clone()),
+                    device_id: Some(s.device_id.clone()),
+                    branch_id: Some(s.branch_id.clone()),
+                    approved_by: None,
+                };
+                crate::audit::record(
+                    c,
+                    &actor,
+                    "cost.updated",
+                    "product",
+                    Some(&pid),
+                    Some(&serde_json::json!({ "avg_cost_minor": old })),
+                    Some(&serde_json::json!({ "avg_cost_minor": new, "source": "receiving", "receipt_id": receipt_id })),
+                )?;
+            }
+        }
         if track == 1 {
             apply_movement(
                 c,

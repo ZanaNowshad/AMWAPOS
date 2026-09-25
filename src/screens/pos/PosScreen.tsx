@@ -349,6 +349,16 @@ export function PosScreen({
       const target = e.target as HTMLElement;
       const inField =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT");
+      // Shortcuts stay live in the scan field (always focused on a till) and
+      // are dead in any other text field, so typing never triggers them.
+      const inOtherField = inField && target !== scanRef.current;
+      if (inOtherField) return;
+      // "/" or Ctrl+K: product search (the scan field also searches by name).
+      if ((e.key === "/" && !inField) || (e.ctrlKey && e.key.toLowerCase() === "k")) {
+        e.preventDefault();
+        focusScan();
+        return;
+      }
       const fkeys: Record<string, () => void> = {
         F2: () => focusScan(),
         F3: () => setModal({ kind: "customer" }),

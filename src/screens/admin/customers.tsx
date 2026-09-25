@@ -187,7 +187,7 @@ export function CustomerDetailPage() {
   const [tab, setTab] = useState<"overview" | "purchases" | "deliveries" | "notes" | "addresses" | "account">(
     "overview",
   );
-  const credit = useFeature("customer_credit");
+  const credit = useFeature("customers.credit");
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState("");
   const [sale, setSale] = useState<string | null>(null);

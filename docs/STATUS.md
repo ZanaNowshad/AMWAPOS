@@ -92,3 +92,16 @@ Evidence was re-run on 2026-09-24:
 | Windows Hello step-up (flag `windows_hello`) | Partially complete | Runtime gate + audit (`tests/step_up.rs`); WinRT call type-checked for Windows | Run on a Windows machine with Hello |
 | PDF receipts (flag `pdf_receipts`) | Complete | Raster PDF after commit; failure never affects the sale (`tests/automation.rs`) | — |
 | Database encryption at rest | Deferred (known limit 3) | BitLocker guidance and threat paragraph in SECURITY.md | Owner decision |
+
+
+## Spec pass (items 3–42), 2026-09-25
+
+Flags (all default off): `hub`, `whatsapp.enabled`, `whatsapp.send_receipts`, `whatsapp.delivery_notices`,
+`ocr.enabled`, `ocr.payment_screenshots`, `ocr.supplier_invoices`, `ocr.ai_parse`, `ai.enabled`, `ai.mutations`,
+`customers.credit`, `windows_hello`, `pdf_receipts`, `updates`. Old keys (`whatsapp`, `ocr`, `payment_reviews`, `ai`,
+`ai_mutations`, `customer_credit`) are read as aliases. Store settings: negative stock allowed with a warning (default),
+costing method `weighted_average` (receiving updates cost, audited) or `manual`, receipts 80 mm (58 mm option), EN or EN+AR labels.
+
+Not in this pass by decision: live WhatsApp link and real photos (owner soak), code signing, card SDK, Cloud API,
+hub TLS rewrite, Task Scheduler backups, the full acceptance matrix. The updater is AMWAPOS' own Ed25519-verified
+flow rather than tauri-plugin-updater; it refuses unsigned builds and opens the installer window (no silent apply).

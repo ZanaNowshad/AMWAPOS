@@ -296,8 +296,47 @@ impl AppCore {
             return;
         }
         if let Err(e) = self.receipt_pdf_write(kind, ref_id) {
-            tracing::warn!(kind, ref_id, error = %e.message, "PDF receipt could not be saved; the sale is unaffected");
+            tracing::warn!(kind, ref_id, error = %e.message, "PDF receipt could not be saved; the sale is unaffected; queued for retry");
+            let now = time::now_str();
+            let _ = self.db.write(|tx| {
+                tx.execute(
+                    "INSERT INTO pdf_receipt_queue(kind, ref_id, attempts, last_error, created_at, updated_at) VALUES (?1,?2,1,?3,?4,?4)
+                     ON CONFLICT(kind, ref_id) DO UPDATE SET attempts=attempts+1, last_error=?3, updated_at=?4",
+                    params![kind, ref_id, e.message, now],
+                )?;
+                Ok(())
+            });
         }
+    }
+
+    /// Runtime (every minute): retry PDF copies that failed after commit.
+    /// Returns (saved, still failing). Gives up after 10 attempts.
+    pub fn receipt_pdf_retry_due(&self) -> AppResult<(usize, usize)> {
+        let due: Vec<(String, String)> = self.db.read(|c| {
+            let mut st = c.prepare("SELECT kind, ref_id FROM pdf_receipt_queue WHERE attempts < 10 ORDER BY updated_at LIMIT 20")?;
+            let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })?;
+        let (mut ok, mut failed) = (0, 0);
+        for (kind, id) in due {
+            match self.receipt_pdf_write(&kind, &id) {
+                Ok(_) => {
+                    ok += 1;
+                    self.db.write(|tx| Ok(tx.execute("DELETE FROM pdf_receipt_queue WHERE kind=?1 AND ref_id=?2", params![kind, id])?))?;
+                }
+                Err(e) => {
+                    failed += 1;
+                    let now = time::now_str();
+                    self.db.write(|tx| {
+                        Ok(tx.execute(
+                            "UPDATE pdf_receipt_queue SET attempts=attempts+1, last_error=?3, updated_at=?4 WHERE kind=?1 AND ref_id=?2",
+                            params![kind, id, e.message, now],
+                        )?)
+                    })?;
+                }
+            }
+        }
+        Ok((ok, failed))
     }
 
     /// Check permission and module for a WhatsApp session action (start,

@@ -9,7 +9,7 @@ import { newOperationId } from "../../lib/ids";
 import { digits, formatAmount, formatMoney, formatQty, parseMoney } from "../../lib/money";
 import { Banner, Button, Modal } from "../../components/ui";
 import { methodLabel } from "./labels";
-import { t } from "../../i18n";
+import { t, tb } from "../../i18n";
 
 const icons: Record<string, typeof Banknote> = {
   cash: Banknote,
@@ -440,6 +440,13 @@ export function SaleSuccess({
             <div className="amount" data-testid="success-change">
               {formatMoney(sale.change_minor)}
             </div>
+          </div>
+        ) : null}
+        {sale.stock_warnings?.length ? (
+          <div style={{ marginTop: 12, width: "100%" }}>
+            <Banner tone="warning" title={t("Sold below recorded stock")}>
+              {sale.stock_warnings.map((w) => tb(w)).join(", ")}
+            </Banner>
           </div>
         ) : null}
         <div style={{ marginTop: 12, width: "100%" }}>

@@ -100,9 +100,10 @@ export interface FeatureFlags {
   "ocr.enabled": boolean;
   "ocr.payment_screenshots": boolean;
   "ocr.supplier_invoices": boolean;
-  ai: boolean;
-  ai_mutations: boolean;
-  customer_credit: boolean;
+  "ocr.ai_parse": boolean;
+  "ai.enabled": boolean;
+  "ai.mutations": boolean;
+  "customers.credit": boolean;
   windows_hello: boolean;
   pdf_receipts: boolean;
   updates: boolean;
@@ -241,6 +242,7 @@ export interface SaleResult {
   completed_at: string;
   replayed: boolean;
   print: PrintOutcome | null;
+  stock_warnings?: string[];
 }
 
 export interface SaleItem {
@@ -489,6 +491,7 @@ export interface UnknownBarcodeRow {
   last_seen_at: string;
   scan_count: number;
   last_device_name: string | null;
+  last_user_name?: string | null;
   status: string;
   resolved_product_id: string | null;
   resolved_product_name: string | null;
@@ -1041,7 +1044,7 @@ export interface InvoiceScanDetail {
 // ---- AI assistant ----
 
 export interface AiSettings {
-  provider: "anthropic" | "openai_compatible";
+  provider: "fake" | "anthropic" | "openai_compatible";
   model: string;
   base_url: string;
   max_tokens: number;

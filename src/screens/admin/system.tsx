@@ -366,6 +366,30 @@ export function SyncPage() {
                   {a}
                 </div>
               ))}
+              {addr.data && has("sync.manage") ? (
+                <Field
+                  label={t("Listen on")}
+                  hint={t(
+                    "Choose the store network card. The firewall allows only port {0}, on private networks.",
+                    addr.data.port,
+                  )}
+                >
+                  <select
+                    className="select"
+                    value={addr.data.bind_address}
+                    onChange={async (e) => {
+                      if (await act.run(() => api.sync.setBindAddress(e.target.value))) void addr.reload();
+                    }}
+                  >
+                    <option value="">{t("All network cards")}</option>
+                    {addr.data.ips.map((ip) => (
+                      <option key={ip} value={ip}>
+                        {ip}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : null}
               {addr.data && !addr.data.running ? (
                 <Banner tone="warning">
                   {t("The hub service is not running. Restart AMWAPOS or check that port {0} is free.", addr.data.port)}
@@ -1460,7 +1484,9 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
     paid_out_approval_minor: t("Paid-outs above this amount (minor units) need manager approval (0 = off)."),
   },
   inventory: {
-    costing_method: t("Costing method used for margins. v1 supports weighted average only."),
+    costing_method: t(
+      "Weighted average: receiving updates the average cost (each change is audited). Manual: receiving never changes cost.",
+    ),
     require_adjust_reason: t("Require a reason for manual stock adjustments."),
     stocktake_blind_default: t("New stocktakes hide expected quantities while counting."),
   },
@@ -1497,12 +1523,7 @@ function JsonSettings({ k }: { k: string }) {
         if (typeof v === "boolean") {
           return (
             <div key={key}>
-              <Checkbox
-                label={label}
-                checked={v}
-                onChange={(x) => setData({ ...data, [key]: x })}
-                disabled={key === "costing_method"}
-              />
+              <Checkbox label={label} checked={v} onChange={(x) => setData({ ...data, [key]: x })} />
               {help ? (
                 <div className="tiny" style={{ marginInlineStart: 24 }}>
                   {help}
@@ -1527,13 +1548,26 @@ function JsonSettings({ k }: { k: string }) {
             />
           );
         }
+        if (key === "costing_method") {
+          return (
+            <Field key={key} label={label} hint={help}>
+              <select
+                className="select"
+                value={String(v)}
+                onChange={(e) => setData({ ...data, [key]: e.target.value })}
+              >
+                <option value="weighted_average">{t("Weighted average")}</option>
+                <option value="manual">{t("Manual")}</option>
+              </select>
+            </Field>
+          );
+        }
         return (
           <TextInput
             key={key}
             label={label}
             value={String(v ?? "")}
             hint={help}
-            disabled={key === "costing_method"}
             onChange={(e) => setData({ ...data, [key]: e.target.value })}
           />
         );
@@ -2014,13 +2048,23 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     t(
       "Reads supplier invoices into a draft purchase order. Stock is never posted from OCR without a person confirming.",
     ),
-  ai: () => t("Lets managers ask questions about sales, stock and margins. The assistant can only read data."),
-  ai_mutations: () =>
+  "ocr.ai_parse": () =>
+    t(
+      "Sends the OCR text of supplier invoices to the configured AI provider to extract the lines. Needs AI on and a real provider; the lines are still reviewed and confirmed by a person.",
+    ),
+  "ai.enabled": () =>
+    t(
+      "Lets managers ask questions about sales, stock and margins. Until an owner adds a provider key, an offline test model answers.",
+    ),
+  "ai.mutations": () =>
     t(
       "Lets the assistant propose changes. Every change is previewed, risk-rated and confirmed by a person, then run by a normal audited command.",
     ),
-  customer_credit: () => t("Allows selected customers to buy on account up to a credit limit."),
-  windows_hello: () => t("Adds a Windows Hello check after the PIN for manager approvals. The PIN is still required."),
+  "customers.credit": () => t("Allows selected customers to buy on account up to a credit limit."),
+  windows_hello: () =>
+    t(
+      "Adds a Windows Hello check after the PIN for manager overrides, refunds, cash paid out and the WhatsApp session backup. The PIN is still required; without Hello on this computer the PIN alone is used.",
+    ),
   pdf_receipts: () =>
     t("Saves a PDF copy of every receipt after the sale is committed. A PDF failure never cancels a sale."),
   updates: () => t("Checks for new versions. Only updates signed with the publisher key are installed."),
@@ -2314,7 +2358,12 @@ export function UpdatesPage() {
             const r = await act.run(() => api.updates.install());
             if (r) {
               setInstall(false);
-              toast("info", t("Safety backup taken. The installer is running; AMWAPOS will restart."));
+              toast(
+                "info",
+                t(
+                  "Safety backup taken. The installer window is open: follow it to finish; AMWAPOS restarts afterwards.",
+                ),
+              );
             }
           }}
         >

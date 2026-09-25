@@ -1454,6 +1454,7 @@ export function UnknownBarcodesPage() {
           { key: "l", label: t("Last Seen"), render: (r) => formatShort(r.last_seen_at), sort: (r) => r.last_seen_at },
           { key: "c", label: t("Scan Count"), num: true, render: (r) => r.scan_count, sort: (r) => r.scan_count },
           { key: "t", label: t("Terminal"), render: (r) => r.last_device_name ?? "—" },
+          { key: "u", label: t("Cashier"), render: (r) => r.last_user_name ?? "—" },
           {
             key: "s",
             label: t("Status"),

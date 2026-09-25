@@ -483,6 +483,8 @@ pub struct UnknownBarcodeRow {
     pub last_seen_at: String,
     pub scan_count: i64,
     pub last_device_name: Option<String>,
+    /// Cashier who scanned it last.
+    pub last_user_name: Option<String>,
     pub status: String,
     pub resolved_product_id: Option<String>,
     pub resolved_product_name: Option<String>,
@@ -1240,9 +1242,10 @@ impl AppCore {
         }
         self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT u.barcode, u.first_seen_at, u.last_seen_at, u.scan_count, d.name, u.status, u.resolved_product_id, p.name
+                "SELECT u.barcode, u.first_seen_at, u.last_seen_at, u.scan_count, d.name, u.status, u.resolved_product_id, p.name, us.display_name
                  FROM unknown_barcodes u
                  LEFT JOIN devices d ON d.device_id = u.last_device_id
+                 LEFT JOIN users us ON us.user_id = u.last_user_id
                  LEFT JOIN products p ON p.product_id = u.resolved_product_id
                  WHERE (?1 = 'all' OR u.status = ?1)
                  ORDER BY u.last_seen_at DESC LIMIT 1000",
@@ -1258,6 +1261,7 @@ impl AppCore {
                         status: r.get(5)?,
                         resolved_product_id: r.get(6)?,
                         resolved_product_name: r.get(7)?,
+                        last_user_name: r.get(8)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

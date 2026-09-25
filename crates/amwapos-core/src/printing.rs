@@ -103,7 +103,9 @@ pub fn render_job(c: &Connection, kind: &str, ref_id: &str, copy: Option<&str>) 
         "refund" => Some(receipt::refund_receipt(c, ref_id, copy)?),
         "shift_report" => Some(receipt::shift_report(c, ref_id)?),
         "test" => {
-            let mut d = ReceiptDoc { width_chars: 48, blocks: vec![] };
+            let cfg: settings::ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
+            let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
+            let mut d = ReceiptDoc { width_chars: receipt::width_for(printer.paper_width_mm.min(cfg.paper_width_mm)), blocks: vec![] };
             d.blocks.push(receipt::Block::Text {
                 text: "AMWAPOS TEST PRINT".into(),
                 align: receipt::Align::Center,
@@ -113,6 +115,12 @@ pub fn render_job(c: &Connection, kind: &str, ref_id: &str, copy: Option<&str>) 
             d.blocks.push(receipt::Block::Text { text: time::now_str(), align: receipt::Align::Center, bold: false, large: false });
             d.blocks.push(receipt::Block::Rule);
             d.blocks.push(receipt::Block::Pair { left: "Printer".into(), right: "OK".into(), bold: false, large: false });
+            d.blocks.push(receipt::Block::Pair {
+                left: "Paper".into(),
+                right: format!("{} mm", printer.paper_width_mm.min(cfg.paper_width_mm)),
+                bold: false,
+                large: false,
+            });
             // Proves the Arabic raster path on this printer.
             d.blocks.push(receipt::Block::Text {
                 text: "اختبار الطباعة العربية — Arabic OK".into(),

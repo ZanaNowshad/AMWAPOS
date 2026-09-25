@@ -112,6 +112,8 @@ export const AR: Record<string, string> = {
   Addresses: "العناوين",
   "Adds a Windows Hello check after the PIN for manager approvals. The PIN is still required.":
     "يضيف تحققاً عبر Windows Hello بعد الرمز السري لموافقات المدير. يبقى الرمز السري مطلوباً.",
+  "Adds a Windows Hello check after the PIN for manager overrides, refunds, cash paid out and the WhatsApp session backup. The PIN is still required; without Hello on this computer the PIN alone is used.":
+    "يضيف تحقق Windows Hello بعد الرقم السري لتجاوزات المدير والمرتجعات والمدفوعات النقدية الصادرة ونسخ جلسة واتساب. يبقى الرقم السري مطلوباً؛ ودون Hello على هذا الحاسوب يُستخدم الرقم السري وحده.",
   Adjust: "تعديل",
   "Adjust balance": "تعديل الرصيد",
   "Adjust stock": "تعديل المخزون",
@@ -130,6 +132,7 @@ export const AR: Record<string, string> = {
   "All figures come from recorded transactions. Export any report to CSV.":
     "جميع الأرقام مأخوذة من المعاملات المسجّلة. يمكن تصدير أي تقرير إلى CSV.",
   "All inventory": "كل المخزون",
+  "All network cards": "كل بطاقات الشبكة",
   "All payments": "كل المدفوعات",
   "All tracked products are above their reorder points.": "جميع المنتجات المتتبّعة أعلى من حدّ إعادة الطلب.",
   "All types": "كل الأنواع",
@@ -411,6 +414,8 @@ export const AR: Record<string, string> = {
   "Choose product": "اختر منتجاً",
   "Choose supplier…": "اختر مورّداً…",
   "Choose the customer before charging to an account.": "اختر العميل قبل التحصيل على الحساب.",
+  "Choose the store network card. The firewall allows only port {0}, on private networks.":
+    "اختر بطاقة شبكة المتجر. يسمح جدار الحماية بالمنفذ {0} فقط، على الشبكات الخاصة.",
   "Choose what this table contains to map its columns.": "اختر محتوى هذا الجدول لربط أعمدته.",
   "Choose…": "اختر…",
   Chosen: "مختار",
@@ -497,6 +502,7 @@ export const AR: Record<string, string> = {
   "Create backups": "إنشاء النسخ الاحتياطية",
   "Create delivery": "إنشاء توصيل",
   "Create draft purchase order": "إنشاء مسودة أمر شراء",
+  "Create order and receive stock": "إنشاء الأمر واستلام المخزون",
   "Create product": "إنشاء منتج",
   "Create purchase orders for these items.": "أنشئ أوامر شراء لهذه الأصناف.",
   "Create rule": "إنشاء قاعدة",
@@ -899,6 +905,8 @@ export const AR: Record<string, string> = {
   "Ledger totals by movement type": "إجماليات السجل حسب نوع الحركة",
   "Lets managers ask questions about sales, stock and margins. The assistant can only read data.":
     "يتيح للمديرين طرح أسئلة عن المبيعات والمخزون والهوامش. يستطيع المساعد قراءة البيانات فقط.",
+  "Lets managers ask questions about sales, stock and margins. Until an owner adds a provider key, an offline test model answers.":
+    "يتيح للمديرين طرح أسئلة عن المبيعات والمخزون والهوامش. إلى أن يضيف المالك مفتاح مزوّد، يجيب نموذج اختبار دون اتصال.",
   "Lets the assistant propose changes. Every change is previewed, risk-rated and confirmed by a person, then run by a normal audited command.":
     "يتيح للمساعد اقتراح تغييرات. تُعرض كل معاينة مع تقييم المخاطر ويؤكدها شخص، ثم تُنفَّذ بأمر عادي مُدقَّق.",
   "Lets this computer serve other tills on the store network. A terminal-mode install needs this on before it can become a hub.":
@@ -919,6 +927,7 @@ export const AR: Record<string, string> = {
   "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside AMWAPOS. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.":
     "يربط رقم واتساب بهذا الحاسوب عبر عميل واتساب ويب غير رسمي داخل AMWAPOS. قد يحظر واتساب الأرقام التي تستخدم عملاء غير رسميين. البيع لا ينتظر واتساب أبداً.",
   "Listed reports": "عرض التقارير",
+  "Listen on": "الاستماع على",
   "Live preview": "معاينة مباشرة",
   Loading: "جارٍ التحميل",
   Local: "محلي",
@@ -1165,6 +1174,7 @@ export const AR: Record<string, string> = {
   "OCR is switched off: screenshots wait for a person to read the amount.":
     "التعرف الضوئي متوقف: تنتظر اللقطات شخصاً ليقرأ المبلغ.",
   "OCR match": "تطابق بالتعرّف الضوئي",
+  "OCR: AI line extraction for invoices": "التعرّف الضوئي: استخراج البنود بالذكاء الاصطناعي للفواتير",
   "OCR: payment screenshot reviews": "التعرّف الضوئي: مراجعة لقطات الدفع",
   "OCR: supplier invoice scanning": "التعرّف الضوئي: مسح فواتير الموردين",
   OK: "سليم",
@@ -1173,6 +1183,8 @@ export const AR: Record<string, string> = {
   "Off (module disabled)": "متوقف (الوحدة معطّلة)",
   Offline: "غير متصل",
   "Offline OCR": "التعرف الضوئي دون اتصال",
+  "Offline test model": "نموذج اختبار دون اتصال",
+  "Offline test model (no key, nothing sent)": "نموذج اختبار دون اتصال (بلا مفتاح، ولا يُرسل شيء)",
   "On hand": "المتوفر",
   "On the hub computer open Admin → Sync / Hub → Pair terminal to get a pairing code.":
     "على جهاز الخادم افتح الإدارة ← المزامنة / الخادم ← اقتران نقطة بيع للحصول على رمز اقتران.",
@@ -1393,6 +1405,7 @@ export const AR: Record<string, string> = {
   "Purchase Order": "أمر شراء",
   "Purchase Orders": "أوامر الشراء",
   "Purchase order": "أمر شراء",
+  "Purchase order created and received": "تم إنشاء أمر الشراء واستلامه",
   "Purchase order fully received": "تم استلام أمر الشراء بالكامل",
   "Purchase order {0} saved": "تم حفظ أمر الشراء {0}",
   "Purchase orders awaiting delivery": "أوامر شراء بانتظار التسليم",
@@ -1470,6 +1483,7 @@ export const AR: Record<string, string> = {
   "Receive goods": "استلام البضاعة",
   "Receive goods against a purchase order, or record a direct delivery.":
     "استلم البضاعة مقابل أمر شراء، أو سجّل تسليماً مباشراً.",
+  "Receive the stock now": "استلام المخزون الآن",
   "Receive {0}": "استلام {0}",
   Received: "مستلم",
   "Received at cost": "المستلم بالتكلفة",
@@ -1638,6 +1652,8 @@ export const AR: Record<string, string> = {
   Safety: "أمان",
   "Safety backup taken. The installer is running; AMWAPOS will restart.":
     "أُخذت نسخة احتياطية آمنة. برنامج التثبيت يعمل؛ سيُعاد تشغيل AMWAPOS.",
+  "Safety backup taken. The installer window is open: follow it to finish; AMWAPOS restarts afterwards.":
+    "تم أخذ نسخة احتياطية للسلامة. نافذة المثبّت مفتوحة: اتبعها لإكمال التثبيت، ثم يُعاد تشغيل AMWAPOS.",
   Sale: "البيع",
   "Sale above the customer's credit limit": "بيع يتجاوز حد ائتمان العميل",
   "Sale completed": "اكتمل البيع",
@@ -1744,6 +1760,8 @@ export const AR: Record<string, string> = {
   "Sending to the printer failed: {0}": "فشل الإرسال إلى الطابعة: {0}",
   "Sends 'on the way' and 'delivered' messages when a delivery changes status.":
     "يرسل رسالتي «في الطريق» و«تم التسليم» عند تغيّر حالة التوصيل.",
+  "Sends the OCR text of supplier invoices to the configured AI provider to extract the lines. Needs AI on and a real provider; the lines are still reviewed and confirmed by a person.":
+    "يرسل نص التعرّف الضوئي لفواتير الموردين إلى مزوّد الذكاء الاصطناعي المُعد لاستخراج البنود. يتطلب تشغيل الذكاء الاصطناعي ومزوّداً حقيقياً؛ ويراجع شخصٌ البنود ويؤكدها دائماً.",
   "Sensitive actions": "إجراءات حساسة",
   Sent: "مُرسلة",
   "Sent messages": "الرسائل المرسلة",
@@ -1796,6 +1814,7 @@ export const AR: Record<string, string> = {
   Skipped: "تم التخطي",
   "Snapshot {0}: {1}": "اللقطة {0}: {1}",
   "Sold below cost": "بيع بأقل من التكلفة",
+  "Sold below recorded stock": "بيع بأقل من المخزون المسجّل",
   "Sold by weight": "يُباع بالوزن",
   "Sold by weight / decimal quantity": "يُباع بالوزن / بكمية عشرية",
   "Some data may have been saved.": "قد تكون بعض البيانات حُفظت.",
@@ -2283,6 +2302,9 @@ export const AR: Record<string, string> = {
   "Warnings {0}": "تحذيرات {0}",
   Wednesday: "الأربعاء",
   Weekday: "يوم الأسبوع",
+  "Weighted average": "المتوسط المرجّح",
+  "Weighted average: receiving updates the average cost (each change is audited). Manual: receiving never changes cost.":
+    "المتوسط المرجّح: الاستلام يحدّث متوسط التكلفة (مع تسجيل كل تغيير في السجل). يدوي: الاستلام لا يغيّر التكلفة أبداً.",
   Welcome: "مرحباً",
   "Welcome to AMWAPOS": "مرحباً بك في AMWAPOS",
   WhatsApp: "واتساب",

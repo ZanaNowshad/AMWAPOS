@@ -334,7 +334,12 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "invoicescan.list" => out(core.inv_list(tk()?, opt(&args, "status")?)),
         "invoicescan.get" => out(core.inv_get(tk()?, &req::<String>(&args, "scan_id")?)),
         "invoicescan.update_line" => out(core.inv_update_line(tk()?, all(&args)?)),
-        "invoicescan.confirm" => out(core.inv_confirm(tk()?, &req::<String>(&args, "scan_id")?, &req::<String>(&args, "supplier_id")?)),
+        "invoicescan.confirm" => out(core.inv_confirm(
+            tk()?,
+            &req::<String>(&args, "scan_id")?,
+            &req::<String>(&args, "supplier_id")?,
+            opt(&args, "receive")?.unwrap_or(false),
+        )),
         "invoicescan.reject" => out(core.inv_reject(tk()?, &req::<String>(&args, "scan_id")?, &req::<String>(&args, "reason")?)),
         "ocr.retry" => out(core.ocr_retry(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "id")?)),
         "backup.create" => out(core.backup_create(tk()?, opt(&args, "directory")?)),

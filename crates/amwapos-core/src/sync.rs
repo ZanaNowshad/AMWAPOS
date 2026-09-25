@@ -126,6 +126,9 @@ pub struct SyncSettings {
     pub last_error_at: Option<String>,
     /// Hub: listening port.
     pub port: u16,
+    /// Hub: IPv4 address of the store network card to listen on (empty =
+    /// every interface). The firewall rule is for this one port only.
+    pub bind_address: String,
     /// Terminal: set when the hub identity no longer matches (rebuilt hub).
     pub blocked_reason: Option<String>,
     pub hub_version: Option<String>,
@@ -1065,6 +1068,38 @@ impl AppCore {
         self.write_marker()?;
         self.set_device(Some(identity));
         Ok(json!({ "ok": true }))
+    }
+
+    /// Hub: listen only on this store-network address ("" = all interfaces).
+    /// The caller checks that the address belongs to this computer.
+    pub fn sync_set_bind_address(&self, token: &str, address: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("sync.manage")?;
+        let address = address.trim();
+        if !address.is_empty() {
+            let ip: std::net::Ipv4Addr =
+                address.parse().map_err(|_| AppError::validation("Enter an IPv4 address such as 192.168.1.10."))?;
+            if !ip.is_private() {
+                return Err(AppError::validation("Choose the computer's address on the store network (a private address)."));
+            }
+        }
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let mut ss = sync_settings(tx)?;
+            let before = ss.bind_address.clone();
+            ss.bind_address = address.to_string();
+            settings::put(tx, KEY_SYNC, &ss, Some(&s.user_id))?;
+            audit::record(
+                tx,
+                &actor,
+                "sync.bind_address",
+                "device",
+                None,
+                Some(&json!({ "bind_address": before })),
+                Some(&json!({ "bind_address": address })),
+            )?;
+            Ok(json!({ "bind_address": address, "port": ss.port }))
+        })
     }
 
     pub fn terminal_sync_settings(&self) -> AppResult<SyncSettings> {

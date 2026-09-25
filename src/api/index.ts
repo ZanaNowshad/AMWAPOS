@@ -314,7 +314,12 @@ export const api = {
     enableHub: () => call<Record<string, unknown>>("sync.enable_hub"),
     pairingCode: (device_name?: string) =>
       call<{ code: string; expires_at: string }>("sync.pairing_code", { device_name }),
-    hubAddresses: () => call<{ addresses: string[]; port: number; running: boolean }>("sync.hub_addresses"),
+    hubAddresses: () =>
+      call<{ addresses: string[]; port: number; running: boolean; ips: string[]; bind_address: string }>(
+        "sync.hub_addresses",
+      ),
+    setBindAddress: (address: string) =>
+      call<{ bind_address: string; port: number }>("sync.set_bind_address", { address }),
     discover: () => call<{ url: string; hub_name: string; business_name: string; version: string }[]>("sync.discover"),
     probe: (hub_url: string) => call<{ url: string; info: Record<string, unknown> }>("sync.probe", { hub_url }),
     join: (a: { hub_url: string; code: string; device_name: string; device_code: string }) =>
@@ -376,8 +381,8 @@ export const api = {
       unit_cost_minor?: number | null;
       include?: boolean | null;
     }) => call<T.InvoiceScanDetail>("invoicescan.update_line", a),
-    confirm: (scan_id: string, supplier_id: string) =>
-      call<T.InvoiceScanDetail>("invoicescan.confirm", { scan_id, supplier_id }),
+    confirm: (scan_id: string, supplier_id: string, receive = false) =>
+      call<T.InvoiceScanDetail>("invoicescan.confirm", { scan_id, supplier_id, receive }),
     reject: (scan_id: string, reason: string) => call<T.InvoiceScan>("invoicescan.reject", { scan_id, reason }),
   },
   updates: {

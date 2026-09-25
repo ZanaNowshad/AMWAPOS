@@ -276,6 +276,25 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
     tokio::task::spawn_blocking(f).await.map_err(|e| AppError::internal(format!("worker failed: {e}")))?
 }
 
+/// `ocr.ai_parse`: ask the configured AI provider to extract the invoice
+/// lines from the OCR text. Any failure keeps the rules parser's result.
+async fn ai_parse(core: &Arc<AppCore>, scan_id: &str) {
+    let (c, id) = (core.clone(), scan_id.to_string());
+    let Ok(Some(turn)) = blocking(move || c.ocr_ai_parse_turn(&id)).await else { return };
+    let reply = match crate::ai_client::complete_once(&turn).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::info!(error = %e.message, "AI invoice parse unavailable; rules parse kept");
+            return;
+        }
+    };
+    let Some(v) = crate::ai_client::json_object(&reply) else { return };
+    let (c, id) = (core.clone(), scan_id.to_string());
+    if let Err(e) = blocking(move || c.inv_apply_ai_parse(&id, &v)).await {
+        tracing::info!(error = %e.message, "AI invoice parse not applied");
+    }
+}
+
 async fn run(w: Arc<OcrWorker>) {
     loop {
         let c = w.core.clone();
@@ -305,6 +324,9 @@ async fn run(w: Arc<OcrWorker>) {
             let c = w.core.clone();
             let (kind, id) = (j.kind, j.id.clone());
             let _ = blocking(move || c.ocr_result(kind, &id, outcome)).await;
+            if kind == "invoice" {
+                ai_parse(&w.core, &j.id).await;
+            }
             w.status.lock().unwrap().last_job_at = Some(amwapos_core::time::now_str());
         }
         tokio::select! {

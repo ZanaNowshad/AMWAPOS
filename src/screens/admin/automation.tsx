@@ -1435,7 +1435,9 @@ function ScanDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
   const toast = useToast();
   const { data, error, setData, reload } = useLoad(() => api.invoiceScan.get(id), [id]);
   const [supplier, setSupplier] = useState("");
+  const { has } = useSession();
   const [picking, setPicking] = useState<InvoiceScanLine | null>(null);
+  const [receiveNow, setReceiveNow] = useState(false);
   const [reject, setReject] = useState(false);
   const [reason, setReason] = useState("");
   const act = useAction();
@@ -1594,20 +1596,26 @@ function ScanDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
           {editable ? (
             <div className="row" style={{ alignItems: "flex-end" }}>
               <SupplierSelect value={supplier} onChange={setSupplier} />
+              {has("inventory.receive") ? (
+                <Checkbox label={t("Receive the stock now")} checked={receiveNow} onChange={setReceiveNow} />
+              ) : null}
               <Button
                 variant="primary"
                 disabled={!supplier}
                 loading={act.busy}
                 onClick={async () => {
-                  const r = await act.run(() => api.invoiceScan.confirm(id, supplier));
+                  const r = await act.run(() => api.invoiceScan.confirm(id, supplier, receiveNow));
                   if (r) {
                     setData(r);
                     onChanged();
-                    toast("success", t("Draft purchase order created"));
+                    toast(
+                      "success",
+                      receiveNow ? t("Purchase order created and received") : t("Draft purchase order created"),
+                    );
                   }
                 }}
               >
-                {t("Create draft purchase order")}
+                {receiveNow ? t("Create order and receive stock") : t("Create draft purchase order")}
               </Button>
               <Button variant="danger" onClick={() => setReject(true)}>
                 {t("Reject scan")}

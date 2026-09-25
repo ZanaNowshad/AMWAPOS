@@ -273,10 +273,9 @@ impl Updater {
             let (c, t) = (core.clone(), token.to_string());
             blocking(move || c.backup_create(&t, None)).await?
         };
-        std::process::Command::new(&path)
-            .arg("/S")
-            .spawn()
-            .map_err(|e| AppError::internal(format!("Could not start the installer: {e}")))?;
+        // The installer opens its own window (no silent /S apply): the person
+        // sees what is being installed and completes it.
+        std::process::Command::new(&path).spawn().map_err(|e| AppError::internal(format!("Could not start the installer: {e}")))?;
         tracing::warn!(version = %r.manifest.version, "update installer started; the app will be replaced");
         Ok(json!({ "started": true, "version": r.manifest.version, "safety_backup": backup }))
     }

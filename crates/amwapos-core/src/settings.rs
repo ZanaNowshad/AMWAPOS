@@ -11,6 +11,8 @@ use crate::time;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PosSettings {
+    /// Sell tracked items below zero stock (default: allowed, with a warning
+    /// on the receipt screen). Off: a manager approves each shortfall.
     pub allow_negative_stock: bool,
     pub allow_custom_item: bool,
     /// Largest discount a user with only `pos.discount` may give, in basis points of the line/cart.
@@ -24,7 +26,7 @@ pub struct PosSettings {
 impl Default for PosSettings {
     fn default() -> Self {
         Self {
-            allow_negative_stock: false,
+            allow_negative_stock: true,
             allow_custom_item: true,
             cashier_max_discount_bp: 1000,
             idle_lock_minutes: 10,
@@ -161,7 +163,8 @@ impl Default for SecuritySettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct InventorySettings {
-    /// The single costing method implemented in v1.
+    /// `weighted_average`: receiving updates the average cost (audited).
+    /// `manual`: receiving never changes cost; it is edited explicitly.
     pub costing_method: String,
     pub require_adjust_reason: bool,
     pub stocktake_blind_default: bool,
@@ -238,11 +241,19 @@ pub struct FeatureFlags {
     /// Supplier invoice scanning to draft purchase orders (needs `ocr.enabled`).
     #[serde(rename = "ocr.supplier_invoices")]
     pub ocr_supplier_invoices: bool,
-    /// AI assistant (read-only tools).
+    /// OCR text of supplier invoices may be sent to the configured AI provider
+    /// for line extraction (needs `ocr.supplier_invoices` and `ai.enabled`).
+    /// The result is only a suggestion a person reviews.
+    #[serde(rename = "ocr.ai_parse")]
+    pub ocr_ai_parse: bool,
+    /// AI assistant (read-only tools). Older installs stored `ai`.
+    #[serde(rename = "ai.enabled", alias = "ai")]
     pub ai: bool,
     /// AI may propose changes (always preview + confirm + deterministic execution).
+    #[serde(rename = "ai.mutations", alias = "ai_mutations")]
     pub ai_mutations: bool,
     /// Customer accounts: sell on account, take account payments, balances.
+    #[serde(rename = "customers.credit", alias = "customer_credit")]
     pub customer_credit: bool,
     /// Optional Windows Hello step-up for sensitive actions (the PIN is still required).
     pub windows_hello: bool,
@@ -262,9 +273,10 @@ impl FeatureFlags {
             "ocr.enabled" => self.ocr_enabled,
             "ocr.payment_screenshots" => self.ocr_enabled && self.ocr_payment_screenshots,
             "ocr.supplier_invoices" => self.ocr_enabled && self.ocr_supplier_invoices,
-            "ai" => self.ai,
-            "ai_mutations" => self.ai && self.ai_mutations,
-            "customer_credit" => self.customer_credit,
+            "ocr.ai_parse" => self.ocr_enabled && self.ocr_supplier_invoices && self.ai && self.ocr_ai_parse,
+            "ai.enabled" => self.ai,
+            "ai.mutations" => self.ai && self.ai_mutations,
+            "customers.credit" => self.customer_credit,
             "windows_hello" => self.windows_hello,
             "pdf_receipts" => self.pdf_receipts,
             "updates" => self.updates,
@@ -473,8 +485,8 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
         }
         KEY_INVENTORY => {
             let s: InventorySettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
-            if s.costing_method != "weighted_average" {
-                return Err(AppError::validation("Only weighted-average costing is supported in this version."));
+            if !["weighted_average", "manual"].contains(&s.costing_method.as_str()) {
+                return Err(AppError::validation("Costing method must be weighted average or manual."));
             }
             serde_json::to_value(s)?
         }

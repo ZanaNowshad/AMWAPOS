@@ -57,6 +57,9 @@ pub struct SaleResult {
     pub replayed: bool,
     #[serde(default)]
     pub print: Option<PrintOutcome>,
+    /// Items sold below zero recorded stock (allowed by the store setting).
+    #[serde(default)]
+    pub stock_warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -354,7 +357,7 @@ impl AppCore {
         if account_amount > 0 {
             // Any cashier may charge an enabled account within its limit;
             // going over the limit needs a manager (below).
-            self.require_feature("customer_credit")?;
+            self.require_feature("customers.credit")?;
             let (customer, over) = self.db.read(|c| {
                 let cid: Option<String> =
                     c.query_row("SELECT customer_id FROM carts WHERE cart_id=?1", [&cart_id], |r| r.get(0)).optional()?.flatten();
@@ -540,6 +543,7 @@ impl AppCore {
                     .collect(),
                 completed_at: now_s.clone(),
                 replayed: false,
+                stock_warnings: if pos_cfg.allow_negative_stock { shortfalls.clone() } else { vec![] },
                 print: print_job.as_ref().map(|_| PrintOutcome::queued()),
             };
             audit::record(

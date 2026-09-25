@@ -87,9 +87,30 @@ async fn assistant_reads_proposes_and_a_person_confirms() {
     let e = rt.dispatch("ai.ask", Some(t.clone()), json!({ "message": "hi" })).await.unwrap_err();
     assert_eq!(e.details.unwrap()["kind"], "feature_disabled");
     call(&rt, "settings.save", Some(&t), json!({ "key": "features", "value": { "ai": true, "ai_mutations": true } })).await;
-    // No consent / key yet.
+    // Default provider: the offline test model, no key or consent needed.
+    let conv = call(&rt, "ai.ask", Some(&t), json!({ "message": "low stock" })).await;
+    let last = conv["messages"].as_array().unwrap().last().unwrap().clone();
+    assert!(last["text"].as_str().unwrap().contains("offline test model"), "{last}");
+    // It drives the real proposal flow: search → propose; nothing changes until confirmed.
+    let conv = call(&rt, "ai.ask", Some(&t), json!({ "message": "Set the price of Laban 1L to 0.600" })).await;
+    let fake_prop = &conv["proposals"][0];
+    assert_eq!(fake_prop["status"], "proposed", "{conv}");
+    assert_eq!(fake_prop["preview"]["new_price_minor"], 600);
+    assert_eq!(call(&rt, "products.get", Some(&t), json!({ "product_id": pid })).await["price_minor"], 450);
+    // A real provider needs consent and a key.
+    call(
+        &rt,
+        "ai.configure",
+        Some(&t),
+        json!({ "settings": { "provider": "anthropic", "model": "claude-opus-5", "base_url": "", "max_tokens": 16000, "fallbacks": true, "consent": false } }),
+    )
+    .await;
     let e = rt.dispatch("ai.ask", Some(t.clone()), json!({ "message": "hi" })).await.unwrap_err();
     assert_eq!(e.details.unwrap()["kind"], "ai_not_configured");
+    let audits_before: i64 = core
+        .db
+        .read(|c| Ok(c.query_row("SELECT COUNT(*) FROM audit_logs WHERE event_type IN ('ai.request','ai.proposal.created','ai.proposal.executed','ai.proposal.undone')", [], |r| r.get(0))?))
+        .unwrap();
     let st = call(
         &rt,
         "ai.configure",
@@ -146,7 +167,7 @@ async fn assistant_reads_proposes_and_a_person_confirms() {
         .db
         .read(|c| Ok(c.query_row("SELECT COUNT(*) FROM audit_logs WHERE event_type IN ('ai.request','ai.proposal.created','ai.proposal.executed','ai.proposal.undone')", [], |r| r.get(0))?))
         .unwrap();
-    assert_eq!(audits, 4);
+    assert_eq!(audits - audits_before, 4);
 
     // A cashier cannot use the assistant.
     let cashier =

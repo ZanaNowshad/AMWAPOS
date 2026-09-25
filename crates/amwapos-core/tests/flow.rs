@@ -228,7 +228,29 @@ fn negative_stock_blocked_unless_approved() {
     let e = env();
     let (_cid, ct) = e.user("Cashier Two", ROLE_CASHIER, "3690");
     e.product("Eggs", "444", 1_200, 800, 1_000);
+    e.product("Milk", "445", 500, 300, 0);
     e.open_shift(&ct, 0);
+    // Default: allowed, with a warning on the result.
+    let mut pos: amwapos_core::settings::PosSettings = e.core.db.read(|c| amwapos_core::settings::get(c, "pos")).unwrap();
+    assert!(pos.allow_negative_stock);
+    let c0 = e.core.pos_scan(&ct, "445", None).unwrap().cart;
+    let warned = e
+        .core
+        .pos_finalize(
+            &ct,
+            FinalizeRequest {
+                cart_id: c0.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![cash(500)],
+                approval_token: None,
+                expected_total_minor: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(warned.stock_warnings.len(), 1, "{:?}", warned.stock_warnings);
+    // Store setting off: a manager approves each shortfall.
+    pos.allow_negative_stock = false;
+    e.core.settings_save(&e.owner_token, "pos", serde_json::to_value(&pos).unwrap()).unwrap();
     e.core.pos_scan(&ct, "444", None).unwrap();
     let cart = e.core.pos_scan(&ct, "444", None).unwrap().cart;
     let req = FinalizeRequest {
@@ -240,12 +262,23 @@ fn negative_stock_blocked_unless_approved() {
     };
     let err = e.core.pos_finalize(&ct, req.clone()).unwrap_err();
     assert_eq!(err.code, ErrorCode::InsufficientStock);
-    assert_eq!(count(&e, "SELECT COUNT(*) FROM sales"), 0);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM sales"), 1, "only the earlier allowed sale");
     let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "pos.negative_stock", "sell").unwrap();
     let mut ok = req;
     ok.approval_token = Some(appr["approval_token"].as_str().unwrap().to_string());
     e.core.pos_finalize(&ct, ok).unwrap();
-    assert_eq!(count(&e, "SELECT qty_milli FROM stock_levels"), -1_000);
+    let eggs: i64 = e
+        .core
+        .db
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT s.qty_milli FROM stock_levels s JOIN product_barcodes b ON b.product_id=s.product_id WHERE b.barcode='444'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(eggs, -1_000);
 }
 
 #[test]

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use amwapos_core::service::{AppCore, MemorySecretStore};
+use amwapos_hub::runtime::needs_step_up;
 use amwapos_hub::{Runtime, StepUp};
 use serde_json::{json, Value};
 
@@ -15,6 +16,18 @@ async fn call(rt: &Arc<Runtime>, cmd: &str, token: Option<&str>, args: Value) ->
         Ok(v) => v,
         Err(e) => panic!("{cmd} failed: {} ({:?})", e.message, e.code),
     }
+}
+
+#[test]
+fn step_up_scope_is_override_refund_paid_out_and_session_backup() {
+    assert!(needs_step_up("auth.approve", &json!({})));
+    assert!(needs_step_up("refunds.create", &json!({})));
+    assert!(needs_step_up("cash.event", &json!({ "kind": "paid_out" })));
+    assert!(needs_step_up("whatsapp.session_backup", &json!({})));
+    assert!(!needs_step_up("cash.event", &json!({ "kind": "paid_in" })));
+    assert!(!needs_step_up("cash.event", &json!({ "kind": "no_sale" })));
+    assert!(!needs_step_up("pos.finalize", &json!({})));
+    assert!(!needs_step_up("auth.login", &json!({})), "the PIN stays the login");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
