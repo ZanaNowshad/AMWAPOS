@@ -10,15 +10,27 @@ export function useFeature(name: FeatureName): boolean {
   const { config } = useSession();
   const f = config?.features;
   if (!f) return false;
-  if (name === "ai_mutations") return f.ai && f.ai_mutations;
-  return !!f[name];
+  const parent = FEATURE_PARENT[name];
+  return !!f[name] && (!parent || !!f[parent]);
 }
+
+/** A sub-feature counts only when its parent module is on. */
+export const FEATURE_PARENT: Partial<Record<FeatureName, FeatureName>> = {
+  ai_mutations: "ai",
+  "whatsapp.send_receipts": "whatsapp.enabled",
+  "whatsapp.delivery_notices": "whatsapp.enabled",
+  "ocr.payment_screenshots": "ocr.enabled",
+  "ocr.supplier_invoices": "ocr.enabled",
+};
 
 export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   hub: () => t("Hub (multi-terminal)"),
-  whatsapp: () => t("WhatsApp"),
-  ocr: () => t("Local OCR (invoice scan)"),
-  payment_reviews: () => t("Payment screenshot reviews"),
+  "whatsapp.enabled": () => t("WhatsApp (unofficial Web client)"),
+  "whatsapp.send_receipts": () => t("WhatsApp: send receipts after a sale"),
+  "whatsapp.delivery_notices": () => t("WhatsApp: delivery notices"),
+  "ocr.enabled": () => t("Local OCR"),
+  "ocr.payment_screenshots": () => t("OCR: payment screenshot reviews"),
+  "ocr.supplier_invoices": () => t("OCR: supplier invoice scanning"),
   ai: () => t("AI assistant (read-only questions)"),
   ai_mutations: () => t("AI proposed changes (preview and confirm)"),
   customer_credit: () => t("Customer credit accounts"),

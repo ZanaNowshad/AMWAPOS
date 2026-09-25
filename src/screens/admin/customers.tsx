@@ -528,6 +528,9 @@ export function DeliveriesPage() {
               {["pending", "preparing", "dispatched"].includes(open.status) ? (
                 <WhatsAppSendButton kind="dispatch" deliveryId={open.delivery_id} phone={open.phone} />
               ) : null}
+              {open.status === "delivered" ? (
+                <WhatsAppSendButton kind="delivered" deliveryId={open.delivery_id} phone={open.phone} />
+              ) : null}
               {open.payment_status !== "paid" && open.status !== "cancelled" ? (
                 <WhatsAppSendButton kind="reminder" deliveryId={open.delivery_id} phone={open.phone} />
               ) : null}

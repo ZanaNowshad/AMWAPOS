@@ -24,13 +24,9 @@ jobs:
           cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
-      - name: Bundle the WhatsApp/OCR sidecar (Node runtime + production modules)
+      - name: Bundle Tesseract for the OCR worker
         shell: pwsh
-        run: |
-          npm ci --omit=dev --prefix sidecar
-          New-Item -ItemType Directory -Force src-tauri/resources/node | Out-Null
-          Copy-Item (Get-Command node).Source src-tauri/resources/node/node.exe
-          node --version
+        run: ./scripts/bundle-tesseract.ps1
       - run: cargo test --workspace
       - name: Require embedded WebView2 bootstrapper (offline tills)
         shell: pwsh

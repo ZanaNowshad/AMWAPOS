@@ -511,13 +511,13 @@ impl AppCore {
         out.push(DiagnosticItem {
             component: "WhatsApp".into(),
             state: "info".into(),
-            summary: "Not configured on this build".into(),
-            details: json!({ "note": "WhatsApp runs in an optional sidecar; checkout never depends on it." }),
+            summary: "Optional module (status filled in by the running app)".into(),
+            details: json!({ "note": "WhatsApp runs in-process under its own supervisor; checkout never depends on it." }),
         });
         out.push(DiagnosticItem {
             component: "OCR".into(),
             state: "info".into(),
-            summary: "Not configured on this build".into(),
+            summary: "Optional module (status filled in by the running app)".into(),
             details: json!({}),
         });
         let free = crate::backup::free_space(&self.data_dir);

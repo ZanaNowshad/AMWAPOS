@@ -27,7 +27,7 @@ import type {
 } from "../../api/types";
 import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../state/session";
-import { FEATURE_LABELS, FeatureGate, useFeature } from "../../components/FeatureGate";
+import { FEATURE_LABELS, FEATURE_PARENT, FeatureGate, useFeature } from "../../components/FeatureGate";
 import { AiSettingsSection } from "./ai";
 import { WaTemplates } from "./automation";
 import { useToast } from "../../components/toast";
@@ -1993,14 +1993,26 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     t(
       "Lets this computer serve other tills on the store network. A terminal-mode install needs this on before it can become a hub.",
     ),
-  whatsapp: () => t("Runs the local WhatsApp sidecar on this computer (127.0.0.1 only). Linking is done by QR code."),
-  ocr: () =>
+  "whatsapp.enabled": () =>
     t(
-      "Reads supplier invoices and payment screenshots with the bundled offline OCR models. Stock is never posted from OCR without a person confirming.",
+      "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside AMWAPOS. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.",
     ),
-  payment_reviews: () =>
+  "whatsapp.send_receipts": () =>
     t(
-      "Matches payment screenshots received on WhatsApp against expected amounts. A screenshot is never treated as bank settlement.",
+      "Queues the receipt on WhatsApp after a sale to a customer with a WhatsApp number. A failed send never affects the sale.",
+    ),
+  "whatsapp.delivery_notices": () => t("Sends 'on the way' and 'delivered' messages when a delivery changes status."),
+  "ocr.enabled": () =>
+    t(
+      "Runs the bundled offline OCR (Tesseract, English and Arabic) in a separate worker. It stays off if the bundled models are missing.",
+    ),
+  "ocr.payment_screenshots": () =>
+    t(
+      "Reads payment screenshots and compares them with the amount you expect. OCR only assists: a person confirms every payment.",
+    ),
+  "ocr.supplier_invoices": () =>
+    t(
+      "Reads supplier invoices into a draft purchase order. Stock is never posted from OCR without a person confirming.",
     ),
   ai: () => t("Lets managers ask questions about sales, stock and margins. The assistant can only read data."),
   ai_mutations: () =>
@@ -2030,11 +2042,11 @@ function FeaturesSettings() {
         )}
       </Banner>
       {names.map((n) => (
-        <div key={n}>
+        <div key={n} style={FEATURE_PARENT[n] ? { marginInlineStart: 24 } : undefined}>
           <Checkbox
             label={FEATURE_LABELS[n]()}
             checked={!!data[n]}
-            disabled={n === "ai_mutations" && !data.ai}
+            disabled={!!FEATURE_PARENT[n] && !data[FEATURE_PARENT[n]!]}
             onChange={(x) => setData({ ...data, [n]: x })}
           />
           <div className="tiny" style={{ marginInlineStart: 24 }}>

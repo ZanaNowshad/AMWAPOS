@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { CheckCircle2, CircleAlert, FileScan, Image as ImageIcon, RefreshCw, Send, Upload } from "lucide-react";
 import { api } from "../../api";
 import type {
+  AutomationStatus,
   FileBlob,
   InvoiceScan,
   InvoiceScanLine,
   PaymentReview,
-  SidecarStatus,
   WaConversation,
   WaOutboxRow,
   WaThread,
@@ -56,80 +56,128 @@ function StateRow({ label, ok, value, hint }: { label: string; ok: boolean | nul
   );
 }
 
-const WA_STATE: Record<string, () => string> = {
-  stopped: () => t("Not connected"),
+const WA_PROCESS: Record<string, () => string> = {
+  disabled: () => t("Off (module disabled)"),
+  stopped: () => t("Stopped"),
   starting: () => t("Starting"),
-  pairing: () => t("Waiting for QR scan"),
-  connecting: () => t("Connecting"),
-  connected: () => t("Connected, syncing"),
-  ready: () => t("Ready"),
-  logged_out: () => t("Unlinked from the phone"),
-  error: () => t("Error"),
+  running: () => t("Running"),
+  restarting: () => t("Restarting after a failure"),
+  failed: () => t("Failed, retrying"),
 };
 
-/** Process / health / identity / link / OCR, each shown separately. */
-function SidecarStates({ st }: { st: SidecarStatus }) {
+const WA_SESSION: Record<string, () => string> = {
+  none: () => t("Not linked"),
+  pairing: () => t("Waiting for the phone to link"),
+  paired: () => t("Linked"),
+  logged_out: () => t("Unlinked from the phone"),
+};
+
+/** WhatsApp process / session / connection / readiness and OCR, each shown separately. */
+function AutomationStates({ st }: { st: AutomationStatus }) {
   const wa = st.whatsapp;
+  const ocr = st.ocr;
   return (
     <div className="card card-pad col gap-16">
       <StateRow
-        label={t("Sidecar process")}
-        ok={st.process === "running"}
-        value={
-          st.process === "running"
-            ? t("Running (PID {0}, 127.0.0.1:{1})", String(st.pid ?? ""), String(st.port ?? ""))
-            : st.process === "failed"
-              ? t("Failed")
-              : t("Stopped")
+        label={t("WhatsApp client")}
+        ok={wa.process === "running" ? true : wa.process === "stopped" || wa.process === "disabled" ? null : false}
+        value={WA_PROCESS[wa.process]?.() ?? wa.process}
+        hint={
+          wa.restarts > 0
+            ? t("Restarted {0} times since AMWAPOS started.", wa.restarts) +
+              (wa.next_retry_at ? " " + t("Next attempt {0}.", relative(wa.next_retry_at)) : "")
+            : undefined
         }
-        hint={st.installed ? undefined : t("The sidecar is not installed on this computer. Reinstall AMWAPOS.")}
       />
       <StateRow
-        label={t("Health check")}
-        ok={st.process === "running" ? st.health : null}
-        value={st.health ? t("Answering") : t("No answer")}
+        label={t("Session")}
+        ok={wa.session === "paired" ? true : wa.session === "logged_out" ? false : null}
+        value={WA_SESSION[wa.session]?.() ?? wa.session}
+        hint={wa.account ? t("Number {0}", wa.account.split("@")[0].split(":")[0]) : undefined}
       />
       <StateRow
-        label={t("Identity")}
-        ok={st.health ? st.identity : null}
-        value={st.identity ? t("Verified AMWAPOS sidecar {0}", st.version ?? "") : t("Not verified")}
-        hint={t("Checks that the local service answering is the one AMWAPOS started.")}
+        label={t("Connected")}
+        ok={wa.process === "running" ? wa.connected : null}
+        value={wa.connected ? t("Yes") : t("No")}
       />
-      {st.features.whatsapp ? (
-        <>
-          <StateRow
-            label={t("WhatsApp connected")}
-            ok={wa ? wa.connected : null}
-            value={wa ? (WA_STATE[wa.state]?.() ?? wa.state) : "—"}
-          />
-          <StateRow
-            label={t("WhatsApp ready to send")}
-            ok={wa ? wa.ready : null}
-            value={wa?.ready ? (wa.me?.name ?? wa.me?.id ?? t("Yes")) : t("No")}
-          />
-        </>
-      ) : null}
-      {st.features.ocr ? (
+      <StateRow
+        label={t("Ready to send")}
+        ok={wa.process === "running" ? wa.ready : null}
+        value={wa.ready ? t("Yes") : t("No")}
+        hint={
+          st.queue
+            ? t("{0} waiting to send, {1} failed.", st.queue.queued, st.queue.failed) +
+              (wa.last_send_at ? " " + t("Last sent {0}.", relative(wa.last_send_at)) : "")
+            : undefined
+        }
+      />
+      {st.features["ocr.enabled"] ? (
         <StateRow
           label={t("Offline OCR")}
-          ok={st.ocr ? st.ocr.enabled : null}
-          value={st.ocr ? (st.ocr.enabled ? t("Ready ({0})", st.ocr.languages.join(", ")) : t("Disabled")) : "—"}
-          hint={st.ocr?.reason ? tb(st.ocr.reason) : undefined}
+          ok={ocr.available}
+          value={
+            ocr.available
+              ? t("Ready ({0})", ocr.languages.join(", "))
+              : ocr.error_code === "ocr_model_missing"
+                ? t("Models missing")
+                : t("Unavailable")
+          }
+          hint={ocr.error ? tb(ocr.error) : (ocr.engine ?? undefined)}
         />
       ) : null}
-      {st.last_error ? <Banner tone="danger">{tb(st.last_error)}</Banner> : null}
-      {wa?.last_error && !wa.ready ? (
+      {wa.banned_until ? (
+        <Banner tone="danger">
+          {t("WhatsApp temporarily blocked this number until {0}.", formatDateTime(wa.banned_until))}
+        </Banner>
+      ) : null}
+      {wa.last_error && !wa.ready ? (
         <div className="tiny">
-          {t("Last WhatsApp error")}: {wa.last_error}
+          {t("Last WhatsApp message")}: {wa.last_error}
+        </div>
+      ) : null}
+      {wa.last_send_error ? (
+        <div className="tiny">
+          {t("Last send error")}: {wa.last_send_error}
         </div>
       ) : null}
     </div>
   );
 }
 
+/** Always shown (also when the module is off): what this module is and its risks. */
+function WaAbout() {
+  return (
+    <Banner tone="warning" title={t("About WhatsApp in AMWAPOS")}>
+      <ul className="col gap-8" style={{ margin: 0, paddingInlineStart: 18 }}>
+        <li>
+          {t(
+            "Switched on by the owner in Settings → Features (WhatsApp). It is off by default; selling, refunds and shifts never depend on it.",
+          )}
+        </li>
+        <li>
+          {t(
+            "AMWAPOS links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into AMWAPOS. This is not the WhatsApp Business API.",
+          )}
+        </li>
+        <li>
+          <strong>{t("Ban risk")}:</strong>{" "}
+          {t(
+            "WhatsApp's terms do not allow unofficial clients. WhatsApp can restrict or ban a number that uses one, especially for bulk or unsolicited messages. Use a number you can afford to lose and message only customers who expect it.",
+          )}
+        </li>
+        <li>
+          {t(
+            "The link (session keys) is stored on this computer in its own file inside the AMWAPOS data folder, separate from the sales database. Anyone with that file can use the number.",
+          )}
+        </li>
+      </ul>
+    </Banner>
+  );
+}
+
 // ---------------------------------------------------------------- WhatsApp
 
-type WaTab = "connection" | "conversations" | "outbox" | "templates";
+type WaTab = "connection" | "conversations" | "outbox" | "templates" | "diagnostics";
 
 export function WhatsAppPage() {
   const [tab, setTab] = useState<WaTab>("connection");
@@ -138,54 +186,67 @@ export function WhatsAppPage() {
       <PageHeader
         title={t("WhatsApp")}
         subtitle={t(
-          "Receipts, delivery updates and customer messages through a WhatsApp account linked to this computer.",
+          "Receipts, delivery updates and customer messages through a WhatsApp number linked to this computer.",
         )}
       />
-      <FeatureGate feature="whatsapp">
-        <Tabs<WaTab>
-          value={tab}
-          onChange={setTab}
-          tabs={[
-            { key: "connection", label: t("Connection") },
-            { key: "conversations", label: t("Conversations") },
-            { key: "outbox", label: t("Sent messages") },
-            { key: "templates", label: t("Templates") },
-          ]}
-        />
-        <div style={{ marginTop: 16 }}>
-          {tab === "connection" ? <WaConnection /> : null}
-          {tab === "conversations" ? <WaConversations /> : null}
-          {tab === "outbox" ? <WaOutbox /> : null}
-          {tab === "templates" ? <WaTemplates /> : null}
-        </div>
-      </FeatureGate>
+      <div className="col gap-16">
+        <WaAbout />
+        <FeatureGate feature="whatsapp.enabled">
+          <Tabs<WaTab>
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { key: "connection", label: t("Connection") },
+              { key: "conversations", label: t("Conversations") },
+              { key: "outbox", label: t("Sent messages") },
+              { key: "templates", label: t("Templates") },
+              { key: "diagnostics", label: t("Diagnostics") },
+            ]}
+          />
+          <div style={{ marginTop: 16 }}>
+            {tab === "connection" ? <WaConnection /> : null}
+            {tab === "conversations" ? <WaConversations /> : null}
+            {tab === "outbox" ? <WaOutbox /> : null}
+            {tab === "templates" ? <WaTemplates /> : null}
+            {tab === "diagnostics" ? <WaDiagnostics /> : null}
+          </div>
+        </FeatureGate>
+      </div>
     </div>
   );
 }
 
+const svgUrl = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
 function WaConnection() {
   const toast = useToast();
-  const { data: st, error, reload } = useLoad(() => api.sidecar.status(), []);
+  const { has } = useSession();
+  const { data: st, error, reload } = useLoad(() => api.whatsapp.status(), []);
   const act = useAction();
   const [unlink, setUnlink] = useState(false);
-  const state = st?.whatsapp?.state;
+  const [backup, setBackup] = useState(false);
+  const [ack, setAck] = useState(false);
+  const [pairPhone, setPairPhone] = useState("");
+  const wa = st?.whatsapp;
+  const busy = wa
+    ? wa.process === "starting" || wa.session === "pairing" || (wa.process === "running" && !wa.ready)
+    : false;
   useEffect(() => {
-    const fast = state === "pairing" || state === "starting" || state === "connecting" || state === "connected";
-    const id = window.setInterval(() => void reload(), fast ? 2000 : 6000);
+    const id = window.setInterval(() => void reload(), busy ? 2000 : 6000);
     return () => window.clearInterval(id);
-  }, [state, reload]);
+  }, [busy, reload]);
   if (error) return <Banner tone="danger">{error}</Banner>;
-  if (!st) return <Skeleton />;
-  const wa = st.whatsapp;
+  if (!st || !wa) return <Skeleton />;
+  const running = wa.process === "running" || wa.process === "starting" || wa.process === "restarting";
   return (
     <div className="grid-2" style={{ gap: 16, alignItems: "start" }}>
-      <SidecarStates st={st} />
+      <AutomationStates st={st} />
       <div className="card card-pad col gap-16">
         <h3>{t("Linked phone")}</h3>
-        {wa?.state === "pairing" && wa.qr_data_url ? (
+        {wa.session === "pairing" && wa.qr?.svg ? (
           <div className="col gap-8" style={{ alignItems: "center" }}>
             <img
-              src={wa.qr_data_url}
+              src={svgUrl(wa.qr.svg)}
               alt={t("WhatsApp pairing QR code")}
               width={280}
               height={280}
@@ -196,62 +257,90 @@ function WaConnection() {
             </div>
           </div>
         ) : null}
-        {wa?.ready ? (
+        {wa.session === "pairing" && wa.pair_code ? (
+          <div className="col gap-8" style={{ alignItems: "center" }}>
+            <div className="mono" style={{ fontSize: 32, letterSpacing: 4 }} dir="ltr" data-testid="wa-pair-code">
+              {wa.pair_code.code}
+            </div>
+            <div className="small" style={{ textAlign: "center" }}>
+              {t(
+                "On the phone: Linked devices → Link a device → Link with phone number instead, then enter this code.",
+              )}
+            </div>
+          </div>
+        ) : null}
+        {wa.ready ? (
           <Banner tone="success" title={t("WhatsApp is ready")}>
-            {t("Linked as {0}.", wa.me?.name ?? wa.me?.id ?? "")}
+            {wa.account ? t("Linked as {0}.", wa.account.split("@")[0].split(":")[0]) : null}
           </Banner>
         ) : null}
-        {wa?.state === "logged_out" ? (
-          <Banner tone="warning">
-            {t("This computer was unlinked from the phone. Connect again and scan a new code.")}
-          </Banner>
+        {wa.session === "logged_out" ? (
+          <Banner tone="warning">{t("This computer was unlinked from the phone. Link again to continue.")}</Banner>
         ) : null}
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
         <div className="row">
-          {!wa || wa.state === "stopped" || wa.state === "logged_out" || wa.state === "error" ? (
+          {!running ? (
             <Button
               variant="primary"
               loading={act.busy}
               onClick={async () => {
-                if (await act.run(() => api.whatsapp.connect())) void reload();
+                if (await act.run(() => api.whatsapp.start())) void reload();
               }}
             >
-              {wa?.linked ? t("Reconnect") : t("Connect and show QR code")}
+              {wa.session === "paired" ? t("Reconnect") : t("Link and show QR code")}
             </Button>
           ) : (
             <Button
               loading={act.busy}
               onClick={async () => {
-                await act.run(() => api.whatsapp.disconnect());
+                await act.run(() => api.whatsapp.stop());
                 void reload();
               }}
             >
-              {t("Disconnect")}
+              {t("Stop")}
             </Button>
           )}
-          {wa?.linked ? (
+          {wa.session === "paired" ? (
             <Button variant="danger" onClick={() => setUnlink(true)}>
               {t("Unlink phone")}
             </Button>
           ) : null}
-          <Button
-            variant="ghost"
-            icon={<RefreshCw size={16} />}
-            loading={act.busy}
-            onClick={async () => {
-              await act.run(() => api.sidecar.restart());
-              toast("info", t("Sidecar restarted"));
-              void reload();
-            }}
-          >
-            {t("Restart sidecar")}
+          <Button variant="ghost" icon={<RefreshCw size={16} />} onClick={() => void reload()}>
+            {t("Refresh")}
           </Button>
         </div>
+        {wa.session !== "paired" ? (
+          <div className="row" style={{ alignItems: "flex-end" }}>
+            <TextInput
+              label={t("Or link with a code (shop's WhatsApp number)")}
+              value={pairPhone}
+              dir="ltr"
+              placeholder="+973…"
+              onChange={(e) => setPairPhone(e.target.value)}
+            />
+            <Button
+              loading={act.busy}
+              disabled={!pairPhone.trim()}
+              onClick={async () => {
+                if (await act.run(() => api.whatsapp.pairCode(pairPhone))) void reload();
+              }}
+            >
+              {t("Get pairing code")}
+            </Button>
+          </div>
+        ) : null}
         <div className="tiny">
           {t(
-            "The sidecar runs only on this computer and listens on 127.0.0.1. Checkout never waits for WhatsApp; messages queue and are sent when the link is ready.",
+            "WhatsApp runs inside AMWAPOS with its own supervisor. If it stops, it restarts by itself and the tills keep selling; messages wait in the queue.",
           )}
         </div>
+        {has("settings.manage") && wa.session === "paired" ? (
+          <div className="row">
+            <Button variant="ghost" onClick={() => setBackup(true)}>
+              {t("Back up WhatsApp session…")}
+            </Button>
+          </div>
+        ) : null}
       </div>
       {unlink ? (
         <Confirm
@@ -262,7 +351,7 @@ function WaConnection() {
           error={act.error}
           onCancel={() => setUnlink(false)}
           onConfirm={async () => {
-            if ((await act.run(() => api.whatsapp.unlink())) !== undefined) {
+            if ((await act.run(() => api.whatsapp.logout())) !== undefined) {
               setUnlink(false);
               void reload();
             }
@@ -273,6 +362,96 @@ function WaConnection() {
           )}
         </Confirm>
       ) : null}
+      {backup ? (
+        <Confirm
+          title={t("Back up WhatsApp session")}
+          confirmLabel={t("Create backup")}
+          danger
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => {
+            setBackup(false);
+            setAck(false);
+          }}
+          onConfirm={async () => {
+            if (!ack) return;
+            const r = await act.run(() => api.whatsapp.sessionBackup(true));
+            if (r) {
+              setBackup(false);
+              setAck(false);
+              toast("success", t("Session saved to {0}", r.path));
+            }
+          }}
+        >
+          <div className="col gap-16">
+            <Banner tone="danger">
+              {t(
+                "This file is the WhatsApp link itself. Anyone who has it can read and send this shop's WhatsApp messages without the phone. Normal AMWAPOS backups do not include it. Store it offline and delete it when no longer needed.",
+              )}
+            </Banner>
+            <Checkbox label={t("I understand the risk")} checked={ack} onChange={setAck} />
+          </div>
+        </Confirm>
+      ) : null}
+    </div>
+  );
+}
+
+function WaDiagnostics() {
+  const { data, error, reload } = useLoad(() => api.whatsapp.recent(50), []);
+  const { data: st } = useLoad(() => api.whatsapp.status(), []);
+  if (error) return <Banner tone="danger">{error}</Banner>;
+  if (!data) return <Skeleton />;
+  return (
+    <div className="col gap-16">
+      {st ? (
+        <div className="card card-pad">
+          <dl className="kv">
+            <dt>{t("Client")}</dt>
+            <dd>{st.whatsapp.adapter}</dd>
+            <dt>{t("Session file")}</dt>
+            <dd className="mono small" dir="ltr">
+              {st.whatsapp.session_file}
+            </dd>
+          </dl>
+        </div>
+      ) : null}
+      <div className="row">
+        <h3 className="grow">{t("Recent sends")}</h3>
+        <Button variant="ghost" icon={<RefreshCw size={16} />} onClick={() => void reload()}>
+          {t("Refresh")}
+        </Button>
+      </div>
+      <DataTable
+        rows={data.sent}
+        rowKey={(r) => r.message_id}
+        empty={t("Nothing sent yet.")}
+        columns={[
+          { key: "at", label: t("Queued"), render: (r) => formatDateTime(r.created_at) },
+          { key: "kind", label: t("Type"), render: (r) => r.kind },
+          { key: "to", label: t("To"), render: (r) => <span dir="ltr">{r.to_phone}</span> },
+          { key: "status", label: t("Status"), render: (r) => r.status },
+          {
+            key: "id",
+            label: t("WhatsApp id"),
+            render: (r) => <span className="mono tiny">{r.wa_message_id ?? "—"}</span>,
+          },
+          { key: "err", label: t("Error"), render: (r) => <span className="tiny">{r.last_error ?? ""}</span> },
+        ]}
+      />
+      <h3>{t("Recent received")}</h3>
+      <DataTable
+        rows={data.received}
+        rowKey={(r) => String(r.seq)}
+        empty={t("No messages received yet.")}
+        columns={[
+          { key: "at", label: t("Received"), render: (r) => formatDateTime(r.received_at) },
+          { key: "kind", label: t("Type"), render: (r) => r.kind },
+          { key: "chat", label: t("From"), render: (r) => <span dir="ltr">{r.chat.split("@")[0]}</span> },
+          { key: "media", label: t("Attachment"), render: (r) => (r.media_state === "none" ? "" : r.media_state) },
+          { key: "id", label: t("WhatsApp id"), render: (r) => <span className="mono tiny">{r.wa_id}</span> },
+        ]}
+      />
     </div>
   );
 }
@@ -571,9 +750,12 @@ interface WaSettings {
   default_lang: "en" | "ar";
   attach_pdf: boolean;
   send_read_receipts: boolean;
+  auto_payment_ack: boolean;
   receipt: { en: string; ar: string };
   dispatch: { en: string; ar: string };
+  delivered: { en: string; ar: string };
   reminder: { en: string; ar: string };
+  payment_ack: { en: string; ar: string };
 }
 
 export function WaTemplates() {
@@ -584,7 +766,7 @@ export function WaTemplates() {
   if (error) return <Banner tone="danger">{error}</Banner>;
   if (!data) return <Skeleton />;
   const editable = has("settings.manage");
-  const tpl = (k: "receipt" | "dispatch" | "reminder", label: string, vars: string) => (
+  const tpl = (k: "receipt" | "dispatch" | "delivered" | "reminder" | "payment_ack", label: string, vars: string) => (
     <div className="col gap-8">
       <h3>{label}</h3>
       <div className="tiny">
@@ -641,9 +823,17 @@ export function WaTemplates() {
         disabled={!editable}
         onChange={(x) => setData({ ...data, send_read_receipts: x })}
       />
+      <Checkbox
+        label={t("Send the payment acknowledgement when a person confirms a payment screenshot")}
+        checked={data.auto_payment_ack}
+        disabled={!editable}
+        onChange={(x) => setData({ ...data, auto_payment_ack: x })}
+      />
       {tpl("receipt", t("Receipt"), "{business} {customer} {receipt} {total} {date}")}
       {tpl("dispatch", t("Out for delivery"), "{business} {customer} {delivery} {amount}")}
+      {tpl("delivered", t("Delivered"), "{business} {customer} {delivery} {amount}")}
       {tpl("reminder", t("Payment reminder"), "{business} {customer} {delivery} {amount}")}
+      {tpl("payment_ack", t("Payment received"), "{business} {customer} {amount} {reference} {delivery}")}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       {editable ? (
         <div className="row">
@@ -673,14 +863,20 @@ export function WhatsAppSendButton({
   phone,
   size,
 }: {
-  kind: "receipt" | "dispatch" | "reminder";
+  kind: "receipt" | "dispatch" | "delivered" | "reminder";
   saleId?: string | null;
   deliveryId?: string | null;
   customerId?: string | null;
   phone?: string | null;
   size?: "sm";
 }) {
-  const on = useFeature("whatsapp");
+  const on = useFeature(
+    kind === "receipt"
+      ? "whatsapp.send_receipts"
+      : kind === "reminder"
+        ? "whatsapp.enabled"
+        : "whatsapp.delivery_notices",
+  );
   const { has } = useSession();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -694,7 +890,9 @@ export function WhatsAppSendButton({
       ? t("Send receipt on WhatsApp")
       : kind === "dispatch"
         ? t("Send delivery update")
-        : t("Send payment reminder");
+        : kind === "delivered"
+          ? t("Send delivered notice")
+          : t("Send payment reminder");
   return (
     <>
       <Button size={size} icon={<Send size={14} />} onClick={() => setOpen(true)} data-testid={`wa-send-${kind}`}>
@@ -752,7 +950,8 @@ export function WhatsAppSendButton({
 
 const REVIEW_STATUS: Record<string, () => string> = {
   pending: () => t("Pending"),
-  matched: () => t("Matched"),
+  ocr_match: () => t("OCR match"),
+  likely_match: () => t("Likely match"),
   mismatch: () => t("Mismatch"),
   needs_review: () => t("Needs review"),
   confirmed: () => t("Confirmed"),
@@ -766,22 +965,23 @@ const REVIEW_REASON: Record<string, () => string> = {
   amount_not_found: () => t("No amount found in the screenshot"),
   no_expected_amount: () => t("No expected amount: link a delivery or enter the amount"),
   low_confidence: () => t("OCR confidence is low"),
+  no_reference: () => t("No bank reference found"),
   duplicate_image: () => t("Same screenshot or bank reference seen before"),
   ocr_failed: () => t("OCR failed"),
 };
 
 function reviewTone(s: string) {
-  return s === "matched" || s === "confirmed"
+  return s === "ocr_match" || s === "confirmed"
     ? "success"
     : s === "mismatch" || s === "rejected"
       ? "danger"
-      : s === "needs_review"
+      : s === "needs_review" || s === "likely_match"
         ? "warning"
         : "info";
 }
 
 export function PaymentReviewsPage() {
-  const ocr = useFeature("ocr");
+  const ocr = useFeature("ocr.enabled");
   const [status, setStatus] = useState("open");
   const { data, loading, error, reload } = useLoad(
     () => api.payreviews.list(status === "all" ? undefined : status),
@@ -800,7 +1000,7 @@ export function PaymentReviewsPage() {
           </Button>
         }
       />
-      <FeatureGate feature="payment_reviews">
+      <FeatureGate feature="ocr.payment_screenshots">
         <div className="col gap-16">
           <Banner tone="warning" title={t("A screenshot is not proof of payment")}>
             {t(
@@ -811,11 +1011,13 @@ export function PaymentReviewsPage() {
             <Banner tone="info">{t("OCR is switched off: screenshots wait for a person to read the amount.")}</Banner>
           ) : null}
           <div className="filters">
-            {["open", "matched", "mismatch", "needs_review", "confirmed", "rejected", "all"].map((s) => (
-              <button key={s} className={`filter-chip ${status === s ? "active" : ""}`} onClick={() => setStatus(s)}>
-                {s === "open" ? t("Open") : s === "all" ? t("All") : REVIEW_STATUS[s]()}
-              </button>
-            ))}
+            {["open", "ocr_match", "likely_match", "mismatch", "needs_review", "confirmed", "rejected", "all"].map(
+              (s) => (
+                <button key={s} className={`filter-chip ${status === s ? "active" : ""}`} onClick={() => setStatus(s)}>
+                  {s === "open" ? t("Open") : s === "all" ? t("All") : REVIEW_STATUS[s]()}
+                </button>
+              ),
+            )}
           </div>
           {error ? <Banner tone="danger">{error}</Banner> : null}
           <DataTable<PaymentReview>
@@ -1110,7 +1312,7 @@ export function InvoiceScanPage() {
           </Button>
         }
       />
-      <FeatureGate feature="ocr">
+      <FeatureGate feature="ocr.supplier_invoices">
         <div className="col gap-16">
           <Banner tone="info">
             {t(

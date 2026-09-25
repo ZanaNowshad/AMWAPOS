@@ -26,7 +26,8 @@ fn fixture(name: &str) -> String {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn ocr_worker_reads_screenshots_and_invoices() {
-    let have = std::process::Command::new("tesseract").arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
+    let exe = OcrPaths::discover(None).tesseract.unwrap();
+    let have = std::process::Command::new(&exe).arg("--version").output().map(|o| o.status.success()).unwrap_or(false);
     if !have {
         assert!(std::env::var("AMWAPOS_REQUIRE_OCR").is_err(), "Tesseract is required in CI");
         eprintln!("skipped: tesseract not installed");
@@ -50,7 +51,7 @@ async fn ocr_worker_reads_screenshots_and_invoices() {
 
     // Models missing: turning OCR on is refused and the flag stays off.
     let empty = tempfile::tempdir().unwrap();
-    rt.ocr.set_paths(OcrPaths { tesseract: Some("tesseract".into()), models: Some(empty.path().to_path_buf()) });
+    rt.ocr.set_paths(OcrPaths { tesseract: Some(exe.clone()), models: Some(empty.path().to_path_buf()) });
     let e = rt.dispatch("settings.save", Some(t.clone()), features.clone()).await.unwrap_err();
     assert_eq!(e.code, amwapos_core::ErrorCode::OcrModelMissing);
     assert!(!core.features().unwrap().is_on("ocr.enabled"));

@@ -138,3 +138,51 @@ The UI has two modes:
   the permission, and the backend enforces permissions anyway.
 
 The design tokens are in `src/styles/tokens.css`.
+
+## WhatsApp and OCR (optional modules)
+
+Both are off by default (flags `whatsapp.enabled`, `whatsapp.send_receipts`,
+`whatsapp.delivery_notices`, `ocr.enabled`, `ocr.payment_screenshots`, `ocr.supplier_invoices`;
+a sub-flag counts only when its parent is on). Neither uses a second process for WhatsApp or a
+local network port.
+
+```
+React ── Tauri commands only (status, start/stop, pair code, queue, mark read, recent) ──┐
+                                                                                        │
+Runtime ── WhatsAppService (crates/amwapos-hub/src/whatsapp/service.rs)                 │
+             ├─ supervisor task: owns the client, restarts it with back-off             │
+             ├─ I/O worker task: outbox sends, read receipts, media downloads           │
+             └─ WhatsAppAdapter trait                                                   │
+                  ├─ RustWhatsAppAdapter  (whatsapp-rust =0.7.0, unofficial Web client)  │
+                  └─ FakeAdapter          (tests)                                        │
+         ── OcrWorker (crates/amwapos-hub/src/ocr_worker.rs): bundled Tesseract,        │
+            one child process per image, on its own task                                │
+AppCore ── wa_outbox / wa_inbox / payment_reviews / invoice_scans (ledger DB) ◄──────────┘
+```
+
+How the rules are enforced:
+
+- **Separate session store.** `SessionPath::for_data_dir` is the only way to get the session
+  location: `<data>/whatsapp/session.db` (`%ProgramData%\AMWAPOS\data\whatsapp` on Windows). It
+  refuses a relative path, the ledger file (`amwapos.db`) and the executable's folder. The file is
+  opened only by the crate's own SQLite store inside the adapter; AMWAPOS' connection pool never
+  opens it. The explicit owner-only session backup opens its own read-only connection.
+- **No lock across the client.** The supervisor keeps the client's exit future in its own task
+  state and receives commands over a channel; status is published through a `watch` channel.
+  A client that ends or panics is restarted with back-off (2 s doubling to 5 min) unless it was
+  stopped or logged out. The runtime's minute watchdog re-spawns a supervisor or worker task that
+  died. Release builds use `panic = "unwind"`, so a panic stays in its task.
+- **Selling never waits for WhatsApp.** Sales, deliveries and payment confirmations only insert
+  outbox rows after they commit (`wa_after_sale`, `wa_after_delivery`,
+  `wa_after_payment_confirmed`); a failure there is logged, never returned. Sending happens in
+  the I/O worker.
+- **Persist first.** Inbound messages are committed to `wa_inbox` in the crate's inbound
+  durability hook, before WhatsApp is acknowledged and before any status or UI update. Media is
+  recorded as `pending` and downloaded afterwards; images open a payment review.
+- **Idempotent sends.** `whatsapp.queue` stores a payload hash with the operation id: the same key
+  and payload return the first row; a different payload fails with `idempotency_mismatch`. The
+  WhatsApp message id is derived from the outbox id, so a retried send is the same message.
+- **OCR is assistance.** Payment screenshots end as `ocr_match | likely_match | mismatch |
+  needs_review`; only a person confirms. Invoices become a draft purchase order. Models are
+  checked against `ocr/models/models.json`; without the English model OCR reports
+  `ocr_model_missing` and cannot be switched on.

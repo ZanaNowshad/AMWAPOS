@@ -115,7 +115,7 @@ async fn whatsapp_service_end_to_end_with_fake_adapter() {
     call(rt, "whatsapp.start", Some(t), json!({})).await;
     let s = wa(rt);
     assert_eq!((s.process.as_str(), s.session.as_str(), s.connected, s.ready), ("running", "pairing", false, false));
-    assert!(s.qr.is_some());
+    assert!(s.qr.as_ref().unwrap()["svg"].as_str().unwrap().starts_with("<?xml"));
     assert!(session_file.exists());
     assert_ne!(session_file, e.data.join(amwapos_core::service::DB_FILE));
     e.fake.scan();

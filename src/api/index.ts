@@ -325,14 +325,16 @@ export const api = {
     retryDeadLetter: (dead_id: string) => call<Record<string, unknown>>("sync.retry_dead_letter", { dead_id }),
     unblock: (accept_new_hub: boolean) => call<Record<string, unknown>>("sync.unblock", { accept_new_hub }),
   },
-  sidecar: {
-    status: () => call<T.SidecarStatus>("sidecar.status"),
-    restart: () => call<unknown>("sidecar.restart"),
-  },
   whatsapp: {
-    connect: () => call<T.WaLinkStatus>("whatsapp.connect"),
-    disconnect: () => call<unknown>("whatsapp.disconnect"),
-    unlink: () => call<unknown>("whatsapp.unlink"),
+    /** WhatsApp + OCR status (separate flags). */
+    status: () => call<T.AutomationStatus>("whatsapp.status"),
+    start: () => call<T.WaStatus>("whatsapp.start"),
+    pairCode: (phone: string) => call<T.WaStatus>("whatsapp.pair_code", { phone }),
+    stop: () => call<T.WaStatus>("whatsapp.stop"),
+    logout: () => call<T.WaStatus>("whatsapp.logout"),
+    recent: (limit?: number) => call<T.WaRecent>("whatsapp.recent", { limit }),
+    sessionBackup: (acknowledge_risk: boolean) =>
+      call<{ path: string }>("whatsapp.session_backup", { acknowledge_risk }),
     queue: (req: T.WaQueueRequest) => call<T.WaOutboxRow>("whatsapp.queue", req),
     outbox: (status?: string) => call<T.WaOutboxRow[]>("whatsapp.outbox", { status }),
     outboxAction: (message_id: string, action: "retry" | "cancel") =>

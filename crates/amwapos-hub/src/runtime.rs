@@ -143,6 +143,45 @@ impl Runtime {
         self.ocr.set_paths(OcrPaths::discover(resource_dir));
     }
 
+    /// Replace the placeholder WhatsApp / OCR rows of the diagnostics report
+    /// with the live state of the service and worker.
+    async fn live_diagnostics(&self, v: &mut Value) {
+        let f = self.core.features().unwrap_or_default();
+        let wa = self.whatsapp.status();
+        let w = self.ocr.clone();
+        let _ = tokio::task::spawn_blocking(move || w.prepare()).await;
+        let ocr = self.ocr.status();
+        let (wa_state, wa_summary) = if !f.is_on("whatsapp.enabled") {
+            ("info", "Off (feature whatsapp.enabled)".to_string())
+        } else if wa.ready {
+            ("ok", format!("Ready · session {}", wa.session))
+        } else if wa.process == "stopped" {
+            ("info", format!("Stopped · session {}", wa.session))
+        } else {
+            ("warning", format!("{} · session {} · not ready (tills unaffected)", wa.process, wa.session))
+        };
+        let (ocr_state, ocr_summary) = if !f.is_on("ocr.enabled") {
+            ("info", "Off (feature ocr.enabled)".to_string())
+        } else if ocr.available {
+            ("ok", format!("Ready ({})", ocr.languages.join(", ")))
+        } else {
+            ("error", ocr.error_code.clone().unwrap_or_else(|| "unavailable".into()))
+        };
+        if let Some(items) = v.as_array_mut() {
+            for it in items.iter_mut() {
+                match it.get("component").and_then(|c| c.as_str()) {
+                    Some("WhatsApp") => {
+                        *it = json!({ "component": "WhatsApp", "state": wa_state, "summary": wa_summary, "details": wa });
+                    }
+                    Some("OCR") => {
+                        *it = json!({ "component": "OCR", "state": ocr_state, "summary": ocr_summary, "details": ocr });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// Use another WhatsApp adapter (tests use `FakeAdapter`).
     pub fn set_whatsapp_adapter(&self, a: Arc<dyn WhatsAppAdapter>) {
         self.whatsapp.set_adapter(a);
@@ -406,6 +445,13 @@ impl Runtime {
                     _ => commands::dispatch(&core, &c, token.as_deref(), args),
                 })
                 .await;
+                let res = match (cmd, res) {
+                    ("diagnostics.get", Ok(mut v)) => {
+                        self.live_diagnostics(&mut v).await;
+                        Ok(v)
+                    }
+                    (_, r) => r,
+                };
                 if res.is_ok() {
                     match cmd {
                         "setup.initialize" | "sync.enable_hub" | "backup.restore" | "settings.save" => self.ensure_services(),

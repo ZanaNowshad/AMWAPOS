@@ -120,7 +120,7 @@ pub struct OutboxRow {
     pub sent_at: Option<String>,
 }
 
-/// A message claimed for sending (runtime → sidecar).
+/// A message claimed for sending by the WhatsApp service.
 #[derive(Debug, Clone, Serialize)]
 pub struct OutboundJob {
     pub message_id: String,

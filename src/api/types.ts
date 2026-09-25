@@ -94,9 +94,12 @@ export interface PosSettings {
 
 export interface FeatureFlags {
   hub: boolean;
-  whatsapp: boolean;
-  ocr: boolean;
-  payment_reviews: boolean;
+  "whatsapp.enabled": boolean;
+  "whatsapp.send_receipts": boolean;
+  "whatsapp.delivery_notices": boolean;
+  "ocr.enabled": boolean;
+  "ocr.payment_screenshots": boolean;
+  "ocr.supplier_invoices": boolean;
   ai: boolean;
   ai_mutations: boolean;
   customer_credit: boolean;
@@ -823,7 +826,7 @@ export interface PrintJobRow {
   created_at: string;
 }
 
-// ---- WhatsApp / OCR (sidecar) ----
+// ---- WhatsApp (in-process) / OCR worker ----
 
 export interface FileBlob {
   mime: string;
@@ -831,49 +834,87 @@ export interface FileBlob {
   size: number;
 }
 
-export interface WaLinkStatus {
-  state: "stopped" | "starting" | "pairing" | "connecting" | "connected" | "ready" | "logged_out" | "error";
+/** In-process WhatsApp service: each flag separate. */
+export interface WaStatus {
+  enabled: boolean;
+  process: "disabled" | "stopped" | "starting" | "running" | "restarting" | "failed";
+  session: "none" | "pairing" | "paired" | "logged_out";
   connected: boolean;
   ready: boolean;
-  linked: boolean;
-  qr_data_url: string | null;
-  me: { id: string; name: string | null } | null;
+  account: string | null;
+  qr: { svg: string | null; expires_at: string } | null;
+  pair_code: { code: string; expires_at: string } | null;
   last_error: string | null;
-  inbox_seq: number;
+  restarts: number;
+  next_retry_at: string | null;
+  banned_until: string | null;
+  adapter: string;
+  session_file: string;
+  inbox_rev: number;
+  last_send_at: string | null;
+  last_send_error: string | null;
 }
 
-export interface OcrStatus {
-  enabled: boolean;
+export interface OcrWorkerStatus {
+  available: boolean;
   languages: string[];
-  models: Record<string, { present: boolean; verified: boolean }>;
-  reason: string | null;
+  engine: string | null;
+  error_code: "ocr_model_missing" | "ocr_engine_missing" | null;
+  error: string | null;
+  running: boolean;
+  last_job_at: string | null;
 }
 
-export interface SidecarStatus {
-  installed: boolean;
-  process: "running" | "stopped" | "failed";
-  pid: number | null;
-  port: number | null;
-  version: string | null;
-  health: boolean;
-  identity: boolean;
-  whatsapp: WaLinkStatus | null;
-  ocr: OcrStatus | null;
-  last_error: string | null;
-  starts: number;
-  autostart: boolean;
-  features: { whatsapp: boolean; ocr: boolean; payment_reviews: boolean };
+export interface AutomationStatus {
+  whatsapp: WaStatus;
+  ocr: OcrWorkerStatus;
+  queue: { unread: number; queued: number; failed: number } | null;
+  features: Record<
+    | "whatsapp.enabled"
+    | "whatsapp.send_receipts"
+    | "whatsapp.delivery_notices"
+    | "ocr.enabled"
+    | "ocr.payment_screenshots"
+    | "ocr.supplier_invoices",
+    boolean
+  >;
+}
+
+export interface WaRecent {
+  sent: {
+    message_id: string;
+    operation_id: string;
+    kind: string;
+    status: string;
+    wa_message_id: string | null;
+    to_phone: string;
+    created_at: string;
+    sent_at: string | null;
+    last_error: string | null;
+  }[];
+  received: {
+    seq: number;
+    wa_id: string;
+    chat: string;
+    kind: string;
+    received_at: string;
+    media_state: string;
+    media_error: string | null;
+  }[];
 }
 
 export interface WaQueueRequest {
   operation_id: string;
-  kind: "receipt" | "dispatch" | "reminder" | "text";
+  kind: "receipt" | "dispatch" | "delivered" | "reminder" | "payment_ack" | "text" | "document";
   to_phone?: string | null;
   customer_id?: string | null;
   sale_id?: string | null;
   delivery_id?: string | null;
+  review_id?: string | null;
   lang?: "en" | "ar" | null;
   text?: string | null;
+  document_b64?: string | null;
+  document_name?: string | null;
 }
 
 export interface WaOutboxRow {
@@ -945,7 +986,8 @@ export interface PaymentReview {
   ocr_confidence: number | null;
   ocr_text: string | null;
   duplicate_of: string | null;
-  status: "pending" | "matched" | "mismatch" | "needs_review" | "confirmed" | "rejected";
+  ocr_status: "ocr_match" | "likely_match" | "mismatch" | "needs_review" | null;
+  status: "pending" | "ocr_match" | "likely_match" | "mismatch" | "needs_review" | "confirmed" | "rejected";
   reason: string | null;
   decided_by_name: string | null;
   decided_at: string | null;

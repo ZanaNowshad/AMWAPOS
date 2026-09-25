@@ -110,6 +110,12 @@ pub struct WhatsAppService {
     path_error: Option<String>,
 }
 
+/// The pairing QR as an SVG image, so the UI only displays a picture.
+fn qr_svg(code: &str) -> Option<String> {
+    let q = qrcode::QrCode::new(code.as_bytes()).ok()?;
+    Some(q.render::<qrcode::render::svg::Color>().min_dimensions(280, 280).quiet_zone(true).build())
+}
+
 fn now() -> String {
     amwapos_core::time::now_str()
 }
@@ -251,7 +257,7 @@ impl AdapterSink for Sink {
         self.status.send_modify(|s| match e {
             AdapterEvent::Qr { code, valid_for } => {
                 s.session = "pairing".into();
-                s.qr = Some(json!({ "code": code, "expires_at": expires(valid_for) }));
+                s.qr = Some(json!({ "svg": qr_svg(&code), "expires_at": expires(valid_for) }));
                 s.pair_code = None;
             }
             AdapterEvent::PairCode { code, valid_for } => {

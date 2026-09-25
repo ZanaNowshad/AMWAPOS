@@ -60,6 +60,8 @@ export const AR: Record<string, string> = {
   "AMWAPOS Terminal": "نقطة بيع AMWAPOS",
   "AMWAPOS could not start": "تعذّر تشغيل AMWAPOS",
   "AMWAPOS is up to date": "AMWAPOS محدّث",
+  "AMWAPOS links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into AMWAPOS. This is not the WhatsApp Business API.":
+    "يرتبط AMWAPOS برقم واتساب كما يفعل واتساب ويب، باستخدام عميل غير رسمي مدمج في AMWAPOS. هذا ليس واجهة واتساب للأعمال (Business API).",
   "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.":
     "ينفّذ AMWAPOS هذا عبر الأمر العادي وبصلاحياتك. يمكن التراجع عنه لاحقاً بسجل تصحيحي، ولا يُحذف شيء.",
   "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.":
@@ -71,6 +73,7 @@ export const AR: Record<string, string> = {
   "API key": "مفتاح API",
   AUTOMATION: "الأتمتة",
   About: "حول البرنامج",
+  "About WhatsApp in AMWAPOS": "عن واتساب في AMWAPOS",
   "Access restricted": "الوصول مقيّد",
   Account: "الحساب",
   "Account saved": "تم حفظ الحساب",
@@ -238,6 +241,8 @@ export const AR: Record<string, string> = {
   Back: "رجوع",
   "Back to counting": "العودة إلى الجرد",
   "Back to sale": "العودة إلى البيع",
+  "Back up WhatsApp session": "نسخ جلسة واتساب احتياطياً",
+  "Back up WhatsApp session…": "نسخ جلسة واتساب احتياطياً…",
   "Back up and install": "نسخ احتياطي ثم تثبيت",
   "Backing up…": "جارٍ النسخ الاحتياطي…",
   Backup: "النسخ الاحتياطي",
@@ -253,6 +258,7 @@ export const AR: Record<string, string> = {
   Backups: "النسخ الاحتياطية",
   Balance: "الرصيد",
   "Balance owed": "الرصيد المستحق",
+  "Ban risk": "خطر الحظر",
   "Bank Transfer": "تحويل بنكي",
   Barcode: "الباركود",
   "Barcode '{0}' was converted to scientific notation by a spreadsheet. Export barcodes as text.":
@@ -410,6 +416,7 @@ export const AR: Record<string, string> = {
   Chosen: "مختار",
   "Clear search": "مسح البحث",
   "Clear selection": "إلغاء التحديد",
+  Client: "العميل البرمجي",
   Close: "إغلاق",
   "Close PO": "إغلاق أمر الشراء",
   "Close Shift": "إغلاق الوردية",
@@ -446,6 +453,7 @@ export const AR: Record<string, string> = {
   Confirmed: "مؤكد",
   "Connect and show QR code": "اتصل واعرض رمز QR",
   "Connect to the hub": "الاتصال بالخادم",
+  Connected: "متصل",
   "Connected terminals": "نقاط البيع المتصلة",
   "Connected, syncing": "متصل، جارٍ المزامنة",
   Connecting: "جارٍ الاتصال",
@@ -485,6 +493,7 @@ export const AR: Record<string, string> = {
   "Create and edit customers": "إنشاء العملاء وتعديلهم",
   "Create and edit products, barcodes and categories": "إنشاء المنتجات والباركودات والفئات وتعديلها",
   "Create and update deliveries": "إنشاء التوصيلات وتحديثها",
+  "Create backup": "إنشاء نسخة احتياطية",
   "Create backups": "إنشاء النسخ الاحتياطية",
   "Create delivery": "إنشاء توصيل",
   "Create draft purchase order": "إنشاء مسودة أمر شراء",
@@ -697,6 +706,7 @@ export const AR: Record<string, string> = {
   "Export CSV": "تصدير CSV",
   "Export Diagnostics": "تصدير التشخيص",
   Failed: "فشل",
+  "Failed, retrying": "فشل، جارٍ إعادة المحاولة",
   "Fast retail. Accurate operations.": "بيع سريع. عمليات دقيقة.",
   Favorites: "المفضلة",
   Features: "الميزات",
@@ -734,6 +744,7 @@ export const AR: Record<string, string> = {
   "Full device ID": "معرّف الجهاز الكامل",
   General: "عام",
   "Generate pairing code": "إنشاء رمز اقتران",
+  "Get pairing code": "الحصول على رمز الربط",
   "Go to…": "انتقال إلى…",
   "Go to… (Ctrl+K)": "انتقال إلى… (Ctrl+K)",
   "Goods received": "بضاعة مستلمة",
@@ -781,6 +792,7 @@ export const AR: Record<string, string> = {
   "Hub · {0} unresolved change(s)": "الخادم · {0} تغيير(ات) غير محلولة",
   "I agree to send store data to this AI provider": "أوافق على إرسال بيانات المتجر إلى مزوّد الذكاء الاصطناعي هذا",
   "I have checked the hub — resume": "تحققت من الخادم — استئناف",
+  "I understand the risk": "أفهم المخاطر",
   "I understand this backup belongs to a different business ({0}).":
     "أدرك أن هذه النسخة الاحتياطية تخص نشاطاً تجارياً آخر ({0}).",
   INVENTORY: "المخزون",
@@ -863,6 +875,7 @@ export const AR: Record<string, string> = {
   "Last Push": "آخر إرسال",
   "Last Seen": "آخر ظهور",
   "Last WhatsApp error": "آخر خطأ في واتساب",
+  "Last WhatsApp message": "آخر رسالة من واتساب",
   "Last backup attempt failed: {0}": "فشلت آخر محاولة نسخ احتياطي: {0}",
   "Last cost": "آخر تكلفة",
   "Last error": "آخر خطأ",
@@ -870,6 +883,8 @@ export const AR: Record<string, string> = {
   "Last movement": "آخر حركة",
   "Last purchase": "آخر شراء",
   "Last received": "آخر استلام",
+  "Last send error": "آخر خطأ في الإرسال",
+  "Last sent {0}.": "آخر إرسال {0}.",
   "Last sold": "آخر بيع",
   "Last successful backup": "آخر نسخة احتياطية ناجحة",
   "Last successful backup {0}": "آخر نسخة احتياطية ناجحة {0}",
@@ -889,19 +904,25 @@ export const AR: Record<string, string> = {
   "Lets this computer serve other tills on the store network. A terminal-mode install needs this on before it can become a hub.":
     "يسمح لهذا الحاسوب بخدمة نقاط البيع الأخرى على شبكة المتجر. يجب تفعيله في تثبيت الطرفية قبل أن تصبح خادماً.",
   Light: "فاتح",
+  "Likely match": "تطابق مرجّح",
   Line: "السطر",
   "Line cost": "تكلفة السطر",
   "Line total": "إجمالي السطر",
   "Line {0} needs a product, a quantity and a unit cost (or exclude it).":
     "السطر {0} يحتاج منتجاً وكمية وتكلفة وحدة (أو استبعده).",
   "Lines with variance": "أسطر بها فروقات",
+  "Link and show QR code": "ربط وعرض رمز QR",
+  Linked: "مربوط",
   "Linked as {0}.": "مرتبط باسم {0}.",
   "Linked phone": "الهاتف المرتبط",
   "Linked sale": "البيع المرتبط",
+  "Links a WhatsApp number to this computer through an unofficial WhatsApp Web client inside AMWAPOS. WhatsApp may ban numbers that use unofficial clients. Selling never waits for WhatsApp.":
+    "يربط رقم واتساب بهذا الحاسوب عبر عميل واتساب ويب غير رسمي داخل AMWAPOS. قد يحظر واتساب الأرقام التي تستخدم عملاء غير رسميين. البيع لا ينتظر واتساب أبداً.",
   "Listed reports": "عرض التقارير",
   "Live preview": "معاينة مباشرة",
   Loading: "جارٍ التحميل",
   Local: "محلي",
+  "Local OCR": "التعرّف الضوئي المحلي",
   "Local OCR (invoice scan)": "التعرف الضوئي المحلي (مسح الفواتير)",
   "Local OCR engine and bundled English models": "محرك OCR محلي ونماذج إنجليزية مضمّنة",
   "Local OCR models (English)": "نماذج OCR محلية (إنجليزية)",
@@ -971,6 +992,7 @@ export const AR: Record<string, string> = {
   "Mode must be standalone or hub. Terminals are set up by pairing with a hub.":
     "يجب أن يكون الوضع مستقلاً أو خادماً. تُعدّ نقاط البيع بالاقتران مع خادم.",
   Model: "النموذج",
+  "Models missing": "النماذج مفقودة",
   Monday: "الاثنين",
   More: "المزيد",
   "Move products to": "نقل المنتجات إلى",
@@ -1025,6 +1047,7 @@ export const AR: Record<string, string> = {
   "New unit price": "سعر الوحدة الجديد",
   "New user": "مستخدم جديد",
   Next: "التالي",
+  "Next attempt {0}.": "المحاولة التالية {0}.",
   "Next automatic backup": "النسخة الاحتياطية التلقائية التالية",
   No: "لا",
   "No AI provider key is configured. An owner can add one in Settings → AI.":
@@ -1036,6 +1059,7 @@ export const AR: Record<string, string> = {
   "No amount found in the screenshot": "لم يُعثر على مبلغ في لقطة الشاشة",
   "No answer": "لا استجابة",
   "No backups yet. Create one now.": "لا توجد نسخ احتياطية بعد. أنشئ واحدة الآن.",
+  "No bank reference found": "لم يُعثر على مرجع بنكي",
   "No barcodes. Add one so the product can be scanned.": "لا توجد باركودات. أضف واحداً حتى يمكن مسح المنتج.",
   "No business data has been modified.": "لم تُعدَّل أي بيانات تجارية.",
   "No cash events in this period.": "لا توجد حركات نقد في هذه الفترة.",
@@ -1117,6 +1141,7 @@ export const AR: Record<string, string> = {
   "Not enough stock recorded for: {0}. A manager can approve selling anyway.":
     "المخزون المسجّل غير كافٍ لـ: {0}. يمكن للمدير الموافقة على البيع رغم ذلك.",
   "Not in this build": "غير موجود في هذا الإصدار",
+  "Not linked": "غير مربوط",
   "Not printed": "لم يُطبع",
   "Not recognised": "غير معروف",
   "Not set up": "غير مُعدّ",
@@ -1129,17 +1154,23 @@ export const AR: Record<string, string> = {
   "Note added": "تمت إضافة الملاحظة",
   Notes: "الملاحظات",
   "Nothing needs attention right now.": "لا شيء يحتاج انتباهاً الآن.",
+  "Nothing sent yet.": "لم يُرسل شيء بعد.",
   "Nothing to show.": "لا يوجد ما يُعرض.",
   "Nothing waiting to print": "لا شيء بانتظار الطباعة",
   "Number of automatic backups to keep.": "عدد النسخ الاحتياطية التلقائية المحتفظ بها.",
+  "Number {0}": "الرقم {0}",
   "OCR confidence": "ثقة التعرف الضوئي",
   "OCR confidence is low": "ثقة التعرف الضوئي منخفضة",
   "OCR failed": "فشل التعرف الضوئي",
   "OCR is switched off: screenshots wait for a person to read the amount.":
     "التعرف الضوئي متوقف: تنتظر اللقطات شخصاً ليقرأ المبلغ.",
+  "OCR match": "تطابق بالتعرّف الضوئي",
+  "OCR: payment screenshot reviews": "التعرّف الضوئي: مراجعة لقطات الدفع",
+  "OCR: supplier invoice scanning": "التعرّف الضوئي: مسح فواتير الموردين",
   OK: "سليم",
   "OMR — Omani Rial (3 decimals)": "OMR — ريال عماني (3 منازل عشرية)",
   OVERVIEW: "نظرة عامة",
+  "Off (module disabled)": "متوقف (الوحدة معطّلة)",
   Offline: "غير متصل",
   "Offline OCR": "التعرف الضوئي دون اتصال",
   "On hand": "المتوفر",
@@ -1147,6 +1178,8 @@ export const AR: Record<string, string> = {
     "على جهاز الخادم افتح الإدارة ← المزامنة / الخادم ← اقتران نقطة بيع للحصول على رمز اقتران.",
   "On the new till choose “Join an existing hub” and enter this address and code.":
     "على نقطة البيع الجديدة اختر «الانضمام إلى خادم موجود» وأدخل هذا العنوان والرمز.",
+  "On the phone: Linked devices → Link a device → Link with phone number instead, then enter this code.":
+    "على الهاتف: الأجهزة المرتبطة ← ربط جهاز ← الربط برقم الهاتف بدلاً من ذلك، ثم أدخل هذا الرمز.",
   "On the store phone open WhatsApp → Settings → Linked devices → Link a device, and scan this code.":
     "على هاتف المتجر افتح واتساب ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز، وامسح هذا الرمز.",
   "On-hand quantity and value at average cost": "الكمية المتوفرة والقيمة بمتوسط التكلفة",
@@ -1193,6 +1226,7 @@ export const AR: Record<string, string> = {
   Operations: "العمليات",
   "Optional modules are off until you switch them on": "الوحدات الاختيارية متوقفة حتى تفعّلها",
   "Optional, one per line": "اختياري، سطر لكل عنصر",
+  "Or link with a code (shop's WhatsApp number)": "أو الربط برمز (رقم واتساب المتجر)",
   Order: "الطلب",
   "Order line": "سطر الطلب",
   "Order total above {0}": "إجمالي الأمر أعلى من {0}",
@@ -1266,6 +1300,7 @@ export const AR: Record<string, string> = {
   "Payment methods": "طرق الدفع",
   "Payment methods saved": "تم حفظ طرق الدفع",
   "Payment pending": "الدفع معلّق",
+  "Payment received": "تم استلام الدفعة",
   "Payment recorded": "تم تسجيل الدفعة",
   "Payment reference": "مرجع الدفع",
   "Payment reminder": "تذكير بالدفع",
@@ -1383,6 +1418,8 @@ export const AR: Record<string, string> = {
   Question: "السؤال",
   Queued: "في الانتظار",
   "Queued for WhatsApp. It is sent as soon as the link is ready.": "في قائمة انتظار واتساب. تُرسل فور جاهزية الربط.",
+  "Queues the receipt on WhatsApp after a sale to a customer with a WhatsApp number. A failed send never affects the sale.":
+    "يضع الإيصال في قائمة إرسال واتساب بعد البيع لعميل لديه رقم واتساب. فشل الإرسال لا يؤثر على البيع أبداً.",
   "Ran a report": "شغّل تقريراً",
   Rate: "النسبة",
   "Rate (%)": "النسبة (%)",
@@ -1396,12 +1433,17 @@ export const AR: Record<string, string> = {
   "Read-only financial access": "وصول مالي للقراءة فقط",
   "Read-only: the assistant cannot change anything.": "قراءة فقط: لا يستطيع المساعد تغيير أي شيء.",
   "Reading the invoice… this can take up to a minute.": "جارٍ قراءة الفاتورة… قد يستغرق ذلك دقيقة.",
+  "Reads payment screenshots and compares them with the amount you expect. OCR only assists: a person confirms every payment.":
+    "يقرأ لقطات الدفع ويقارنها بالمبلغ المتوقع. التعرّف الضوئي للمساعدة فقط: يؤكد شخصٌ كل دفعة.",
   "Reads supplier invoices and payment screenshots with the bundled offline OCR models. Stock is never posted from OCR without a person confirming.":
     "يقرأ فواتير الموردين ولقطات شاشة الدفع بنماذج التعرف الضوئي المضمّنة دون اتصال. لا يُسجَّل أي مخزون من التعرف الضوئي دون تأكيد شخص.",
+  "Reads supplier invoices into a draft purchase order. Stock is never posted from OCR without a person confirming.":
+    "يقرأ فواتير الموردين إلى أمر شراء مسودة. لا يُرحّل المخزون من التعرّف الضوئي أبداً دون تأكيد شخص.",
   Ready: "جاهز",
   "Ready ({0})": "جاهز ({0})",
   "Ready for review": "جاهز للمراجعة",
   "Ready to scan": "جاهز للمسح",
+  "Ready to send": "جاهز للإرسال",
   Reason: "السبب",
   Receipt: "الإيصال",
   "Receipt language": "لغة الإيصال",
@@ -1420,6 +1462,8 @@ export const AR: Record<string, string> = {
   Receipts: "الإيصالات",
   "Receipts, delivery updates and customer messages through a WhatsApp account linked to this computer.":
     "الإيصالات وتحديثات التوصيل ورسائل العملاء عبر حساب واتساب مرتبط بهذا الحاسوب.",
+  "Receipts, delivery updates and customer messages through a WhatsApp number linked to this computer.":
+    "الإيصالات وتحديثات التوصيل ورسائل العملاء عبر رقم واتساب مربوط بهذا الحاسوب.",
   Receive: "استلام",
   "Receive Goods": "استلام البضاعة",
   "Receive at most 2,000 lines at a time.": "استلم 2,000 سطر كحد أقصى في كل مرة.",
@@ -1433,7 +1477,9 @@ export const AR: Record<string, string> = {
   Receiving: "الاستلام",
   "Receiving and stock control": "الاستلام ومراقبة المخزون",
   "Receiving now": "المستلم الآن",
+  "Recent received": "آخر الرسائل الواردة",
   "Recent sales": "المبيعات الأخيرة",
+  "Recent sends": "آخر الرسائل المرسلة",
   Reconnect: "إعادة الاتصال",
   Record: "السجل",
   "Record adjustment": "تسجيل التعديل",
@@ -1519,6 +1565,8 @@ export const AR: Record<string, string> = {
   Resolved: "تم الحل",
   "Resolved · {0}": "تم الحل · {0}",
   "Restart sidecar": "إعادة تشغيل الخدمة المساعدة",
+  "Restarted {0} times since AMWAPOS started.": "أُعيد تشغيله {0} مرات منذ بدء AMWAPOS.",
+  "Restarting after a failure": "إعادة التشغيل بعد عطل",
   Restock: "إعادة للمخزون",
   Restore: "استعادة",
   "Restore backup": "استعادة نسخة احتياطية",
@@ -1571,6 +1619,8 @@ export const AR: Record<string, string> = {
   "Run Health Check": "تشغيل فحص السلامة",
   Running: "قيد التشغيل",
   "Running (PID {0}, 127.0.0.1:{1})": "قيد التشغيل (PID {0}، ‎127.0.0.1:{1}‎)",
+  "Runs the bundled offline OCR (Tesseract, English and Arabic) in a separate worker. It stays off if the bundled models are missing.":
+    "يشغّل التعرّف الضوئي المدمج دون اتصال (Tesseract، بالإنجليزية والعربية) في عامل منفصل. يبقى متوقفاً إذا كانت النماذج المدمجة مفقودة.",
   "Runs the local WhatsApp sidecar on this computer (127.0.0.1 only). Linking is done by QR code.":
     "يشغّل خدمة واتساب المحلية على هذا الحاسوب (127.0.0.1 فقط). يتم الربط برمز QR.",
   Runtime: "بيئة التشغيل",
@@ -1684,17 +1734,25 @@ export const AR: Record<string, string> = {
   "Selling, cash, refunds and reports work fully without it.":
     "البيع والنقد والاسترجاع والتقارير تعمل بالكامل من دونها.",
   Send: "إرسال",
+  "Send delivered notice": "إرسال إشعار التسليم",
   "Send delivery update": "إرسال تحديث التوصيل",
   "Send payment reminder": "إرسال تذكير بالدفع",
   "Send receipt on WhatsApp": "إرسال الإيصال عبر واتساب",
+  "Send the payment acknowledgement when a person confirms a payment screenshot":
+    "إرسال تأكيد استلام الدفعة عندما يؤكد شخص لقطة الدفع",
   Sending: "جارٍ الإرسال",
   "Sending to the printer failed: {0}": "فشل الإرسال إلى الطابعة: {0}",
+  "Sends 'on the way' and 'delivered' messages when a delivery changes status.":
+    "يرسل رسالتي «في الطريق» و«تم التسليم» عند تغيّر حالة التوصيل.",
   "Sensitive actions": "إجراءات حساسة",
   Sent: "مُرسلة",
   "Sent messages": "الرسائل المرسلة",
+  Session: "الجلسة",
   "Session ended": "انتهت الجلسة",
+  "Session file": "ملف الجلسة",
   "Session not found.": "لم يُعثر على الجلسة.",
   "Session not found. Please log in.": "لم يُعثر على الجلسة. يرجى تسجيل الدخول.",
+  "Session saved to {0}": "تم حفظ الجلسة في {0}",
   "Set Primary": "تعيين كأساسي",
   "Set count": "تعيين العدد",
   "Set price": "تعيين السعر",
@@ -1779,6 +1837,7 @@ export const AR: Record<string, string> = {
   "Stocktake finalized: {0} product(s) adjusted": "تم اعتماد الجرد: تعديل {0} منتج(ات)",
   "Stocktake name": "اسم الجرد",
   "Stocktake {0}": "الجرد {0}",
+  Stop: "إيقاف",
   Stopped: "متوقفة",
   Storage: "التخزين",
   "Store operations and overrides": "عمليات المتجر والاستثناءات",
@@ -1798,6 +1857,8 @@ export const AR: Record<string, string> = {
   Suppliers: "المورّدون",
   "Switch User": "تبديل المستخدم",
   "Switch to POS": "الانتقال إلى نقطة البيع",
+  "Switched on by the owner in Settings → Features (WhatsApp). It is off by default; selling, refunds and shifts never depend on it.":
+    "يشغّله المالك من الإعدادات ← الميزات (واتساب). وهو متوقف افتراضياً، ولا يعتمد عليه البيع أو المرتجعات أو الورديات أبداً.",
   Sync: "المزامنة",
   "Sync / Hub": "المزامنة / الخادم",
   "Sync error": "خطأ في المزامنة",
@@ -1937,6 +1998,8 @@ export const AR: Record<string, string> = {
     "رد الخادم غير مشفّر. أُوقفت المزامنة للأمان.",
   "The hub's response signature is invalid. Synchronization stopped for safety.":
     "توقيع رد الخادم غير صالح. أُوقفت المزامنة للأمان.",
+  "The link (session keys) is stored on this computer in its own file inside the AMWAPOS data folder, separate from the sales database. Anyone with that file can use the number.":
+    "يُحفظ الربط (مفاتيح الجلسة) على هذا الحاسوب في ملف مستقل داخل مجلد بيانات AMWAPOS، منفصل عن قاعدة بيانات المبيعات. أي شخص يملك هذا الملف يمكنه استخدام الرقم.",
   "The manager approval has expired or does not cover this action. Please approve again.":
     "انتهت صلاحية موافقة المدير أو لا تغطي هذا الإجراء. يرجى الموافقة مجدداً.",
   "The new backup failed verification: {0}": "فشل التحقق من النسخة الاحتياطية الجديدة: {0}",
@@ -1997,6 +2060,8 @@ export const AR: Record<string, string> = {
   "This computer is not running as a hub.": "هذا الجهاز لا يعمل كخادم.",
   "This computer was unlinked from the phone. Connect again and scan a new code.":
     "أُلغي ربط هذا الحاسوب من الهاتف. اتصل مجدداً وامسح رمزاً جديداً.",
+  "This computer was unlinked from the phone. Link again to continue.":
+    "تم فصل هذا الحاسوب عن الهاتف. اربطه مجدداً للمتابعة.",
   "This computer will accept connections from paired terminals on the store network (TCP port {0}). Make sure the Windows firewall allows AMWAPOS on private networks.":
     "سيقبل هذا الجهاز الاتصالات من نقاط البيع المقترنة على شبكة المتجر (منفذ TCP {0}). تأكد من أن جدار حماية Windows يسمح لـ AMWAPOS على الشبكات الخاصة.",
   "This conversation read WhatsApp or OCR text; check that the request came from you":
@@ -2013,6 +2078,8 @@ export const AR: Record<string, string> = {
     "أُنشئت قاعدة البيانات هذه بإصدار أحدث من AMWAPOS (البنية {0}). ثبّت الإصدار الأحدث أو استعد نسخة احتياطية متوافقة.",
   "This file does not contain an AMWAPOS database.": "لا يحتوي هذا الملف على قاعدة بيانات AMWAPOS.",
   "This file is not a readable AMWAPOS backup: {0}": "هذا الملف ليس نسخة احتياطية مقروءة لـ AMWAPOS: {0}",
+  "This file is the WhatsApp link itself. Anyone who has it can read and send this shop's WhatsApp messages without the phone. Normal AMWAPOS backups do not include it. Store it offline and delete it when no longer needed.":
+    "هذا الملف هو ربط واتساب نفسه. أي شخص يملكه يمكنه قراءة رسائل واتساب هذا المتجر وإرسالها دون الهاتف. النسخ الاحتياطية العادية لـ AMWAPOS لا تتضمنه. احفظه دون اتصال واحذفه عند عدم الحاجة إليه.",
   "This held sale is no longer available.": "هذا البيع المعلّق لم يعد متاحاً.",
   "This hub requires AMWAPOS sync protocol {0} (encrypted). Install the same AMWAPOS version on the hub and this terminal.":
     "يتطلب هذا الخادم بروتوكول مزامنة AMWAPOS {0} (مشفّر). ثبّت إصدار AMWAPOS نفسه على الخادم ونقطة البيع هذه.",
@@ -2098,6 +2165,7 @@ export const AR: Record<string, string> = {
   "Type a page name": "اكتب اسم صفحة",
   "Type a reply": "اكتب رداً",
   Unassigned: "غير معيّن",
+  Unavailable: "غير متاح",
   Uncategorised: "بلا فئة",
   Undo: "تراجع",
   Undone: "تم التراجع",
@@ -2208,6 +2276,7 @@ export const AR: Record<string, string> = {
   Waiting: "بالانتظار",
   "Waiting for OCR": "بانتظار التعرف الضوئي",
   "Waiting for QR scan": "بانتظار مسح رمز QR",
+  "Waiting for the phone to link": "بانتظار ربط الهاتف",
   "Waiting for your decision": "بانتظار قرارك",
   Wallet: "محفظة",
   Warning: "تحذير",
@@ -2217,7 +2286,10 @@ export const AR: Record<string, string> = {
   Welcome: "مرحباً",
   "Welcome to AMWAPOS": "مرحباً بك في AMWAPOS",
   WhatsApp: "واتساب",
+  "WhatsApp (unofficial Web client)": "واتساب (عميل ويب غير رسمي)",
+  "WhatsApp client": "عميل واتساب",
   "WhatsApp connected": "واتساب متصل",
+  "WhatsApp id": "معرّف واتساب",
   "WhatsApp is not connected and ready.": "واتساب غير متصل وغير جاهز.",
   "WhatsApp is ready": "واتساب جاهز",
   "WhatsApp number": "رقم واتساب",
@@ -2225,6 +2297,13 @@ export const AR: Record<string, string> = {
   "WhatsApp ready to send": "واتساب جاهز للإرسال",
   "WhatsApp runs in an optional sidecar; checkout never depends on it.":
     "يعمل واتساب في ملحق اختياري؛ ولا تعتمد عملية الدفع عليه أبداً.",
+  "WhatsApp runs inside AMWAPOS with its own supervisor. If it stops, it restarts by itself and the tills keep selling; messages wait in the queue.":
+    "يعمل واتساب داخل AMWAPOS مع مشرف خاص به. إذا توقف يعيد التشغيل تلقائياً وتستمر نقاط البيع في البيع، وتنتظر الرسائل في قائمة الانتظار.",
+  "WhatsApp temporarily blocked this number until {0}.": "حظر واتساب هذا الرقم مؤقتاً حتى {0}.",
+  "WhatsApp's terms do not allow unofficial clients. WhatsApp can restrict or ban a number that uses one, especially for bulk or unsolicited messages. Use a number you can afford to lose and message only customers who expect it.":
+    "لا تسمح شروط واتساب بالعملاء غير الرسميين. قد يقيّد واتساب أو يحظر رقماً يستخدم أحدها، خاصة عند إرسال رسائل جماعية أو غير مرغوبة. استخدم رقماً يمكنك الاستغناء عنه وراسل فقط العملاء الذين يتوقعون رسائلك.",
+  "WhatsApp: delivery notices": "واتساب: إشعارات التوصيل",
+  "WhatsApp: send receipts after a sale": "واتساب: إرسال الإيصالات بعد البيع",
   When: "متى",
   "When someone asks a question, AMWAPOS sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.":
     "عند طرح سؤال، يرسل AMWAPOS السؤال ونتائج عمليات البحث التي يجريها المساعد (أسماء المنتجات والأسعار والمخزون وإجماليات التقارير) إلى المزوّد. لا تُرسل الرموز السرية أو المفاتيح أو قوائم العملاء الكاملة أبداً. تُرسل رسائل العملاء فقط إذا كان واتساب مفعّلاً وقرأها المساعد.",
@@ -2355,6 +2434,7 @@ export const AR: Record<string, string> = {
   "{0} uncounted product(s) will not change. This creates stock movements and cannot be undone.":
     "لن يتغيّر {0} منتج(ات) غير معدودة. ينشئ هذا حركات مخزون ولا يمكن التراجع عنه.",
   "{0} unknown barcode(s) scanned": "مُسح {0} باركود(ات) مجهولة",
+  "{0} waiting to send, {1} failed.": "{0} بانتظار الإرسال، {1} فشلت.",
   "{0} was not found.": "لم يُعثر على {0}.",
   "{0} was removed: it is no longer sold.": "أُزيل {0}: لم يعد يُباع.",
   "{0} will no longer be able to synchronize with the hub. Its local records are kept and it can be re-activated later.":

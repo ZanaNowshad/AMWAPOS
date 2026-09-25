@@ -300,7 +300,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "migration.apply" => out(core.migration_apply(tk()?, all(&args)?)),
         // receipts as PDF
         "receipts.pdf" => out(core.receipt_pdf(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "ref_id")?)),
-        // WhatsApp (link state and sending are handled by the runtime + sidecar)
+        // WhatsApp records (link state and sending are handled by the WhatsApp service in the hub crate)
         "whatsapp.queue" => out(core.wa_queue(tk()?, all(&args)?)),
         "whatsapp.outbox" => out(core.wa_outbox_list(tk()?, opt(&args, "status")?, opt(&args, "limit")?)),
         "whatsapp.outbox_action" => {

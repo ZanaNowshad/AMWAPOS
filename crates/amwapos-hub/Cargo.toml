@@ -27,6 +27,7 @@ whatsapp-rust = { version = "=0.7.0", default-features = false, features = ["sql
 async-trait = "0.1"
 anyhow = "1"
 flate2 = "1"
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 rusqlite.workspace = true
 
 [dev-dependencies]

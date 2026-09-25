@@ -104,6 +104,18 @@ share.
   records traffic and later steals a hub's Windows credential (the master secret) could decrypt
   that recording. Pairing exchanges use fresh SPAKE2 keys each time.
 
+## WhatsApp (unofficial client)
+
+- The WhatsApp module uses `whatsapp-rust`, an unofficial WhatsApp Web client. WhatsApp's terms do
+  not allow unofficial clients and a number can be restricted or banned. The admin screen states
+  this whether or not the module is on.
+- The session (device identity and Signal keys) is `<data>/whatsapp/session.db`, separate from the
+  sales database and excluded from normal backups. Whoever has the file can use the number. An owner
+  can export it only after confirming a risk warning (and Windows Hello when that module is on); the
+  export is audited.
+- Inbound message text is stored as data and never interpreted as an instruction.
+- The module opens no listening port; it only makes outbound TLS connections to WhatsApp.
+
 ## Reporting
 
 Report vulnerabilities privately to the repository owner. Do not open public issues for them.
