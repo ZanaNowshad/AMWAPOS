@@ -237,6 +237,13 @@ export function ShiftClose({
                 ) : null}
               </tbody>
             </table>
+            {sum.expected_visible ? (
+              <div className="tiny" style={{ marginTop: 8 }}>
+                {t(
+                  "Expected in drawer = opening float + cash sales − cash refunds + paid in − paid out − safe drops. Card, wallet and account payments are not in the drawer.",
+                )}
+              </div>
+            ) : null}
             {!sum.expected_visible ? (
               <div className="tiny" style={{ marginTop: 8 }}>
                 {t("Blind count: the expected amount is shown after you close.")}

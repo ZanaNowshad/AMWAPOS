@@ -12,6 +12,9 @@
 //!   GET  /sync/status       signed, sealed response
 //!   GET  /devices           signed, sealed response (names and codes only)
 //!   POST /pair              protocol 1 (plaintext): refused with 426
+//!   GET  /companion/...     owner phone view (flag pwa.companion): static
+//!                           page + GET /companion/api/snapshot with a
+//!                           short-lived bearer token; LAN addresses only
 
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -383,6 +386,74 @@ async fn devices(State(st): State<Arc<HubState>>, method: Method, uri: Uri, head
     .await
 }
 
+/// Private, loopback or link-local peers only (the phone view is LAN-only).
+fn lan_peer(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v) => v.is_private() || v.is_loopback() || v.is_link_local(),
+        IpAddr::V6(v) => {
+            v.is_loopback()
+                || (v.segments()[0] & 0xfe00) == 0xfc00
+                || (v.segments()[0] & 0xffc0) == 0xfe80
+                || v.to_ipv4_mapped().is_some_and(|m| m.is_private() || m.is_loopback() || m.is_link_local())
+        }
+    }
+}
+
+fn companion_file(path: &str) -> Option<(&'static str, &'static [u8])> {
+    Some(match path {
+        "" | "index.html" => ("text/html; charset=utf-8", include_bytes!("companion/index.html")),
+        "app.js" => ("text/javascript; charset=utf-8", include_bytes!("companion/app.js")),
+        "app.css" => ("text/css; charset=utf-8", include_bytes!("companion/app.css")),
+        "sw.js" => ("text/javascript; charset=utf-8", include_bytes!("companion/sw.js")),
+        "manifest.webmanifest" => ("application/manifest+json", include_bytes!("companion/manifest.webmanifest")),
+        "icon.svg" => ("image/svg+xml", include_bytes!("companion/icon.svg")),
+        _ => return None,
+    })
+}
+
+const COMPANION_HEADERS: [(&str, &str); 4] = [
+    ("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"),
+    ("x-content-type-options", "nosniff"),
+    ("referrer-policy", "no-referrer"),
+    ("x-frame-options", "DENY"),
+];
+
+async fn companion_static(State(st): State<Arc<HubState>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, uri: Uri) -> Response {
+    let core = st.core.clone();
+    let on = blocking(move || Ok(core.features()?.is_on("pwa.companion"))).await.unwrap_or(false);
+    if !on || !lan_peer(peer.ip()) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let path = uri.path().trim_start_matches("/companion").trim_start_matches('/');
+    match companion_file(path) {
+        Some((ct, body)) => {
+            let mut r = (StatusCode::OK, [("content-type", ct), ("cache-control", "no-cache")], body).into_response();
+            for (k, v) in COMPANION_HEADERS {
+                r.headers_mut().insert(k, HeaderValue::from_static(v));
+            }
+            r
+        }
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn companion_snapshot(State(st): State<Arc<HubState>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap) -> Response {
+    if !lan_peer(peer.ip()) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let bearer = header(&headers, "authorization").strip_prefix("Bearer ").unwrap_or("").trim().to_string();
+    let core = st.core.clone();
+    let mut r = match blocking(move || core.companion_snapshot(&bearer)).await {
+        Ok(v) => json_response(&v),
+        Err(e) => err_response(e),
+    };
+    r.headers_mut().insert("cache-control", HeaderValue::from_static("no-store"));
+    for (k, v) in COMPANION_HEADERS {
+        r.headers_mut().insert(k, HeaderValue::from_static(v));
+    }
+    r
+}
+
 pub fn router(core: Arc<AppCore>) -> Router {
     let st = Arc::new(HubState {
         core,
@@ -402,6 +473,10 @@ pub fn router(core: Arc<AppCore>) -> Router {
         .route("/sync/pull", post(pull))
         .route("/sync/status", get(sync_status))
         .route("/devices", get(devices))
+        .route("/companion", get(companion_static))
+        .route("/companion/", get(companion_static))
+        .route("/companion/api/snapshot", get(companion_snapshot))
+        .route("/companion/{file}", get(companion_static))
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .with_state(st)
 }

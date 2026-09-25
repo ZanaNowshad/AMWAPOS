@@ -472,6 +472,11 @@ export function PosScreen({
         </span>
         <BackupPill />
         <div className="hitem">{t("Shift {0}", shift.shift_number)}</div>
+        {shift.safe_drop_minor > 0 ? (
+          <div className="hitem" title={t("Safe drops this shift")}>
+            {t("Dropped {0}", formatMoney(shift.safe_drop_minor))}
+          </div>
+        ) : null}
         <div className="hitem">
           <UserRound size={15} /> {session?.display_name}
         </div>
@@ -964,7 +969,10 @@ export function PosScreen({
         />
       ) : null}
       {modal.kind === "cash" ? (
-        <CashEventDialog kind={modal.cashKind} onClose={closeModal} onDone={() => (closeModal(), void reloadShift())} />
+        <CashEventDialog
+          kind={modal.cashKind}
+          safeDropTotal={shift.safe_drop_minor}
+          onClose={closeModal} onDone={() => (closeModal(), void reloadShift())} />
       ) : null}
       {modal.kind === "refund" ? <RefundFlow onClose={closeModal} onDone={() => void reloadShift()} /> : null}
       {modal.kind === "recent" ? <RecentSalesDialog onClose={closeModal} /> : null}

@@ -89,6 +89,7 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
     ("dead_stock", "Dead stock", "Inventory", "Stocked items with no sales in the period"),
     ("stock_movements", "Stock movements", "Inventory", "Ledger totals by movement type"),
     ("purchasing", "Purchasing", "Purchasing", "Goods received per supplier"),
+    ("supplier_performance", "Supplier performance", "Purchasing", "Ordered vs received quantity and on-time deliveries per supplier"),
     ("deliveries", "Deliveries", "Operations", "Deliveries by status"),
     ("audit", "Audit summary", "Audit", "Audited events by type and user"),
 ];
@@ -99,7 +100,7 @@ fn permission_for(key: &str) -> &'static str {
         "tax" => "reports.tax",
         "audit" => "audit.view",
         "inventory" | "dead_stock" | "stock_movements" => "inventory.view",
-        "purchasing" => "purchasing.manage",
+        "purchasing" | "supplier_performance" => "purchasing.manage",
         "deliveries" => "deliveries.view",
         _ => "reports.sales",
     }
@@ -205,6 +206,7 @@ impl AppCore {
             "dead_stock" => self.rep_dead_stock(c, s, p),
             "stock_movements" => self.rep_movements(c, p),
             "purchasing" => self.rep_purchasing(c, s, p),
+            "supplier_performance" => self.rep_supplier_performance(c, p),
             "deliveries" => self.rep_deliveries(c, p),
             "audit" => self.rep_audit(c, p),
             _ => Err(AppError::validation("Unknown report.")),
@@ -825,6 +827,77 @@ impl AppCore {
             rows,
             series: None,
             notes: vec![],
+        })
+    }
+
+    /// Purchase orders placed in the period: quantity received against
+    /// ordered (fill rate) and first delivery against the expected date.
+    fn rep_supplier_performance(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let mut st = c.prepare(
+            "WITH po AS (
+                SELECT p.supplier_id, p.expected_at,
+                       (SELECT COALESCE(SUM(qty_ordered_milli),0) FROM purchase_order_items i WHERE i.po_id=p.po_id) AS ordered,
+                       (SELECT COALESCE(SUM(qty_received_milli),0) FROM purchase_order_items i WHERE i.po_id=p.po_id) AS received,
+                       (SELECT MIN(created_at) FROM goods_receipts g WHERE g.po_id=p.po_id) AS first_rcv
+                FROM purchase_orders p
+                WHERE p.status NOT IN ('draft','cancelled') AND COALESCE(p.ordered_at, p.created_at)>=?1 AND COALESCE(p.ordered_at, p.created_at)<?2
+                  AND (amw_rbranch() IS NULL OR p.branch_id=amw_rbranch()))
+             SELECT sp.name, COUNT(*), SUM(po.ordered), SUM(po.received),
+                    SUM(CASE WHEN po.expected_at IS NOT NULL AND po.first_rcv IS NOT NULL AND substr(po.first_rcv,1,10) <= substr(po.expected_at,1,10) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN po.expected_at IS NOT NULL AND ((po.first_rcv IS NULL AND substr(po.expected_at,1,10) < substr(amw_now(),1,10))
+                                  OR substr(po.first_rcv,1,10) > substr(po.expected_at,1,10)) THEN 1 ELSE 0 END),
+                    SUM(CASE WHEN po.expected_at IS NULL THEN 1 ELSE 0 END)
+             FROM po JOIN suppliers sp ON sp.supplier_id=po.supplier_id GROUP BY po.supplier_id ORDER BY sp.name COLLATE NOCASE",
+        )?;
+        let rows: Vec<Value> = st
+            .query_map(params![r.a, r.b], |row| {
+                let ordered: i64 = row.get(2)?;
+                let received: i64 = row.get(3)?;
+                let on_time: i64 = row.get(4)?;
+                let late: i64 = row.get(5)?;
+                Ok(json!({ "supplier": row.get::<_, String>(0)?, "orders": row.get::<_, i64>(1)?, "ordered": ordered, "received": received,
+                    "fill_bp": if ordered > 0 { received.min(ordered) * 10_000 / ordered } else { 0 },
+                    "on_time": on_time, "late": late, "no_date": row.get::<_, i64>(6)?,
+                    "on_time_bp": if on_time + late > 0 { on_time * 10_000 / (on_time + late) } else { 0 } }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let (o, rc, ot, lt) = rows.iter().fold((0, 0, 0, 0), |a, x| {
+            (
+                a.0 + x["ordered"].as_i64().unwrap_or(0),
+                a.1 + x["received"].as_i64().unwrap_or(0).min(x["ordered"].as_i64().unwrap_or(0)),
+                a.2 + x["on_time"].as_i64().unwrap_or(0),
+                a.3 + x["late"].as_i64().unwrap_or(0),
+            )
+        });
+        Ok(Report {
+            key: "supplier_performance".into(),
+            title: "Supplier performance".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![
+                kpi("Fill rate", if o > 0 { rc * 10_000 / o } else { 0 }, "percent_bp", None),
+                kpi("On time", if ot + lt > 0 { ot * 10_000 / (ot + lt) } else { 0 }, "percent_bp", None),
+                kpi("Late orders", lt, "int", None),
+            ],
+            columns: vec![
+                col("supplier", "Supplier", "text"),
+                col("orders", "Orders", "int"),
+                col("ordered", "Qty ordered", "qty"),
+                col("received", "Qty received", "qty"),
+                col("fill_bp", "Fill rate", "percent_bp"),
+                col("on_time", "On time", "int"),
+                col("late", "Late", "int"),
+                col("no_date", "No expected date", "int"),
+                col("on_time_bp", "On-time rate", "percent_bp"),
+            ],
+            totals: None,
+            rows,
+            series: None,
+            notes: vec![
+                "On time: first delivery on or before the expected date. Late includes orders past their date with nothing received."
+                    .into(),
+            ],
         })
     }
 

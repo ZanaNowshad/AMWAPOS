@@ -398,3 +398,47 @@ fn multi_branch_flag_off_is_single_branch_and_on_isolates_branches() {
     assert_eq!(e.core.login(&cashier, "7351").unwrap_err().code, ErrorCode::Forbidden);
     assert!(count(&e, "SELECT COUNT(*) FROM audit_logs WHERE event_type IN ('branch.created','price.branch_changed','session.branch_switched','user.branches')") >= 5);
 }
+
+#[test]
+fn end_of_day_pack_and_zip_and_presets() {
+    let e = env();
+    let t = &e.owner_token;
+    e.product("Rice", "9401", 2_000, 1_200, 3_000);
+    e.core.db.write(|tx| Ok(tx.execute("UPDATE products SET reorder_point_milli=5000 WHERE sku IS NOT NULL", [])?)).unwrap();
+    e.open_shift(t, 0);
+    sell(&e, "9401", 1_000, None, 0);
+    let pack = e.core.eod_pack(t, None, None).unwrap();
+    assert_eq!(pack.sales.as_ref().unwrap().kpis[1].value, 1);
+    assert!(pack.tenders.is_some() && pack.shifts.is_some() && pack.refunds.is_some());
+    assert_eq!(pack.low_stock.len(), 1);
+    let z = e.core.eod_zip(t, Some(pack.date.clone()), None).unwrap();
+    let names: Vec<&str> = z["files"].as_array().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
+    assert_eq!(names, ["sales.csv", "tenders.csv", "shifts.csv", "refunds.csv", "low_stock.csv"]);
+    let bytes = amwapos_core::ids::b64_decode(z["base64"].as_str().unwrap()).unwrap();
+    assert_eq!(zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap().len(), 5);
+    // A cashier sees only what their role allows.
+    let (_, cashier) = e.user("Ali", amwapos_core::auth::ROLE_CASHIER, "7351");
+    assert!(e.core.eod_pack(&cashier, None, None).is_err());
+    // Saved ranges are per user.
+    let saved = e
+        .core
+        .report_preset_save(
+            t,
+            serde_json::from_value(json!({ "name": "Ramadan", "range_kind": "fixed", "from_date": "2026-02-18", "to_date": "2026-03-19" }))
+                .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(saved.len(), 1);
+    assert!(e
+        .core
+        .report_preset_save(
+            t,
+            serde_json::from_value(json!({ "name": "Bad", "range_kind": "fixed", "from_date": "2026-03-01", "to_date": "2026-02-01" }))
+                .unwrap()
+        )
+        .is_err());
+    e.core.report_preset_save(t, serde_json::from_value(json!({ "name": "Week", "range_kind": "last_7" })).unwrap()).unwrap();
+    assert_eq!(e.core.report_presets(&cashier).unwrap().len(), 0);
+    let all = e.core.report_presets(t).unwrap();
+    assert_eq!(e.core.report_preset_delete(t, &all[0].preset_id).unwrap().len(), 1);
+}

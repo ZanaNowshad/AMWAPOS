@@ -559,10 +559,13 @@ const CASH_TITLES = {
 
 export function CashEventDialog({
   kind,
+  safeDropTotal,
   onClose,
   onDone,
 }: {
   kind: "paid_in" | "paid_out" | "safe_drop" | "no_sale";
+  /** Safe drops already recorded on this shift (running total). */
+  safeDropTotal?: number;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -624,6 +627,18 @@ export function CashEventDialog({
           autoFocus={kind === "no_sale"}
           onKeyDown={(e) => e.key === "Enter" && submit()}
         />
+        {kind === "safe_drop" && safeDropTotal !== undefined ? (
+          <dl className="kv">
+            <dt>{t("Safe drops this shift")}</dt>
+            <dd className="money">{formatMoney(safeDropTotal)}</dd>
+            {minor !== null && minor > 0 ? (
+              <>
+                <dt>{t("After this drop")}</dt>
+                <dd className="money">{formatMoney(safeDropTotal + minor)}</dd>
+              </>
+            ) : null}
+          </dl>
+        ) : null}
         <div className="tiny">{t("This cash event is recorded against your shift and cannot be edited later.")}</div>
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
