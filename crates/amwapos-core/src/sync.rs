@@ -759,10 +759,24 @@ impl AppCore {
     }
 
     /// Issue a one-time pairing code (shown on the hub, typed on the terminal).
-    pub fn sync_issue_pairing_code(&self, token: &str, device_name: Option<String>) -> AppResult<Value> {
+    pub fn sync_issue_pairing_code(&self, token: &str, device_name: Option<String>, branch_id: Option<String>) -> AppResult<Value> {
         let s = self.session(token)?;
         s.require("devices.manage")?;
         let d = self.require_hub()?;
+        // Multi-branch: the terminal joins the chosen branch (default: the hub's).
+        let branch = match branch_id.filter(|b| !b.is_empty() && *b != d.branch_id) {
+            Some(b) => {
+                self.require_feature("org.multi_branch")?;
+                let b = crate::validate::id(&b, "Branch")?;
+                self.db.read(|c| {
+                    c.query_row("SELECT 1 FROM branches WHERE branch_id=?1 AND active=1", [&b], |_| Ok(()))
+                        .optional()?
+                        .ok_or_else(|| AppError::not_found("Branch"))
+                })?;
+                b
+            }
+            None => d.branch_id.clone(),
+        };
         use rand::Rng;
         let code: String = format!("{:08}", rand::rngs::OsRng.gen_range(0..100_000_000u32));
         let now = time::now();
@@ -773,9 +787,9 @@ impl AppCore {
             tx.execute("UPDATE pairing_codes SET expires_at=?1 WHERE used_at IS NULL AND expires_at > ?1", [time::fmt(now)])?;
             tx.execute(
                 "INSERT INTO pairing_codes(code_hash, branch_id, device_name, created_by, created_at, expires_at) VALUES (?1,?2,?3,?4,?5,?6)",
-                params![auth::sha256_hex(&code), d.branch_id, device_name, s.user_id, time::fmt(now), expires],
+                params![auth::sha256_hex(&code), branch, device_name, s.user_id, time::fmt(now), expires],
             )?;
-            audit::record(tx, &actor, "sync.pairing_code_issued", "device", None, None, Some(&json!({ "expires_at": expires })))?;
+            audit::record(tx, &actor, "sync.pairing_code_issued", "device", None, None, Some(&json!({ "expires_at": expires, "branch_id": branch })))?;
             Ok(())
         })?;
         Ok(json!({ "code": code, "expires_at": expires }))
@@ -834,11 +848,16 @@ impl AppCore {
         let dcode = crate::setup::validate_code(&req.device_code, "Terminal code")?;
         let device_id = new_id();
         let now = time::now_str();
+        // The branch the code was issued for (multi-branch); otherwise the hub's.
+        let branch: String = self
+            .db
+            .read(|c| Ok(c.query_row("SELECT branch_id FROM pairing_codes WHERE code_hash=?1", [code_hash], |r| r.get(0)).optional()?))?
+            .unwrap_or_else(|| hub.branch_id.clone());
         let identity = DeviceIdentity {
             device_id: device_id.clone(),
             device_code: dcode.clone(),
             name: name.clone(),
-            branch_id: hub.branch_id.clone(),
+            branch_id: branch.clone(),
             mode: "terminal".into(),
         };
         let hash = code_hash.to_string();
@@ -859,7 +878,7 @@ impl AppCore {
             tx.execute("UPDATE pairing_codes SET used_at=?2, used_by_device=?3 WHERE code_hash=?1", params![hash, now, device_id])?;
             tx.execute(
                 "INSERT INTO devices(device_id, branch_id, name, device_code, operating_mode, active, activated_at, app_version, os_info) VALUES (?1,?2,?3,?4,'terminal',1,?5,?6,?7)",
-                params![device_id, hub.branch_id, name, dcode, now, req.app_version, req.os_info],
+                params![device_id, branch, name, dcode, now, req.app_version, req.os_info],
             )?;
             audit::record(
                 tx,

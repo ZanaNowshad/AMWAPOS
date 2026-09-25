@@ -34,6 +34,7 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 7, name: "whatsapp_inprocess", sql: include_str!("migrations/0007_whatsapp_inprocess.sql") },
     Migration { version: 8, name: "parse_and_pdf_retry", sql: include_str!("migrations/0008_parse_and_pdf_retry.sql") },
     Migration { version: 9, name: "org_inventory_loyalty_orders", sql: include_str!("migrations/0009_org_inventory_loyalty_orders.sql") },
+    Migration { version: 10, name: "digital_order_cart", sql: include_str!("migrations/0010_digital_order_cart.sql") },
 ];
 
 pub fn latest_schema_version() -> i64 {
@@ -70,7 +71,22 @@ pub struct MigrationReport {
 fn register_functions(conn: &Connection) -> AppResult<()> {
     use rusqlite::functions::FunctionFlags;
     conn.create_scalar_function("amw_now", 0, FunctionFlags::SQLITE_UTF8, |_| Ok(crate::time::now_str()))?;
+    conn.create_scalar_function("amw_rbranch", 0, FunctionFlags::SQLITE_UTF8, |_| Ok(REPORT_BRANCH.with(|b| b.borrow().clone())))?;
     Ok(())
+}
+
+thread_local! {
+    static REPORT_BRANCH: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Run `f` with `amw_rbranch()` returning `branch` (multi-branch report
+/// filter; NULL means every branch). Queries run synchronously on this
+/// thread, so the value is visible to them and cleared afterwards.
+pub(crate) fn with_report_branch<T>(branch: Option<String>, f: impl FnOnce() -> T) -> T {
+    REPORT_BRANCH.with(|b| *b.borrow_mut() = branch);
+    let out = f();
+    REPORT_BRANCH.with(|b| *b.borrow_mut() = None);
+    out
 }
 
 fn configure(conn: &Connection) -> AppResult<()> {

@@ -64,6 +64,9 @@ pub struct ReportParams {
     pub limit: Option<i64>,
     #[serde(default)]
     pub days: Option<i64>,
+    /// Multi-branch: one branch (default: the user's scope; owners see all).
+    #[serde(default)]
+    pub branch_id: Option<String>,
 }
 
 fn col(key: &str, label: &str, kind: &str) -> Column {
@@ -144,7 +147,7 @@ fn sales_totals(c: &Connection, a: &str, b: &str, cashier: Option<&str>) -> AppR
     Ok(c.query_row(
         "SELECT COUNT(*), COALESCE(SUM(total_minor),0), COALESCE(SUM(tax_minor),0), COALESCE(SUM(cost_total_minor),0),
                 COALESCE(SUM(discount_minor),0), COALESCE(SUM(item_count_milli),0)
-         FROM sales WHERE completed_at>=?1 AND completed_at<?2 AND (?3 IS NULL OR cashier_user_id=?3)",
+         FROM sales WHERE completed_at>=?1 AND completed_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) AND (?3 IS NULL OR cashier_user_id=?3)",
         params![a, b, cashier],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
     )?)
@@ -153,7 +156,7 @@ fn sales_totals(c: &Connection, a: &str, b: &str, cashier: Option<&str>) -> AppR
 fn refund_totals(c: &Connection, a: &str, b: &str) -> AppResult<(i64, i64, i64, i64)> {
     Ok(c.query_row(
         "SELECT COUNT(*), COALESCE(SUM(total_minor),0), COALESCE(SUM(tax_minor),0), COALESCE(SUM(cost_total_minor),0)
-         FROM refunds WHERE created_at>=?1 AND created_at<?2",
+         FROM refunds WHERE created_at>=?1 AND created_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch())",
         params![a, b],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
     )?)
@@ -184,21 +187,26 @@ impl AppCore {
             return Err(AppError::validation("Unknown report."));
         }
         s.require(permission_for(key))?;
+        let scope = self.db.read(|c| crate::branches::report_scope(c, &s, p.branch_id.as_deref()))?;
+        crate::db::with_report_branch(scope, || self.report_run_scoped(&s, key, &p))
+    }
+
+    fn report_run_scoped(&self, s: &Session, key: &str, p: &ReportParams) -> AppResult<Report> {
         self.db.read(|c| match key {
-            "sales" => self.rep_sales(c, &s, &p),
-            "products" => self.rep_products(c, &s, &p, false),
-            "margin" => self.rep_products(c, &s, &p, true),
-            "categories" => self.rep_categories(c, &s, &p),
-            "payments" => self.rep_payments(c, &p),
-            "tax" => self.rep_tax(c, &p),
-            "refunds" => self.rep_refunds(c, &p),
-            "cash" => self.rep_cash(c, &p),
-            "inventory" => self.rep_inventory(c, &s, &p),
-            "dead_stock" => self.rep_dead_stock(c, &s, &p),
-            "stock_movements" => self.rep_movements(c, &p),
-            "purchasing" => self.rep_purchasing(c, &s, &p),
-            "deliveries" => self.rep_deliveries(c, &p),
-            "audit" => self.rep_audit(c, &p),
+            "sales" => self.rep_sales(c, s, p),
+            "products" => self.rep_products(c, s, p, false),
+            "margin" => self.rep_products(c, s, p, true),
+            "categories" => self.rep_categories(c, s, p),
+            "payments" => self.rep_payments(c, p),
+            "tax" => self.rep_tax(c, p),
+            "refunds" => self.rep_refunds(c, p),
+            "cash" => self.rep_cash(c, p),
+            "inventory" => self.rep_inventory(c, s, p),
+            "dead_stock" => self.rep_dead_stock(c, s, p),
+            "stock_movements" => self.rep_movements(c, p),
+            "purchasing" => self.rep_purchasing(c, s, p),
+            "deliveries" => self.rep_deliveries(c, p),
+            "audit" => self.rep_audit(c, p),
             _ => Err(AppError::validation("Unknown report.")),
         })
     }
@@ -263,7 +271,7 @@ impl AppCore {
         };
         let sql = format!(
             "SELECT {key_sql} AS k, COUNT(*), SUM(s.total_minor), SUM(s.tax_minor), SUM(s.discount_minor), SUM(s.item_count_milli), SUM(s.cost_total_minor)
-             FROM sales s {join} WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (?3 IS NULL OR s.cashier_user_id=?3) GROUP BY k ORDER BY k"
+             FROM sales s {join} WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch()) AND (?3 IS NULL OR s.cashier_user_id=?3) GROUP BY k ORDER BY k"
         );
         let mut st = c.prepare(&sql)?;
         let show_profit = s.has("reports.financial");
@@ -323,13 +331,13 @@ impl AppCore {
                        MAX(i.category_id_snapshot) AS cat, SUM(i.qty_milli) AS qty, SUM(i.line_total_minor) AS total, SUM(i.tax_minor) AS tax,
                        SUM(i.cost_snapshot_minor) AS cost, SUM(i.discount_minor) AS disc
                 FROM sale_items i JOIN sales s ON s.sale_id=i.sale_id
-                WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (?3 IS NULL OR i.category_id_snapshot=?3)
+                WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch()) AND (?3 IS NULL OR i.category_id_snapshot=?3)
                 GROUP BY pid),
              ref AS (
                 SELECT COALESCE(ri.product_id, 'custom:' || si.product_name_snapshot) AS pid, SUM(ri.qty_milli) AS qty, SUM(ri.amount_minor) AS total,
                        SUM(ri.tax_minor) AS tax, SUM(ri.cost_minor) AS cost
                 FROM refund_items ri JOIN refunds rf ON rf.refund_id=ri.refund_id JOIN sale_items si ON si.sale_item_id=ri.original_sale_item_id
-                WHERE rf.created_at>=?1 AND rf.created_at<?2 AND (?3 IS NULL OR si.category_id_snapshot=?3)
+                WHERE rf.created_at>=?1 AND rf.created_at<?2 AND (amw_rbranch() IS NULL OR rf.branch_id=amw_rbranch()) AND (?3 IS NULL OR si.category_id_snapshot=?3)
                 GROUP BY pid)
              SELECT sold.pid, sold.name, sold.sku, COALESCE(c.name,''), sold.qty - COALESCE(ref.qty,0), sold.total - COALESCE(ref.total,0),
                     sold.tax - COALESCE(ref.tax,0), sold.cost - COALESCE(ref.cost,0), sold.disc
@@ -413,7 +421,7 @@ impl AppCore {
         let mut st = c.prepare(
             "SELECT COALESCE(c.name, 'Uncategorised'), SUM(i.qty_milli), SUM(i.line_total_minor), SUM(i.tax_minor), SUM(i.cost_snapshot_minor), COUNT(DISTINCT i.sale_id)
              FROM sale_items i JOIN sales s ON s.sale_id=i.sale_id LEFT JOIN categories c ON c.category_id=i.category_id_snapshot
-             WHERE s.completed_at>=?1 AND s.completed_at<?2 GROUP BY 1 ORDER BY 3 DESC",
+             WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch()) GROUP BY 1 ORDER BY 3 DESC",
         )?;
         let rows: Vec<Value> = st
             .query_map(params![r.a, r.b], |row| {
@@ -461,9 +469,9 @@ impl AppCore {
         let r = range(c, self, p)?;
         let mut st = c.prepare(
             "WITH pay AS (SELECT p.method m, SUM(p.amount_minor) a, COUNT(*) n FROM payments p JOIN sales s ON s.sale_id=p.sale_id
-                          WHERE s.completed_at>=?1 AND s.completed_at<?2 GROUP BY p.method),
+                          WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch()) GROUP BY p.method),
                   ref AS (SELECT t.method m, SUM(t.amount_minor) a FROM refund_tenders t JOIN refunds r ON r.refund_id=t.refund_id
-                          WHERE r.created_at>=?1 AND r.created_at<?2 GROUP BY t.method),
+                          WHERE r.created_at>=?1 AND r.created_at<?2 AND (amw_rbranch() IS NULL OR r.branch_id=amw_rbranch()) GROUP BY t.method),
                   ms AS (SELECT m FROM pay UNION SELECT m FROM ref)
              SELECT ms.m, COALESCE(pay.n,0), COALESCE(pay.a,0), COALESCE(ref.a,0) FROM ms LEFT JOIN pay ON pay.m=ms.m LEFT JOIN ref ON ref.m=ms.m ORDER BY 3 DESC",
         )?;
@@ -500,10 +508,10 @@ impl AppCore {
         let r = range(c, self, p)?;
         let mut st = c.prepare(
             "WITH s AS (SELECT i.tax_rate_bp rate, i.tax_inclusive incl, SUM(i.line_total_minor) gross, SUM(i.tax_minor) tax FROM sale_items i JOIN sales x ON x.sale_id=i.sale_id
-                        WHERE x.completed_at>=?1 AND x.completed_at<?2 GROUP BY 1,2),
+                        WHERE x.completed_at>=?1 AND x.completed_at<?2 AND (amw_rbranch() IS NULL OR x.branch_id=amw_rbranch()) GROUP BY 1,2),
                   r AS (SELECT si.tax_rate_bp rate, si.tax_inclusive incl, SUM(ri.amount_minor) gross, SUM(ri.tax_minor) tax FROM refund_items ri
                         JOIN refunds rf ON rf.refund_id=ri.refund_id JOIN sale_items si ON si.sale_item_id=ri.original_sale_item_id
-                        WHERE rf.created_at>=?1 AND rf.created_at<?2 GROUP BY 1,2),
+                        WHERE rf.created_at>=?1 AND rf.created_at<?2 AND (amw_rbranch() IS NULL OR rf.branch_id=amw_rbranch()) GROUP BY 1,2),
                   k AS (SELECT rate, incl FROM s UNION SELECT rate, incl FROM r)
              SELECT k.rate, k.incl, COALESCE(s.gross,0), COALESCE(s.tax,0), COALESCE(r.gross,0), COALESCE(r.tax,0)
              FROM k LEFT JOIN s ON s.rate=k.rate AND s.incl=k.incl LEFT JOIN r ON r.rate=k.rate AND r.incl=k.incl ORDER BY k.rate DESC",
@@ -544,7 +552,7 @@ impl AppCore {
         let mut st = c.prepare(
             "SELECT rf.refund_receipt_number, s.receipt_number, rf.created_at, u.display_name, a.display_name, rf.reason, rf.total_minor, rf.tax_minor
              FROM refunds rf JOIN sales s ON s.sale_id=rf.original_sale_id LEFT JOIN users u ON u.user_id=rf.user_id LEFT JOIN users a ON a.user_id=rf.approved_by
-             WHERE rf.created_at>=?1 AND rf.created_at<?2 ORDER BY rf.created_at DESC LIMIT 20000",
+             WHERE rf.created_at>=?1 AND rf.created_at<?2 AND (amw_rbranch() IS NULL OR rf.branch_id=amw_rbranch()) ORDER BY rf.created_at DESC LIMIT 20000",
         )?;
         let rows: Vec<Value> = st
             .query_map(params![r.a, r.b], |row| {
@@ -582,7 +590,7 @@ impl AppCore {
 
     fn rep_cash(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
         let r = range(c, self, p)?;
-        let mut st = c.prepare("SELECT shift_id FROM shifts WHERE opened_at>=?1 AND opened_at<?2 ORDER BY opened_at")?;
+        let mut st = c.prepare("SELECT shift_id FROM shifts WHERE opened_at>=?1 AND opened_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) ORDER BY opened_at")?;
         let ids = st.query_map(params![r.a, r.b], |row| row.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
         let mut rows = vec![];
         let mut tv = 0;
@@ -752,7 +760,7 @@ impl AppCore {
         let mut st = c.prepare(
             "SELECT type, COUNT(*), SUM(CASE WHEN qty_delta_milli>0 THEN qty_delta_milli ELSE 0 END), SUM(CASE WHEN qty_delta_milli<0 THEN -qty_delta_milli ELSE 0 END),
                     SUM(qty_delta_milli * COALESCE(unit_cost_minor,0) / 1000)
-             FROM stock_movements WHERE created_at>=?1 AND created_at<?2 GROUP BY type ORDER BY type",
+             FROM stock_movements WHERE created_at>=?1 AND created_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) GROUP BY type ORDER BY type",
         )?;
         let rows: Vec<Value> = st
             .query_map(params![r.a, r.b], |row| {
@@ -785,7 +793,7 @@ impl AppCore {
         let mut st = c.prepare(
             "SELECT COALESCE(sp.name, 'No supplier'), COUNT(*), SUM(g.total_cost_minor), MAX(g.created_at)
              FROM goods_receipts g LEFT JOIN suppliers sp ON sp.supplier_id=g.supplier_id
-             WHERE g.created_at>=?1 AND g.created_at<?2 GROUP BY 1 ORDER BY 3 DESC",
+             WHERE g.created_at>=?1 AND g.created_at<?2 AND (amw_rbranch() IS NULL OR g.branch_id=amw_rbranch()) GROUP BY 1 ORDER BY 3 DESC",
         )?;
         let rows: Vec<Value> = st
             .query_map(params![r.a, r.b], |row| {
@@ -887,6 +895,11 @@ impl AppCore {
         if !s.has("reports.sales") && !s.has("admin.access") {
             return Err(AppError::forbidden("reports.sales"));
         }
+        let scope = self.db.read(|c| crate::branches::list_scope(c, &s))?;
+        crate::db::with_report_branch(scope, || self.dashboard_for(&s))
+    }
+
+    pub(crate) fn dashboard_for(&self, s: &Session) -> AppResult<Value> {
         let fin = s.has("reports.financial");
         self.db.read(|c| {
             let tz = self.store_timezone(c)?;
@@ -899,7 +912,7 @@ impl AppCore {
             let (rn, rtotal, rtax, rcost) = refund_totals(c, &a, &b)?;
             let local = local_expr("completed_at", &tz);
             let mut st = c.prepare(&format!(
-                "SELECT CAST(strftime('%H', {local}) AS INTEGER), COUNT(*), SUM(total_minor) FROM sales WHERE completed_at>=?1 AND completed_at<?2 GROUP BY 1"
+                "SELECT CAST(strftime('%H', {local}) AS INTEGER), COUNT(*), SUM(total_minor) FROM sales WHERE completed_at>=?1 AND completed_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) GROUP BY 1"
             ))?;
             let mut hourly = vec![json!(null); 24];
             for row in st.query_map(params![a, b], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?)))? {
@@ -913,7 +926,7 @@ impl AppCore {
                 .collect();
             let mut st = c.prepare(
                 "SELECT i.product_name_snapshot, SUM(i.qty_milli), SUM(i.line_total_minor) FROM sale_items i JOIN sales s ON s.sale_id=i.sale_id
-                 WHERE s.completed_at>=?1 AND s.completed_at<?2 GROUP BY COALESCE(i.product_id, i.product_name_snapshot) ORDER BY 3 DESC LIMIT 8",
+                 WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch()) GROUP BY COALESCE(i.product_id, i.product_name_snapshot) ORDER BY 3 DESC LIMIT 8",
             )?;
             let top: Vec<Value> = st
                 .query_map(params![a, b], |r| Ok(json!({ "name": r.get::<_, String>(0)?, "qty": r.get::<_, i64>(1)?, "total": r.get::<_, i64>(2)? })))?
@@ -938,7 +951,7 @@ impl AppCore {
             let open_deliveries: i64 = c.query_row("SELECT COUNT(*) FROM delivery_orders WHERE status IN ('pending','preparing','dispatched')", [], |r| r.get(0))?;
             let active_shifts: i64 = c.query_row("SELECT COUNT(*) FROM shifts WHERE status='open'", [], |r| r.get(0))?;
             let discrepancies: i64 = c.query_row(
-                "SELECT COUNT(*) FROM shifts WHERE closed_at>=?1 AND closed_at<?2 AND variance_minor<>0",
+                "SELECT COUNT(*) FROM shifts WHERE closed_at>=?1 AND closed_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) AND variance_minor<>0",
                 params![a, b],
                 |r| r.get(0),
             )?;

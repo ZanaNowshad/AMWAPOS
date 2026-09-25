@@ -27,7 +27,7 @@ fn count(core: &AppCore, sql: &str) -> i64 {
 
 fn pair(hub: &Env, name: &str, code: &str) -> Term {
     let t = &hub.owner_token;
-    let pc = hub.core.sync_issue_pairing_code(t, Some(name.into())).unwrap();
+    let pc = hub.core.sync_issue_pairing_code(t, Some(name.into()), None).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let core = AppCore::open(dir.path(), Arc::new(MemorySecretStore::default())).unwrap();
     let resp = hub
@@ -224,7 +224,7 @@ fn signatures_revocation_and_pairing_codes() {
     let err = hub.core.hub_authenticate(&nonces, &dev, ts, "n0nce-0000000000004", &sig4, "POST", "/sync/push", body).unwrap_err();
     assert_eq!(err.code, ErrorCode::Forbidden);
     // Pairing codes are single-use.
-    let pc = hub.core.sync_issue_pairing_code(&ht, None).unwrap();
+    let pc = hub.core.sync_issue_pairing_code(&ht, None, None).unwrap();
     let mk = |code: &str, dc: &str| PairRequest {
         code: code.into(),
         device_name: "X".into(),
@@ -236,7 +236,7 @@ fn signatures_revocation_and_pairing_codes() {
     hub.core.hub_pair(mk(pc["code"].as_str().unwrap(), "T09")).unwrap();
     assert!(hub.core.hub_pair(mk(pc["code"].as_str().unwrap(), "T10")).is_err());
     assert!(hub.core.hub_pair(mk("12345678", "T11")).is_err());
-    let pc = hub.core.sync_issue_pairing_code(&ht, None).unwrap();
+    let pc = hub.core.sync_issue_pairing_code(&ht, None, None).unwrap();
     assert_eq!(hub.core.hub_pair(mk(pc["code"].as_str().unwrap(), "T02")).unwrap_err().code, ErrorCode::Duplicate);
 }
 
@@ -266,7 +266,7 @@ fn rebuilt_hub_does_not_become_authority() {
 fn version_mismatch_refuses_pairing() {
     let hub = env();
     enable_hub(&hub.core, &hub.owner_token);
-    let pc = hub.core.sync_issue_pairing_code(&hub.owner_token, None).unwrap();
+    let pc = hub.core.sync_issue_pairing_code(&hub.owner_token, None, None).unwrap();
     let err = hub
         .core
         .hub_pair(PairRequest {

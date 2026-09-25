@@ -418,6 +418,14 @@ impl AppCore {
         let device = self.require_device()?;
         let user = self.verify_user_pin(user_id, pin, "login")?;
         let perms = self.db.read(|c| auth::role_permissions(c, &user.role_id))?;
+        // Multi-branch: only staff assigned to this device's branch may log in here.
+        let allowed = self.db.read(|c| {
+            Ok(!crate::branches::multi_on(c)?
+                || crate::branches::user_may_work_in(c, &user.user_id, perms.contains("branches.all"), &device.branch_id)?)
+        })?;
+        if !allowed {
+            return Err(AppError::new(ErrorCode::Forbidden, "You are not assigned to this branch. Ask the owner to add you to it."));
+        }
         let now = time::now();
         let token = auth::random_token();
         let session = Session {

@@ -359,6 +359,30 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "transfers.list" => out(core.transfers_list(tk()?, opt(&args, "status")?)),
         "transfers.get" => out(core.transfer_get(tk()?, &req::<String>(&args, "transfer_id")?)),
         "transfers.in_transit" => out(core.transfers_in_transit(tk()?)),
+        // digital orders (orders.digital)
+        "orders.list" => out(core.orders_list(tk()?, opt(&args, "status")?)),
+        "orders.get" => out(core.order_get(tk()?, &req::<String>(&args, "order_id")?)),
+        "orders.save" => out(core.order_save(tk()?, opt(&args, "order_id")?, req(&args, "order")?)),
+        "orders.from_inbox" => out(core.order_from_inbox(tk()?, req(&args, "seq")?)),
+        "orders.confirm" => out(core.order_confirm(tk()?, &req::<String>(&args, "order_id")?)),
+        "orders.cancel" => out(core.order_cancel(tk()?, &req::<String>(&args, "order_id")?, opt(&args, "reason")?)),
+        "orders.set_payment" => {
+            out(core.order_set_payment(tk()?, &req::<String>(&args, "order_id")?, &req::<String>(&args, "payment_state")?))
+        }
+        "orders.convert" => out(core.order_convert(tk()?, &req::<String>(&args, "order_id")?, &req::<String>(&args, "operation_id")?)),
+        // branches (org.multi_branch)
+        "branches.list" => out(core.branches_list(tk()?)),
+        "branches.save" => out(core.branch_save(tk()?, opt(&args, "branch_id")?, req(&args, "branch")?)),
+        "branches.user_get" => out(core.user_branches_get(tk()?, &req::<String>(&args, "user_id")?)),
+        "branches.user_set" => out(core.user_branches_set(tk()?, &req::<String>(&args, "user_id")?, req(&args, "branch_ids")?)),
+        "branches.switch" => out(core.session_switch_branch(tk()?, &req::<String>(&args, "branch_id")?)),
+        "branches.prices" => out(core.branch_prices_get(tk()?, &req::<String>(&args, "product_id")?)),
+        "branches.set_price" => out(core.branch_price_set(
+            tk()?,
+            &req::<String>(&args, "product_id")?,
+            &req::<String>(&args, "branch_id")?,
+            opt(&args, "amount_minor")?,
+        )),
         "ocr.retry" => out(core.ocr_retry(tk()?, &req::<String>(&args, "kind")?, &req::<String>(&args, "id")?)),
         "backup.create" => out(core.backup_create(tk()?, opt(&args, "directory")?)),
         "backup.inspect" => out(core.backup_inspect(tk()?, &req::<String>(&args, "path")?)),
@@ -367,7 +391,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         }
         // sync
         "sync.status" => out(core.sync_status(tk()?)),
-        "sync.pairing_code" => out(core.sync_issue_pairing_code(tk()?, opt(&args, "device_name")?)),
+        "sync.pairing_code" => out(core.sync_issue_pairing_code(tk()?, opt(&args, "device_name")?, opt(&args, "branch_id")?)),
         "sync.reset_hub_credentials" => out(core.sync_reset_hub_credentials(tk()?)),
         "sync.dead_letters" => out(core.sync_dead_letters(tk()?)),
         "sync.retry_dead_letter" => out(core.sync_retry_dead_letter(tk()?, &req::<String>(&args, "dead_id")?)),

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::audit;
+use crate::auth::Session;
 use crate::error::{AppError, AppResult};
 use crate::ids::{new_id, next_seq};
 use crate::service::AppCore;
@@ -360,59 +361,7 @@ impl AppCore {
             return Err(AppError::forbidden("deliveries.manage"));
         }
         let actor = self.actor(&s, None);
-        let id = self.db.write(|tx| {
-            let (sale_id, sale_total, sale_customer) = match req.sale_id.as_ref().filter(|x| !x.is_empty()) {
-                Some(sid) => {
-                    let sid = validate::id(sid, "Sale")?;
-                    let (t, cu): (i64, Option<String>) = tx
-                        .query_row("SELECT total_minor, customer_id FROM sales WHERE sale_id=?1", [&sid], |r| Ok((r.get(0)?, r.get(1)?)))
-                        .optional()?
-                        .ok_or_else(|| AppError::not_found("Sale"))?;
-                    let exists: bool = tx
-                        .query_row("SELECT 1 FROM delivery_orders WHERE sale_id=?1 AND status<>'cancelled'", [&sid], |_| Ok(true))
-                        .optional()?
-                        .unwrap_or(false);
-                    if exists {
-                        return Err(AppError::conflict("A delivery already exists for this sale."));
-                    }
-                    (Some(sid), Some(t), cu)
-                }
-                None => (None, None, None),
-            };
-            let customer_id = match req.customer_id.clone().filter(|x| !x.is_empty()).or(sale_customer) {
-                Some(cid) => Some(load_customer(tx, &validate::id(&cid, "Customer")?)?),
-                None => None,
-            };
-            let phone = match req.phone.as_deref().filter(|x| !x.trim().is_empty()) {
-                Some(p) => normalize_phone(p)?,
-                None => customer_id.as_ref().and_then(|c| c.info.phone.clone()),
-            };
-            let address = clean_opt(&req.address, "Address", 300)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.address.clone()));
-            let area = clean_opt(&req.area, "Area", 80)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.area.clone()));
-            if address.is_none() && area.is_none() {
-                return Err(AppError::validation("Enter a delivery address or area."));
-            }
-            let pay = req.payment_status.clone().unwrap_or_else(|| if sale_id.is_some() { "paid".into() } else { "cod".into() });
-            if !["paid", "pending", "cod"].contains(&pay.as_str()) {
-                return Err(AppError::validation("Payment status must be paid, pending or cash on delivery."));
-            }
-            let amount = req.amount_minor.or(sale_total).unwrap_or(0);
-            validate::money_non_negative(amount, "Amount")?;
-            let id = new_id();
-            let number = format!("D-{:05}", next_seq(tx, "delivery")?);
-            let now = time::now_str();
-            tx.execute(
-                "INSERT INTO delivery_orders(delivery_id, delivery_number, sale_id, customer_id, address, area, phone, status, payment_status, amount_minor, notes,
-                    created_by, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'pending',?8,?9,?10,?11,?12,?12)",
-                params![id, number, sale_id, customer_id.map(|c| c.customer_id), address, area, phone, pay, amount, clean_opt(&req.notes, "Notes", 500)?, s.user_id, now],
-            )?;
-            tx.execute(
-                "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,NULL,'pending',NULL,?3,?4)",
-                params![new_id(), id, s.user_id, now],
-            )?;
-            audit::record(tx, &actor, "delivery.created", "delivery", Some(&id), None, Some(&json!({ "number": number, "sale_id": sale_id })))?;
-            Ok(id)
-        })?;
+        let id = self.db.write(|tx| insert_delivery(tx, &s, &actor, &req))?;
         self.db.read(|c| load_delivery(c, &id))
     }
 
@@ -485,6 +434,62 @@ impl AppCore {
         }
         self.db.read(|c| load_delivery(c, &id))
     }
+}
+
+/// Insert a delivery inside an open transaction (delivery desk and digital
+/// order conversion share this).
+pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor, req: &DeliveryCreate) -> AppResult<String> {
+    let (sale_id, sale_total, sale_customer) = match req.sale_id.as_ref().filter(|x| !x.is_empty()) {
+        Some(sid) => {
+            let sid = validate::id(sid, "Sale")?;
+            let (t, cu): (i64, Option<String>) = tx
+                .query_row("SELECT total_minor, customer_id FROM sales WHERE sale_id=?1", [&sid], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?
+                .ok_or_else(|| AppError::not_found("Sale"))?;
+            let exists: bool = tx
+                .query_row("SELECT 1 FROM delivery_orders WHERE sale_id=?1 AND status<>'cancelled'", [&sid], |_| Ok(true))
+                .optional()?
+                .unwrap_or(false);
+            if exists {
+                return Err(AppError::conflict("A delivery already exists for this sale."));
+            }
+            (Some(sid), Some(t), cu)
+        }
+        None => (None, None, None),
+    };
+    let customer_id = match req.customer_id.clone().filter(|x| !x.is_empty()).or(sale_customer) {
+        Some(cid) => Some(load_customer(tx, &validate::id(&cid, "Customer")?)?),
+        None => None,
+    };
+    let phone = match req.phone.as_deref().filter(|x| !x.trim().is_empty()) {
+        Some(p) => normalize_phone(p)?,
+        None => customer_id.as_ref().and_then(|c| c.info.phone.clone()),
+    };
+    let address = clean_opt(&req.address, "Address", 300)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.address.clone()));
+    let area = clean_opt(&req.area, "Area", 80)?.or_else(|| customer_id.as_ref().and_then(|c| c.info.area.clone()));
+    if address.is_none() && area.is_none() {
+        return Err(AppError::validation("Enter a delivery address or area."));
+    }
+    let pay = req.payment_status.clone().unwrap_or_else(|| if sale_id.is_some() { "paid".into() } else { "cod".into() });
+    if !["paid", "pending", "cod"].contains(&pay.as_str()) {
+        return Err(AppError::validation("Payment status must be paid, pending or cash on delivery."));
+    }
+    let amount = req.amount_minor.or(sale_total).unwrap_or(0);
+    validate::money_non_negative(amount, "Amount")?;
+    let id = new_id();
+    let number = format!("D-{:05}", next_seq(tx, "delivery")?);
+    let now = time::now_str();
+    tx.execute(
+        "INSERT INTO delivery_orders(delivery_id, delivery_number, sale_id, customer_id, address, area, phone, status, payment_status, amount_minor, notes,
+            created_by, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,'pending',?8,?9,?10,?11,?12,?12)",
+        params![id, number, sale_id, customer_id.map(|c| c.customer_id), address, area, phone, pay, amount, clean_opt(&req.notes, "Notes", 500)?, s.user_id, now],
+    )?;
+    tx.execute(
+        "INSERT INTO delivery_events(event_id, delivery_id, previous_status, new_status, note, user_id, created_at) VALUES (?1,?2,NULL,'pending',NULL,?3,?4)",
+        params![new_id(), id, s.user_id, now],
+    )?;
+    audit::record(tx, actor, "delivery.created", "delivery", Some(&id), None, Some(&json!({ "number": number, "sale_id": sale_id })))?;
+    Ok(id)
 }
 
 #[cfg(test)]

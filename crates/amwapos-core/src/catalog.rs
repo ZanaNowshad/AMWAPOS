@@ -15,11 +15,16 @@ use crate::time;
 use crate::validate;
 
 /// Current retail price of `p.product_id` (effective-dated).
+/// Current retail price of `p`. A branch override (multi-branch only) for
+/// this device's branch wins over the shared catalogue price.
 pub const PRICE_SQL: &str = "(SELECT pp.amount_minor FROM product_prices pp
     WHERE pp.product_id = p.product_id AND pp.price_type = 'retail'
       AND pp.effective_from <= amw_now()
       AND (pp.effective_to IS NULL OR pp.effective_to > amw_now())
-    ORDER BY pp.effective_from DESC LIMIT 1)";
+      AND (pp.branch_id IS NULL OR (
+        pp.branch_id = (SELECT json_extract(value_json, '$.branch_id') FROM settings WHERE key = 'local.device')
+        AND COALESCE((SELECT json_extract(value_json, '$.\"org.multi_branch\"') FROM settings WHERE key = 'features'), 0) = 1))
+    ORDER BY (pp.branch_id IS NULL), pp.effective_from DESC LIMIT 1)";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Page<T> {
@@ -1471,12 +1476,12 @@ pub(crate) fn set_price(
     // Close any price rows still open at the new effective time; drop future ones superseded.
     c.execute(
         "UPDATE product_prices SET effective_to=?2
-         WHERE product_id=?1 AND price_type='retail' AND (effective_to IS NULL OR effective_to > ?2) AND effective_from < ?2",
+         WHERE product_id=?1 AND price_type='retail' AND branch_id IS NULL AND (effective_to IS NULL OR effective_to > ?2) AND effective_from < ?2",
         params![pid, effective_from],
     )?;
     c.execute(
         "UPDATE product_prices SET effective_to=effective_from
-         WHERE product_id=?1 AND price_type='retail' AND effective_from >= ?2 AND (effective_to IS NULL OR effective_to > effective_from)",
+         WHERE product_id=?1 AND price_type='retail' AND branch_id IS NULL AND effective_from >= ?2 AND (effective_to IS NULL OR effective_to > effective_from)",
         params![pid, effective_from],
     )?;
     c.execute(

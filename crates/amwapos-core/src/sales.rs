@@ -297,6 +297,12 @@ impl AppCore {
             r.print = self.db.read(|c| crate::printing::latest_job_outcome(c, "sale", &r.sale_id))?;
             return Ok(r);
         }
+        // Multi-branch: a till sells only in its own branch.
+        if let Some(d) = self.device() {
+            if d.branch_id != s.branch_id && self.db.read(crate::branches::multi_on)? {
+                return Err(AppError::conflict("Switch back to this till's branch before selling."));
+            }
+        }
         let pos_cfg: settings::PosSettings = self.db.read(|c| settings::get(c, settings::KEY_POS))?;
         let pay_cfg: settings::PaymentSettings = self.db.read(settings::payments)?;
         for t in &req.tenders {
@@ -521,6 +527,7 @@ impl AppCore {
             )?;
             // Loyalty ledger entries, inside this commit.
             crate::loyalty::record_sale(tx, &s, &self.actor(&s, None), customer_id.as_deref(), &sale_id, &lp)?;
+            crate::orders::on_sale_committed(tx, &s, &self.actor(&s, None), &cart_id, &sale_id)?;
             let print_job = if tz_currency.1 {
                 Some(crate::printing::enqueue(tx, "sale", &sale_id, None, Some(&s.user_id))?)
             } else {

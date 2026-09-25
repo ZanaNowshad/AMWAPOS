@@ -171,6 +171,34 @@ fn ensure_cart(c: &Connection, s: &Session) -> AppResult<String> {
     Ok(id)
 }
 
+/// Load a confirmed digital order into this till's sale. The till must not
+/// have a sale with items in progress. Returns the cart id.
+pub(crate) fn load_order_cart(
+    c: &Connection,
+    s: &Session,
+    order_id: &str,
+    customer_id: Option<&str>,
+    lines: &[(String, i64)],
+) -> AppResult<String> {
+    if let Some(open) = active_cart_id(c, s)? {
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM cart_lines WHERE cart_id=?1", [&open], |r| r.get(0))?;
+        if n > 0 {
+            return Err(AppError::conflict("Finish or hold the current sale first."));
+        }
+    }
+    let cart_id = ensure_cart(c, s)?;
+    for (pid, qty) in lines {
+        let p = product_for_sale(c, pid)?;
+        add_product_line(c, &cart_id, &p, *qty, None)?;
+    }
+    c.execute(
+        "UPDATE carts SET customer_id=?2, digital_order_id=?3, loyalty_points=0 WHERE cart_id=?1",
+        params![cart_id, customer_id, order_id],
+    )?;
+    touch(c, &cart_id)?;
+    Ok(cart_id)
+}
+
 fn touch(c: &Connection, cart_id: &str) -> AppResult<()> {
     c.execute("UPDATE carts SET updated_at=?2, version=version+1 WHERE cart_id=?1", params![cart_id, time::now_str()])?;
     Ok(())

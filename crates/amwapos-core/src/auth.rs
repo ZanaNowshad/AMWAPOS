@@ -320,6 +320,14 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Move a session to another branch (multi-branch; checked by the caller).
+    pub fn set_branch(&self, token: &str, branch_id: &str) -> AppResult<Session> {
+        let mut m = self.sessions.lock().map_err(|_| AppError::internal("session store poisoned"))?;
+        let s = m.get_mut(token).ok_or_else(|| AppError::new(ErrorCode::Unauthenticated, "Session not found."))?;
+        s.branch_id = branch_id.to_string();
+        Ok(s.clone())
+    }
+
     pub fn remove(&self, token: &str) {
         if let Ok(mut m) = self.sessions.lock() {
             m.remove(token);
