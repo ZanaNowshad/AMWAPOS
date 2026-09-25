@@ -307,6 +307,36 @@ impl AppCore {
         Ok(s)
     }
 
+    /// Product lookup for order lines (order desk staff may not have catalogue access).
+    pub fn orders_product_search(&self, token: &str, q: &str) -> AppResult<Vec<serde_json::Value>> {
+        let s = self.session(token)?;
+        self.require_feature("orders.digital")?;
+        if !s.has("orders.manage") && !s.has("pos.sell") && !s.has("products.view") {
+            return Err(AppError::forbidden("orders.manage"));
+        }
+        let q = q.trim().to_lowercase();
+        if q.is_empty() {
+            return Ok(vec![]);
+        }
+        let like = format!("%{}%", q.replace(['%', '_'], ""));
+        self.db.read(|c| {
+            let sql = format!(
+                "SELECT p.product_id, p.name, p.sku, {} FROM products p WHERE p.active=1 AND (lower(p.name) LIKE ?1 OR p.name_ar LIKE ?1 OR lower(p.sku)=?2
+                   OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id=p.product_id AND b.barcode=?2))
+                 ORDER BY p.name COLLATE NOCASE LIMIT 20",
+                crate::catalog::PRICE_SQL
+            );
+            let mut st = c.prepare(&sql)?;
+            let rows = st
+                .query_map(params![like, q], |r| {
+                    Ok(json!({ "product_id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)?, "sku": r.get::<_, String>(2)?,
+                               "price_minor": r.get::<_, Option<i64>>(3)? }))
+                })?
+                .collect::<Result<_, _>>()?;
+            Ok(rows)
+        })
+    }
+
     pub fn orders_list(&self, token: &str, status: Option<String>) -> AppResult<Vec<OrderView>> {
         let s = self.session(token)?;
         self.require_feature("orders.digital")?;

@@ -42,6 +42,9 @@ pub struct CustomerRow {
     pub purchase_count: i64,
     pub total_spent_minor: i64,
     pub last_purchase_at: Option<String>,
+    /// Loyalty balance (only when loyalty is on).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loyalty_points: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -149,11 +152,18 @@ fn load_customer(c: &Connection, id: &str) -> AppResult<CustomerRow> {
                 purchase_count: r.get(9)?,
                 total_spent_minor: r.get(10)?,
                 last_purchase_at: r.get(11)?,
+                loyalty_points: None,
             })
         },
     )
     .optional()?
     .ok_or_else(|| AppError::not_found("Customer"))
+    .and_then(|mut row| {
+        if crate::loyalty::enabled(c)? {
+            row.loyalty_points = Some(crate::loyalty::balance(c, &row.customer_id)?);
+        }
+        Ok(row)
+    })
 }
 
 fn load_delivery(c: &Connection, id: &str) -> AppResult<DeliveryRow> {

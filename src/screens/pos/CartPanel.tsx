@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Percent, Tag, Trash2, Hash } from "lucide-react";
+import { Percent, Tag, Trash2, Hash, Star } from "lucide-react";
 import type { Cart } from "../../api/types";
 import { formatMoney, formatQty, formatPercent } from "../../lib/money";
 import { Button } from "../../components/ui";
@@ -16,6 +16,7 @@ export function CartPanel({
   onDiscount,
   onPrice,
   canPriceOverride,
+  onRedeem,
 }: {
   cart: Cart;
   selectedLine: string | null;
@@ -27,6 +28,8 @@ export function CartPanel({
   onDiscount: (id: string) => void;
   onPrice: (id: string) => void;
   canPriceOverride: boolean;
+  /** Loyalty: open the redeem dialog (only when loyalty is on and a customer is set). */
+  onRedeem?: () => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -81,6 +84,15 @@ export function CartPanel({
                 </span>
                 <span className="num">× {formatMoney(l.unit_price_minor)}</span>
                 {l.price_overridden ? <span className="chip warning">{t("Price changed")}</span> : null}
+                {lowStock(l) !== null ? (
+                  <span
+                    className="chip warning"
+                    data-testid="low-stock-hint"
+                    title={t("At or below the reorder point")}
+                  >
+                    {t("Low stock: {0} left", formatQty(lowStock(l)!))}
+                  </span>
+                ) : null}
                 {l.discount_minor > 0 ? (
                   <span className="chip brand">
                     −{formatMoney(l.discount_minor)}
@@ -119,6 +131,31 @@ export function CartPanel({
           );
         })}
       </div>
+      {cart.loyalty ? (
+        <div className="cart-head" data-testid="loyalty-row" style={{ borderTop: "1px solid var(--line)" }}>
+          <Star size={15} />
+          <span className="grow small">
+            {t("{0} points", cart.loyalty.balance)}
+            {cart.loyalty.points > 0
+              ? ` · ${t("redeeming {0} (−{1})", cart.loyalty.points, formatMoney(cart.loyalty.discount_minor))}`
+              : ""}
+            {cart.loyalty.earn_estimate > 0 ? ` · ${t("earns about {0}", cart.loyalty.earn_estimate)}` : ""}
+          </span>
+          {onRedeem ? (
+            <Button size="sm" onClick={onRedeem}>
+              {cart.loyalty.points > 0 ? t("Change") : t("Redeem")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+/** Remaining stock after this line when it is at or below the reorder point. */
+function lowStock(l: Cart["lines"][number]): number | null {
+  if (l.stock_milli === null || l.reorder_point_milli === null || l.reorder_point_milli === undefined) return null;
+  if (l.reorder_point_milli <= 0) return null;
+  const left = l.stock_milli - l.qty_milli;
+  return left <= l.reorder_point_milli ? left : null;
 }

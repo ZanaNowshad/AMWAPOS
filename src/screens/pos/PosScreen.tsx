@@ -44,7 +44,10 @@ import {
   RecentSalesDialog,
   UnknownBarcodeDialog,
   PrintQueueDialog,
+  LoyaltyRedeemDialog,
 } from "./dialogs";
+import { OrdersList } from "../orders";
+import { useFeature } from "../../components/FeatureGate";
 import { RefundFlow } from "./RefundFlow";
 import { ShiftClose } from "./ShiftScreens";
 import { getLang, switchLang, t, tb } from "../../i18n";
@@ -68,7 +71,9 @@ type ModalState =
   | { kind: "delivery"; saleId: string | null }
   | { kind: "close_shift" }
   | { kind: "print_queue" }
-  | { kind: "price_changes"; notices: string[] };
+  | { kind: "price_changes"; notices: string[] }
+  | { kind: "redeem" }
+  | { kind: "orders" };
 
 const EMPTY_CART: Cart = {
   cart_id: null,
@@ -328,6 +333,21 @@ export function PosScreen({
   const removeLine = (lineId: string) => void lineAction((tok) => api.pos.removeLine(lineId, tok));
 
   const hasLines = cart.lines.length > 0;
+  const ordersOn = useFeature("orders.digital");
+  // Held ticket numbers for this till (shown on the Held button).
+  const [heldTickets, setHeldTickets] = useState<number[]>([]);
+  const reloadHeld = useCallback(async () => {
+    if (!has("pos.hold")) return;
+    try {
+      const rows = await api.pos.held();
+      setHeldTickets(rows.filter((r) => !r.locked && r.hold_number !== null).map((r) => r.hold_number as number));
+    } catch {
+      // The count is a convenience; the Held dialog shows errors.
+    }
+  }, [has]);
+  useEffect(() => {
+    void reloadHeld();
+  }, [reloadHeld, cart.cart_id]);
   const tenders = config?.payments ?? [];
   const tenderEnabled = (m: string) => tenders.some((tv) => tv.method === m);
 
@@ -645,9 +665,14 @@ export function PosScreen({
               icon={<ListRestart size={20} />}
               onClick={() => setModal({ kind: "held" })}
               disabled={!has("pos.hold")}
-              title="F5"
+              title={heldTickets.length ? t("Held tickets: {0}", heldTickets.map((n) => `#${n}`).join(" ")) : "F5"}
             >
               {t("Held")}
+              {heldTickets.length ? (
+                <span className="chip brand" data-testid="held-count" style={{ marginInlineStart: 6 }}>
+                  {heldTickets.length}
+                </span>
+              ) : null}
             </Button>
             <Button icon={<RotateCcw size={20} />} onClick={() => setModal({ kind: "refund" })} title={t("Refund")}>
               {t("Refund")}
@@ -697,6 +722,11 @@ export function PosScreen({
                   { label: t("Paid in"), show: true, run: () => setModal({ kind: "cash", cashKind: "paid_in" }) },
                   { label: t("Paid out"), show: true, run: () => setModal({ kind: "cash", cashKind: "paid_out" }) },
                   { label: t("Safe drop"), show: true, run: () => setModal({ kind: "cash", cashKind: "safe_drop" }) },
+                  {
+                    label: t("Digital orders"),
+                    show: ordersOn,
+                    run: () => setModal({ kind: "orders" }),
+                  },
                   { label: t("Cancel sale"), show: hasLines, run: () => void cancelSale() },
                   { label: t("Close shift"), show: has("shift.close"), run: () => setModal({ kind: "close_shift" }) },
                   { label: t("Admin"), show: has("admin.access"), run: () => setMode("admin") },
@@ -742,6 +772,7 @@ export function PosScreen({
             onDiscount={(id) => setModal({ kind: "discount", lineId: id })}
             onPrice={(id) => setModal({ kind: "price", lineId: id })}
             canPriceOverride
+            onRedeem={cart.loyalty ? () => setModal({ kind: "redeem" }) : undefined}
           />
           <div className="pos-panel" style={{ flex: "none" }}>
             <div className="totals">
@@ -869,11 +900,12 @@ export function PosScreen({
         <HoldDialog
           cart={cart}
           onClose={closeModal}
-          onHeld={() => {
+          onHeld={(ticket) => {
             setCart(EMPTY_CART);
             setSelectedLine(null);
-            toast("success", t("Sale held"));
+            toast("success", ticket ? t("Sale held as ticket #{0}", ticket) : t("Sale held"));
             closeModal();
+            void reloadHeld();
           }}
         />
       ) : null}
@@ -915,6 +947,30 @@ export function PosScreen({
               <strong className="right money">{formatMoney(cart.totals.total_minor)}</strong>
             </div>
           </div>
+        </Modal>
+      ) : null}
+      {modal.kind === "redeem" && cart.loyalty ? (
+        <LoyaltyRedeemDialog
+          cart={cart}
+          onClose={closeModal}
+          onDone={(c) => {
+            applyCart(c);
+            closeModal();
+          }}
+        />
+      ) : null}
+      {modal.kind === "orders" ? (
+        <Modal title={t("Digital orders")} size="xl" onClose={closeModal}>
+          {hasLines ? (
+            <Banner tone="info">{t("Hold or finish the current sale before selling an order.")}</Banner>
+          ) : null}
+          <OrdersList
+            onConverted={(c) => {
+              applyCart(c);
+              closeModal();
+              toast("success", t("Order loaded. Take payment as usual."));
+            }}
+          />
         </Modal>
       ) : null}
       {modal.kind === "customer" ? (
@@ -972,7 +1028,9 @@ export function PosScreen({
         <CashEventDialog
           kind={modal.cashKind}
           safeDropTotal={shift.safe_drop_minor}
-          onClose={closeModal} onDone={() => (closeModal(), void reloadShift())} />
+          onClose={closeModal}
+          onDone={() => (closeModal(), void reloadShift())}
+        />
       ) : null}
       {modal.kind === "refund" ? <RefundFlow onClose={closeModal} onDone={() => void reloadShift()} /> : null}
       {modal.kind === "recent" ? <RecentSalesDialog onClose={closeModal} /> : null}

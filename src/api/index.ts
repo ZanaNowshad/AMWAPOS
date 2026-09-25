@@ -63,6 +63,7 @@ export const api = {
     heldDelete: (cart_id: string, approval_token?: string | null) =>
       call<void>("pos.held_delete", { cart_id, approval_token }),
     cancel: (approval_token?: string | null) => call<T.Cart>("pos.cancel", { approval_token }),
+    loyaltyRedeem: (points: number) => call<T.Cart>("pos.loyalty_redeem", { points }),
     finalize: (
       a: { cart_id: string; operation_id: string; tenders: T.TenderInput[]; expected_total_minor?: number } & Approval,
     ) => call<T.SaleResult>("pos.finalize", a),
@@ -264,6 +265,13 @@ export const api = {
     run: (key: string, params: T.ReportParams) => call<T.Report>("reports.run", { key, params }),
     csv: (key: string, params: T.ReportParams) => call<string>("reports.csv", { key, params }),
     dashboard: () => call<Record<string, unknown>>("dashboard.get"),
+    eod: (date?: string | null, branch_id?: string | null) => call<T.EodPack>("reports.eod", { date, branch_id }),
+    eodZip: (date?: string | null, branch_id?: string | null) =>
+      call<{ file_name: string; base64: string; files: string[] }>("reports.eod_zip", { date, branch_id }),
+    presets: () => call<T.ReportPreset[]>("reports.presets"),
+    presetSave: (preset: Omit<T.ReportPreset, "preset_id">) =>
+      call<T.ReportPreset[]>("reports.preset_save", { preset }),
+    presetDelete: (preset_id: string) => call<T.ReportPreset[]>("reports.preset_delete", { preset_id }),
   },
   users: {
     list: () => call<T.UserRow[]>("users.list"),
@@ -312,8 +320,8 @@ export const api = {
   sync: {
     status: () => call<Record<string, unknown>>("sync.status"),
     enableHub: () => call<Record<string, unknown>>("sync.enable_hub"),
-    pairingCode: (device_name?: string) =>
-      call<{ code: string; expires_at: string }>("sync.pairing_code", { device_name }),
+    pairingCode: (device_name?: string, branch_id?: string | null) =>
+      call<{ code: string; expires_at: string }>("sync.pairing_code", { device_name, branch_id }),
     hubAddresses: () =>
       call<{ addresses: string[]; port: number; running: boolean; ips: string[]; bind_address: string }>(
         "sync.hub_addresses",
@@ -422,6 +430,70 @@ export const api = {
   },
   ocr: {
     retry: (kind: "invoice" | "payment", id: string) => call<void>("ocr.retry", { kind, id }),
+  },
+  loyalty: {
+    customer: (customer_id: string) => call<T.LoyaltyCustomer>("loyalty.customer", { customer_id }),
+    adjust: (customer_id: string, points: number, note: string) =>
+      call<T.LoyaltyCustomer>("loyalty.adjust", { customer_id, points, note }),
+  },
+  locations: {
+    list: () => call<T.StockLocation[]>("locations.list"),
+    save: (location_id: string | null, location: { code: string; name: string; active: boolean }) =>
+      call<T.StockLocation[]>("locations.save", { location_id, location }),
+    stock: (location_id: string) =>
+      call<{ product_id: string; name: string; qty_milli: number }[]>("locations.stock", { location_id }),
+  },
+  transfers: {
+    list: (status?: string) => call<T.Transfer[]>("transfers.list", { status }),
+    get: (transfer_id: string) => call<T.Transfer>("transfers.get", { transfer_id }),
+    create: (a: {
+      to_branch_id?: string | null;
+      from_location_id?: string | null;
+      to_location_id?: string | null;
+      note?: string | null;
+      lines: { product_id: string; qty_milli: number }[];
+    }) => call<T.Transfer>("transfers.create", a),
+    ship: (transfer_id: string, operation_id: string) =>
+      call<T.Transfer>("transfers.ship", { transfer_id, operation_id }),
+    receive: (transfer_id: string, operation_id: string) =>
+      call<T.Transfer>("transfers.receive", { transfer_id, operation_id }),
+    cancel: (transfer_id: string) => call<T.Transfer>("transfers.cancel", { transfer_id }),
+    inTransit: () =>
+      call<{ product_id: string; name: string; to_branch_id: string; to_branch_name: string; qty_milli: number }[]>(
+        "transfers.in_transit",
+      ),
+  },
+  orders: {
+    list: (status?: string | null) => call<T.DigitalOrder[]>("orders.list", { status }),
+    get: (order_id: string) => call<T.DigitalOrder>("orders.get", { order_id }),
+    products: (q: string) =>
+      call<{ product_id: string; name: string; sku: string; price_minor: number | null }[]>("orders.products", { q }),
+    save: (order_id: string | null, order: T.OrderInput) => call<T.DigitalOrder>("orders.save", { order_id, order }),
+    fromInbox: (seq: number) => call<T.DigitalOrder>("orders.from_inbox", { seq }),
+    confirm: (order_id: string) => call<T.DigitalOrder>("orders.confirm", { order_id }),
+    cancel: (order_id: string, reason?: string | null) => call<T.DigitalOrder>("orders.cancel", { order_id, reason }),
+    setPayment: (order_id: string, payment_state: T.OrderPaymentState) =>
+      call<T.DigitalOrder>("orders.set_payment", { order_id, payment_state }),
+    convert: (order_id: string, operation_id: string) => call<T.Cart>("orders.convert", { order_id, operation_id }),
+  },
+  branches: {
+    list: () => call<T.Branch[]>("branches.list"),
+    save: (
+      branch_id: string | null,
+      branch: { code: string; name: string; address?: string | null; phone?: string | null; active: boolean },
+    ) => call<T.Branch[]>("branches.save", { branch_id, branch }),
+    userGet: (user_id: string) => call<string[]>("branches.user_get", { user_id }),
+    userSet: (user_id: string, branch_ids: string[]) => call<string[]>("branches.user_set", { user_id, branch_ids }),
+    switchTo: (branch_id: string) => call<T.Session>("branches.switch", { branch_id }),
+    prices: (product_id: string) => call<T.BranchPrice[]>("branches.prices", { product_id }),
+    setPrice: (product_id: string, branch_id: string, amount_minor: number | null) =>
+      call<T.BranchPrice[]>("branches.set_price", { product_id, branch_id, amount_minor }),
+  },
+  companion: {
+    issue: (label?: string | null, hours?: number) =>
+      call<{ token: string; id: string; expires_at: string; path: string }>("companion.issue", { label, hours }),
+    tokens: () => call<T.CompanionToken[]>("companion.tokens"),
+    revoke: (id: string) => call<T.CompanionToken[]>("companion.revoke", { id }),
   },
 };
 

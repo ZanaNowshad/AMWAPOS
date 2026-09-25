@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Bot, Plus, Send } from "lucide-react";
 import { api } from "../../api";
 import type { AiConversation, AiProposal, AiSettings } from "../../api/types";
@@ -203,7 +203,9 @@ export function AiAssistantPage() {
   const list = useLoad(() => api.ai.conversations(), []);
   const [cid, setCid] = useState<string | null>(null);
   const [conv, setConv] = useState<AiConversation | null>(null);
-  const [text, setText] = useState("");
+  // Other screens may prefill a question (e.g. end of day); it is never sent automatically.
+  const [search] = useSearchParams();
+  const [text, setText] = useState(() => search.get("q") ?? "");
   const act = useAction();
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {

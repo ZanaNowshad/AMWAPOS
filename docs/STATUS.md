@@ -105,3 +105,33 @@ costing method `weighted_average` (receiving updates cost, audited) or `manual`,
 Not in this pass by decision: live WhatsApp link and real photos (owner soak), code signing, card SDK, Cloud API,
 hub TLS rewrite, Task Scheduler backups, the full acceptance matrix. The updater is AMWAPOS' own Ed25519-verified
 flow rather than tauri-plugin-updater; it refuses unsigned builds and opens the installer window (no silent apply).
+
+## Product brief: 12 pillars, 2026-09-25
+
+Every new module is behind a flag that is off by default. With all flags off,
+the new tables exist (migrations 0009, 0010) but nothing reads or writes them.
+`customers.credit` was not touched and stays off.
+
+| Flag | Module |
+|---|---|
+| `inventory.locations` | Stock locations; transfers draft → ship → receive (idempotent op ids, in-transit qty, no stock creation) |
+| `loyalty.enabled` | Integer points ledger; earn on committed sales; redeem as a discount priced by `price_cart`; proportional reversal on refund |
+| `orders.digital` | Phone/WhatsApp/web/other orders; human confirm; idempotent load into a till sale; optional delivery on commit |
+| `org.multi_branch` | Branch CRUD, user branch assignment, session branch switch, branch prices, branch pairing, branch-scoped mutations and reports |
+| `pwa.companion` | Hub-served read-only owner phone page; hashed, revocable bearer token (≤ 24 h), LAN peers only |
+
+Always on (no flag, no behaviour change for existing flows): ticket number on hold
+and recall by number, low-stock hint on cart lines, safe-drop running total and
+expected-cash formula on the shift screens, supplier last cost on the product,
+supplier performance report, saved report date ranges, end-of-day pack + CSV zip.
+
+Limits: one hub per LAN holds all branches (no cross-hub mesh). The phone page's
+offline shell needs HTTPS for its service worker; on plain LAN HTTP the page
+still shows the last snapshot it received. Soak, signing keys, the live WhatsApp
+phone and Windows Hello hardware remain the owner's checks; nothing here is
+claimed as soak-tested or production-ready.
+
+Tests: `crates/amwapos-core/tests/pillars.rs` (transfers in transit + idempotency,
+loyalty money/VAT/refund reversal, digital-order idempotent convert, multi-branch
+isolation with the flag on and identical behaviour with it off, end-of-day pack)
+and `crates/amwapos-hub/tests/companion.rs` (flag, token, revoke, LAN routes).

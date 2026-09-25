@@ -9,6 +9,7 @@ import { Banner, Button, PageHeader, Skeleton } from "../../components/ui";
 import { DateRange, download, useAction, useLoad } from "./common";
 import { BarChart } from "./charts";
 import { t, tb } from "../../i18n";
+import { BranchFilter, SavedRanges } from "./pillars";
 
 export function ReportsHome() {
   const nav = useNavigate();
@@ -129,6 +130,21 @@ export function ReportViewer() {
             onChange={(a, b) => setParams({ ...params, from: a, to: b })}
           />
         ) : null}
+        {!noDates ? (
+          <SavedRanges
+            from={params.from!}
+            to={params.to!}
+            onApply={(a, b) => {
+              const p = { ...params, from: a, to: b };
+              setParams(p);
+              void run(p);
+            }}
+          />
+        ) : null}
+        <BranchFilter
+          value={params.branch_id ?? ""}
+          onChange={(b) => setParams({ ...params, branch_id: b || undefined })}
+        />
         {key === "sales" ? (
           <select
             className="select"

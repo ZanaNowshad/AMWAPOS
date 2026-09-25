@@ -370,6 +370,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         // digital orders (orders.digital)
         "orders.list" => out(core.orders_list(tk()?, opt(&args, "status")?)),
         "orders.get" => out(core.order_get(tk()?, &req::<String>(&args, "order_id")?)),
+        "orders.products" => out(core.orders_product_search(tk()?, &req::<String>(&args, "q")?)),
         "orders.save" => out(core.order_save(tk()?, opt(&args, "order_id")?, req(&args, "order")?)),
         "orders.from_inbox" => out(core.order_from_inbox(tk()?, req(&args, "seq")?)),
         "orders.confirm" => out(core.order_confirm(tk()?, &req::<String>(&args, "order_id")?)),

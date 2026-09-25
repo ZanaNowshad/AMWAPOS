@@ -38,6 +38,7 @@ import { formatDateTime, formatShort, relative, todayLocal } from "../../lib/tim
 import { Banner, Button, Checkbox, Chip, Field, Modal, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Drawer, Pager, download, useAction, useLoad } from "./common";
 import { t, tb } from "../../i18n";
+import { LoyaltySettingsSection } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
 
 // ---------------- Devices ----------------
@@ -189,6 +190,9 @@ export function SyncPage() {
   );
   const dead = useLoad(() => (has("sync.manage") ? api.sync.deadLetters() : Promise.resolve([])), []);
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
+  const multi = useFeature("org.multi_branch");
+  const branches = useLoad(() => (multi ? api.branches.list() : Promise.resolve([])), [multi]);
+  const [pairBranch, setPairBranch] = useState("");
   const [enable, setEnable] = useState(false);
   const [resetCreds, setResetCreds] = useState(false);
   const act = useAction();
@@ -404,12 +408,26 @@ export function SyncPage() {
                 </div>
               </div>
             ) : null}
+            {has("devices.manage") && multi && (branches.data ?? []).length > 1 ? (
+              <Field label={t("New terminal joins branch")}>
+                <select className="select" value={pairBranch} onChange={(e) => setPairBranch(e.target.value)}>
+                  <option value="">{t("The hub's branch")}</option>
+                  {(branches.data ?? [])
+                    .filter((b) => b.active)
+                    .map((b) => (
+                      <option key={b.branch_id} value={b.branch_id}>
+                        {b.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            ) : null}
             {has("devices.manage") ? (
               <Button
                 variant="primary"
                 icon={<Plus size={16} />}
                 onClick={async () => {
-                  const r = await act.run(() => api.sync.pairingCode());
+                  const r = await act.run(() => api.sync.pairingCode(undefined, pairBranch || null));
                   if (r) setCode(r);
                 }}
               >
@@ -1235,6 +1253,7 @@ type Section =
   | "backup"
   | "appearance"
   | "features"
+  | "loyalty"
   | "whatsapp"
   | "ai"
   | "about";
@@ -1255,6 +1274,7 @@ export function SettingsPage() {
     ["backup", t("Backups")],
     ["appearance", t("Appearance")],
     ["features", t("Features")],
+    ["loyalty", t("Loyalty")],
     ["whatsapp", t("WhatsApp")],
     ["ai", t("AI assistant")],
     ["about", t("About")],
@@ -1283,6 +1303,7 @@ export function SettingsPage() {
           {section === "backup" ? <JsonSettings k="local.backup" /> : null}
           {section === "appearance" ? <AppearanceSettings /> : null}
           {section === "features" ? <FeaturesSettings /> : null}
+          {section === "loyalty" ? <LoyaltySettingsSection /> : null}
           {section === "whatsapp" ? <WaTemplates /> : null}
           {section === "ai" ? <AiSettingsSection /> : null}
           {section === "about" ? <AboutSettings /> : null}
@@ -2068,6 +2089,26 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
   pdf_receipts: () =>
     t("Saves a PDF copy of every receipt after the sale is committed. A PDF failure never cancels a sale."),
   updates: () => t("Checks for new versions. Only updates signed with the publisher key are installed."),
+  "inventory.locations": () =>
+    t(
+      "Splits a branch's stock into locations (stockroom, shelf, …) and moves it with transfers: draft, ship, receive. A transfer never creates stock.",
+    ),
+  "loyalty.enabled": () =>
+    t(
+      "Customers earn whole points on what they pay and redeem them as a discount on a later sale. Points are reversed in proportion when a sale is refunded.",
+    ),
+  "orders.digital": () =>
+    t(
+      "Records orders taken by phone, WhatsApp or a web form. A person confirms each order, then a cashier loads it into a sale and takes payment as usual.",
+    ),
+  "org.multi_branch": () =>
+    t(
+      "Several branches on one hub: shared catalogue with optional branch prices, stock per branch, staff assigned to branches, transfers between branches and reports per branch. With it off, AMWAPOS works as one branch.",
+    ),
+  "pwa.companion": () =>
+    t(
+      "A read-only page for the owner's phone on the store network: today's sales, pending deliveries and low stock. Needs the hub and a short-lived link issued from Admin → Phone view.",
+    ),
 };
 
 function FeaturesSettings() {

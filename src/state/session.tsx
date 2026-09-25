@@ -22,6 +22,8 @@ interface SessionCtx {
   unlock: (pin: string) => Promise<void>;
   switchUser: () => Promise<void>;
   reloadConfig: () => Promise<void>;
+  /** Use the session the backend returned (e.g. after a branch switch). */
+  setSessionData: (s: Session) => void;
   handleAuthError: (e: unknown) => boolean;
 }
 
@@ -189,6 +191,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
       unlock,
       switchUser,
       reloadConfig,
+      setSessionData: setSession,
       handleAuthError,
     }),
     [

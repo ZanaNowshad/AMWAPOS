@@ -26,6 +26,7 @@ import {
 import { DataTable, Drawer, useAction, useLoad } from "./common";
 import { SaleDrawer } from "./sales";
 import { t, tb } from "../../i18n";
+import { LoyaltyCard } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
 
 function CustomerForm({
@@ -232,6 +233,7 @@ export function CustomerDetailPage() {
       />
       {tab === "addresses" ? <AddressesTab customerId={c.customer_id} /> : null}
       {tab === "account" && credit ? <AccountTab customerId={c.customer_id} /> : null}
+      {tab === "overview" ? <LoyaltyCard customerId={c.customer_id} /> : null}
       {tab === "overview" ? (
         <div className="grid-2">
           <div className="card card-pad">

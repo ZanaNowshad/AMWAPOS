@@ -1020,7 +1020,10 @@ impl AppCore {
             )?;
             touch(tx, &cid)?;
             audit::record(tx, &actor, "pos.held", "cart", Some(&cid), None, Some(&json!({ "hold_number": hold_no, "note": note })))?;
-            Ok(CartView::empty())
+            // The till starts a new sale; the ticket number is returned so it can be shown.
+            let mut v = CartView::empty();
+            v.hold_number = Some(hold_no);
+            Ok(v)
         })
     }
 

@@ -10,10 +10,14 @@ import { Banner, Button, Chip, Empty } from "../../components/ui";
 import { Logo } from "../../components/Logo";
 import { t } from "../../i18n";
 import { codeLabel } from "../../i18n/codes";
+import { useFeature } from "../../components/FeatureGate";
+import { OrdersList } from "../orders";
 
 /** Minimal workspace for delivery staff: assigned deliveries and status only. */
 export function DeliveryDesk() {
-  const { session, logout } = useSession();
+  const { session, logout, has } = useSession();
+  const ordersOn = useFeature("orders.digital") && has("orders.manage");
+  const [tab, setTab] = useState<"deliveries" | "orders">("deliveries");
   const [rows, setRows] = useState<DeliveryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const load = () =>
@@ -44,13 +48,27 @@ export function DeliveryDesk() {
         </Button>
       </header>
       <div className="content">
-        {error ? <Banner tone="danger">{error}</Banner> : null}
-        {rows.length === 0 ? (
+        {ordersOn ? (
+          <div className="row" style={{ marginBottom: 12 }}>
+            <button
+              className={`filter-chip ${tab === "deliveries" ? "active" : ""}`}
+              onClick={() => setTab("deliveries")}
+            >
+              {t("Deliveries")}
+            </button>
+            <button className={`filter-chip ${tab === "orders" ? "active" : ""}`} onClick={() => setTab("orders")}>
+              {t("Digital orders")}
+            </button>
+          </div>
+        ) : null}
+        {tab === "orders" && ordersOn ? <OrdersList /> : null}
+        {tab === "deliveries" && error ? <Banner tone="danger">{error}</Banner> : null}
+        {tab !== "deliveries" ? null : rows.length === 0 ? (
           <Empty title={t("No deliveries assigned")}>
             {t("New deliveries appear here when a manager assigns them to you.")}
           </Empty>
         ) : null}
-        <div className="col">
+        <div className="col" hidden={tab !== "deliveries"}>
           {rows.map((d) => (
             <div key={d.delivery_id} className="card card-pad row">
               <div className="grow">

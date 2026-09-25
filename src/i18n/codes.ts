@@ -60,6 +60,20 @@ export const CODE_LABELS: Record<string, string> = {
   never_seen: "Never seen",
   version_mismatch: "Version mismatch",
   revoked: "Revoked",
+  shipped: "In transit",
+  confirmed: "Confirmed",
+  converted: "Sold",
+  phone: "Phone",
+  whatsapp: "WhatsApp",
+  web: "Web",
+  other: "Other",
+  unpaid: "Unpaid",
+  recorded: "Payment recorded",
+  screenshot_pending: "Screenshot pending",
+  earn: "Earned",
+  redeem: "Redeemed",
+  reverse_earn: "Earned points reversed",
+  reverse_redeem: "Redeemed points returned",
 };
 
 /** "partially_received" → "Partly received" (translated). Unknown codes are shown as-is. */

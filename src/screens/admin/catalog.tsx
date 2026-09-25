@@ -41,6 +41,7 @@ import {
 import { Confirm, DataTable, Drawer, Pager, download, useAction, useLoad, type Column } from "./common";
 import { AdjustDialog } from "./inventory";
 import { t } from "../../i18n";
+import { BranchPricesCard } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
 
 export function ProductsPage() {
@@ -819,6 +820,10 @@ function BarcodesTab({
 }
 
 function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: () => Promise<void> }) {
+  // Newest cost row that came from a supplier (cost history is newest first).
+  const lastSupplier = (detail.cost_history ?? [])
+    .filter((c) => c.supplier_name)
+    .sort((a, b) => (a.effective_at < b.effective_at ? 1 : -1))[0];
   const { has } = useSession();
   const toast = useToast();
   const [price, setPrice] = useState(detail.price_minor !== null ? formatAmount(detail.price_minor) : "");
@@ -887,6 +892,7 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
           </tbody>
         </table>
       </div>
+      <BranchPricesCard productId={detail.product_id} />
       {detail.cost_history ? (
         <div className="card card-pad col gap-16">
           <h3>{t("Cost")}</h3>
@@ -895,6 +901,15 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
             <dd>{formatMoney(detail.avg_cost_minor)}</dd>
             <dt>{t("Last cost")}</dt>
             <dd>{formatMoney(detail.last_cost_minor)}</dd>
+            {lastSupplier ? (
+              <>
+                <dt>{t("Last supplier cost")}</dt>
+                <dd data-testid="last-supplier-cost">
+                  {formatMoney(lastSupplier.cost_minor)} · {lastSupplier.supplier_name} ·{" "}
+                  {formatShort(lastSupplier.effective_at)}
+                </dd>
+              </>
+            ) : null}
             <dt>{t("Unit margin")}</dt>
             <dd className={margin !== null && margin < 0 ? "neg-num" : ""}>
               {margin === null ? "—" : formatMoney(margin)}

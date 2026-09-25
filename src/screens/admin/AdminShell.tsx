@@ -43,7 +43,12 @@ import {
   Warehouse,
   LineChart,
   BadgeCheck,
+  ArrowLeftRight,
+  CalendarCheck,
+  Smartphone,
 } from "lucide-react";
+import type { FeatureName } from "../../api/types";
+import { BranchesPage, BranchSwitcher, EndOfDayPage, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
 import { useSession } from "../../state/session";
 import { initials } from "../login/Login";
 import { Logo } from "../../components/Logo";
@@ -81,6 +86,8 @@ interface NavItem {
   icon: ComponentType<{ size?: number }>;
   perm?: string | string[];
   element: ComponentType;
+  /** Optional module: hidden from the menu while its feature flag is off. */
+  feature?: FeatureName;
 }
 
 const NAV: { group: string; items: NavItem[] }[] = [
@@ -132,6 +139,14 @@ const NAV: { group: string; items: NavItem[] }[] = [
         perm: "stocktake.manage",
         element: StocktakesPage,
       },
+      {
+        path: "transfers",
+        label: t("Locations & transfers"),
+        icon: ArrowLeftRight,
+        perm: "inventory.view",
+        element: TransfersPage,
+        feature: "inventory.locations",
+      },
     ],
   },
   {
@@ -166,6 +181,14 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { path: "customers", label: t("Customers"), icon: Users, perm: "customers.view", element: CustomersPage },
       { path: "deliveries", label: t("Deliveries"), icon: Truck, perm: "deliveries.view", element: DeliveriesPage },
+      {
+        path: "orders",
+        label: t("Digital orders"),
+        icon: ClipboardList,
+        perm: ["orders.manage", "pos.sell"],
+        element: OrdersPage,
+        feature: "orders.digital",
+      },
     ],
   },
   {
@@ -179,6 +202,15 @@ const NAV: { group: string; items: NavItem[] }[] = [
         element: ReportsHome,
       },
       { path: "analytics", label: t("Analytics"), icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
+      { path: "end-of-day", label: t("End of day"), icon: CalendarCheck, perm: "reports.sales", element: EndOfDayPage },
+      {
+        path: "phone-view",
+        label: t("Phone view"),
+        icon: Smartphone,
+        perm: "reports.financial",
+        element: PhoneViewPage,
+        feature: "pwa.companion",
+      },
     ],
   },
   {
@@ -199,6 +231,14 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: t("SYSTEM"),
     items: [
       { path: "users", label: t("Users & Roles"), icon: ShieldCheck, perm: "users.manage", element: UsersPage },
+      {
+        path: "branches",
+        label: t("Branches"),
+        icon: Store,
+        perm: ["branches.manage", "branches.all"],
+        element: BranchesPage,
+        feature: "org.multi_branch",
+      },
       {
         path: "devices",
         label: t("Devices"),
@@ -314,7 +354,9 @@ function Shell() {
   const loc = useLocation();
   const nav = useNavigate();
   const menuRef = useRef<HTMLDivElement>(null);
+  const features = config?.features;
   const allowed = (perm?: string | string[]) => !perm || (Array.isArray(perm) ? perm.some(has) : has(perm));
+  const visible = (i: NavItem) => allowed(i.perm) && (!i.feature || !!features?.[i.feature]);
   const current = NAV.flatMap((g) => g.items).find((i) => loc.pathname.startsWith("/admin/" + i.path));
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -344,7 +386,7 @@ function Shell() {
         </div>
         <nav aria-label={t("Admin navigation")}>
           {NAV.map((g) => {
-            const items = g.items.filter((i) => allowed(i.perm));
+            const items = g.items.filter(visible);
             if (!items.length) return null;
             return (
               <div key={g.group}>
@@ -387,6 +429,7 @@ function Shell() {
           <span style={{ filter: "invert(0)" }}>
             <ConnectionPill />
           </span>
+          <BranchSwitcher />
           <LanguageToggle />
           <button className="btn ghost icon" aria-label={t("Alerts")} onClick={() => nav("/admin/dashboard")}>
             <Bell size={18} />
@@ -424,9 +467,7 @@ function Shell() {
         {palette ? (
           <CommandPalette
             items={NAV.flatMap((g) =>
-              g.items
-                .filter((i) => allowed(i.perm))
-                .map((i) => ({ path: i.path, label: i.label, group: g.group, icon: i.icon })),
+              g.items.filter(visible).map((i) => ({ path: i.path, label: i.label, group: g.group, icon: i.icon })),
             )}
             onClose={() => setPalette(false)}
             onGo={(p) => (setPalette(false), nav(`/admin/${p}`))}

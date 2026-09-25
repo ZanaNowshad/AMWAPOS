@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, CircleAlert, FileScan, Image as ImageIcon, RefreshCw, Send, Upload } from "lucide-react";
 import { api } from "../../api";
 import type {
@@ -21,6 +21,8 @@ import { formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
 import { formatDateTime, relative } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
+import { OrderEditor } from "../orders";
+import type { DigitalOrder } from "../../api/types";
 
 // ---------------------------------------------------------------- helpers
 
@@ -536,6 +538,10 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
   const [text, setText] = useState("");
   const [images, setImages] = useState<Record<number, string>>({});
   const act = useAction();
+  const ordersOn = useFeature("orders.digital");
+  const { has } = useSession();
+  const nav = useNavigate();
+  const [draft, setDraft] = useState<DigitalOrder | null>(null);
   useEffect(() => {
     void api.whatsapp.markRead(chat.chat).then(onRead, () => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -582,6 +588,18 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
               ) : null}
               {it.m.kind === "other" && !it.m.body ? <div className="tiny">{t("Unsupported message type")}</div> : null}
               <div className="tiny">{formatDateTime(it.at)}</div>
+              {ordersOn && has("orders.manage") && (it.m.body || it.m.caption) ? (
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    const seq = (it.m as { seq: number }).seq;
+                    const o = await act.run(() => api.orders.fromInbox(seq));
+                    if (o) setDraft(o);
+                  }}
+                >
+                  {t("Create order from this message")}
+                </Button>
+              ) : null}
             </div>
           ) : "o" in it && it.o ? (
             <div key={it.key} className="bubble out" style={{ alignSelf: "flex-end", maxWidth: "80%" }}>
@@ -595,6 +613,17 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
         )}
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      {draft ? (
+        <OrderEditor
+          order={draft}
+          onClose={() => setDraft(null)}
+          onSaved={() => {
+            setDraft(null);
+            toast("success", t("Draft order saved. Confirm it in Digital orders."));
+            nav("/admin/orders");
+          }}
+        />
+      ) : null}
       <div className="row">
         <textarea
           className="input grow"

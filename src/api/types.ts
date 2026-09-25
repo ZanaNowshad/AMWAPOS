@@ -107,6 +107,11 @@ export interface FeatureFlags {
   windows_hello: boolean;
   pdf_receipts: boolean;
   updates: boolean;
+  "inventory.locations": boolean;
+  "loyalty.enabled": boolean;
+  "orders.digital": boolean;
+  "org.multi_branch": boolean;
+  "pwa.companion": boolean;
 }
 
 export type FeatureName = keyof FeatureFlags;
@@ -155,6 +160,8 @@ export interface CartLine {
   tax_inclusive: boolean;
   is_custom: boolean;
   stock_milli: number | null;
+  /** Set when stock is tracked; a hint shows when stock is at or below it. */
+  reorder_point_milli?: number | null;
 }
 
 export interface CustomerRef {
@@ -175,6 +182,17 @@ export interface Cart {
   hold_note: string | null;
   version: number;
   notices: string[];
+  /** Present when loyalty is on and a customer is on the sale. */
+  loyalty?: CartLoyalty | null;
+}
+
+export interface CartLoyalty {
+  balance: number;
+  points: number;
+  discount_minor: number;
+  earn_estimate: number;
+  redeem_minor_per_point: number;
+  min_redeem_points: number;
 }
 
 export interface ScanResult {
@@ -634,6 +652,8 @@ export interface CustomerRow extends CustomerInput {
   purchase_count: number;
   total_spent_minor: number;
   last_purchase_at: string | null;
+  /** Present when loyalty is on. */
+  loyalty_points?: number;
 }
 
 export interface DeliveryRow {
@@ -691,6 +711,7 @@ export interface ReportParams {
   cashier_id?: string;
   limit?: number;
   days?: number;
+  branch_id?: string;
 }
 
 export interface UserRow {
@@ -1136,4 +1157,174 @@ export interface CustomerAccountView {
     reference: string | null;
   }[];
   addresses: CustomerAddress[];
+}
+
+// ---- Product-brief pillars -------------------------------------------------
+
+export interface LoyaltySettings {
+  earn_minor_per_point: number;
+  redeem_minor_per_point: number;
+  exclude_discounted_lines: boolean;
+  min_redeem_points: number;
+}
+
+export interface LoyaltyEntry {
+  entry_id: string;
+  kind: "earn" | "redeem" | "reverse_earn" | "reverse_redeem" | "adjust";
+  points: number;
+  sale_id: string | null;
+  receipt_number: string | null;
+  note: string | null;
+  user_name: string | null;
+  created_at: string;
+}
+
+export interface LoyaltyCustomer {
+  balance: number;
+  value_minor: number;
+  entries: LoyaltyEntry[];
+  settings: LoyaltySettings;
+}
+
+export interface StockLocation {
+  location_id: string;
+  branch_id: string;
+  branch_name: string;
+  code: string;
+  name: string;
+  is_default: boolean;
+  active: boolean;
+}
+
+export interface TransferLine {
+  line_no: number;
+  product_id: string;
+  product_name: string;
+  qty_milli: number;
+  qty_received_milli: number;
+}
+
+export interface Transfer {
+  transfer_id: string;
+  transfer_number: string;
+  from_branch_id: string;
+  from_branch_name: string;
+  from_location_id: string;
+  from_location_name: string;
+  to_branch_id: string;
+  to_branch_name: string;
+  to_location_id: string;
+  to_location_name: string;
+  status: "draft" | "shipped" | "received" | "cancelled";
+  note: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  shipped_at: string | null;
+  received_at: string | null;
+  lines: TransferLine[];
+}
+
+export type OrderChannel = "phone" | "whatsapp" | "web" | "other";
+export type OrderPaymentState = "unpaid" | "recorded" | "screenshot_pending";
+
+export interface OrderLine {
+  line_no: number;
+  product_id: string | null;
+  product_name: string | null;
+  description: string;
+  qty_milli: number;
+  unit_price_minor: number | null;
+}
+
+export interface DigitalOrder {
+  order_id: string;
+  order_number: string;
+  branch_id: string;
+  channel: OrderChannel;
+  external_ref: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  phone: string | null;
+  status: "draft" | "confirmed" | "converted" | "cancelled";
+  payment_state: OrderPaymentState;
+  inbox_seq: number | null;
+  note: string | null;
+  address: string | null;
+  delivery_wanted: boolean;
+  sale_id: string | null;
+  receipt_number: string | null;
+  delivery_id: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+  lines: OrderLine[];
+  estimate_minor: number;
+}
+
+export interface OrderInput {
+  channel: OrderChannel;
+  external_ref?: string | null;
+  customer_id?: string | null;
+  phone?: string | null;
+  payment_state?: OrderPaymentState;
+  note?: string | null;
+  address?: string | null;
+  delivery_wanted?: boolean;
+  lines: { product_id?: string | null; description?: string | null; qty_milli: number }[];
+}
+
+export interface BranchDevice {
+  device_id: string;
+  name: string;
+  device_code: string;
+  mode: string;
+  active: boolean;
+}
+
+export interface Branch {
+  branch_id: string;
+  code: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  active: boolean;
+  devices: BranchDevice[];
+  user_count: number;
+}
+
+export interface BranchPrice {
+  branch_id: string;
+  code: string;
+  name: string;
+  price_minor: number | null;
+}
+
+export interface EodPack {
+  date: string;
+  branch_id: string | null;
+  sales: Report | null;
+  tenders: Report | null;
+  shifts: Report | null;
+  refunds: Report | null;
+  low_stock: { product_id: string; name: string; sku: string; qty_milli: number; reorder_point_milli: number }[];
+  hidden: string[];
+}
+
+export type RangeKind = "today" | "yesterday" | "last_7" | "this_week" | "this_month" | "last_month" | "fixed";
+
+export interface ReportPreset {
+  preset_id: string;
+  name: string;
+  range_kind: RangeKind;
+  from_date: string | null;
+  to_date: string | null;
+}
+
+export interface CompanionToken {
+  id: string;
+  user_name: string | null;
+  label: string | null;
+  created_at: string;
+  expires_at: string;
+  last_used_at: string | null;
 }

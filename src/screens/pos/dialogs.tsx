@@ -73,15 +73,23 @@ export function UnknownBarcodeDialog({
   );
 }
 
-export function HoldDialog({ cart, onClose, onHeld }: { cart: Cart; onClose: () => void; onHeld: () => void }) {
+export function HoldDialog({
+  cart,
+  onClose,
+  onHeld,
+}: {
+  cart: Cart;
+  onClose: () => void;
+  onHeld: (ticket: number | null) => void;
+}) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const { error, handle } = useErr();
   const hold = async () => {
     setBusy(true);
     try {
-      await api.pos.hold(note || null);
-      onHeld();
+      const r = await api.pos.hold(note || null);
+      onHeld(r.hold_number);
     } catch (e) {
       handle(e);
     } finally {
@@ -132,16 +140,50 @@ export function HeldCartsDialog({
   const approve = useApproval();
   const [rows, setRows] = useState<HeldCart[] | null>(null);
   const { error, handle } = useErr();
+  const [ticket, setTicket] = useState("");
   const load = () => api.pos.held().then(setRows).catch(handle);
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  const resume = async (cart_id: string) => {
+    try {
+      onRestored(await api.pos.restore(cart_id));
+    } catch (e) {
+      handle(e);
+    }
+  };
+  const recall = () => {
+    const n = Number(ticket.replace(/[^\d]/g, ""));
+    const row = rows?.find((r) => r.hold_number === n);
+    if (!row) {
+      handle(new Error(t("No held sale with ticket {0}.", ticket)));
+      return;
+    }
+    void resume(row.cart_id);
+  };
   return (
     <Modal title={t("Held sales")} size="lg" onClose={onClose}>
       {currentHasLines ? (
         <Banner tone="info">{t("Hold or finish the current sale before resuming another.")}</Banner>
-      ) : null}
+      ) : (
+        <div className="row" style={{ marginBottom: 12 }}>
+          <input
+            className="input num"
+            style={{ width: 160 }}
+            inputMode="numeric"
+            placeholder={t("Ticket number")}
+            aria-label={t("Ticket number")}
+            value={ticket}
+            autoFocus
+            onChange={(e) => setTicket(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && ticket && recall()}
+          />
+          <Button variant="primary" disabled={!ticket} onClick={recall}>
+            {t("Recall")}
+          </Button>
+        </div>
+      )}
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {rows && rows.length === 0 ? (
         <div className="empty">
@@ -164,7 +206,9 @@ export function HeldCartsDialog({
           <tbody>
             {rows.map((r) => (
               <tr key={r.cart_id}>
-                <td>{r.hold_number}</td>
+                <td>
+                  <strong className="num">#{r.hold_number}</strong>
+                </td>
                 <td>{formatShort(r.held_at)}</td>
                 <td>{r.cashier_name}</td>
                 <td>{[r.customer_name, r.note].filter(Boolean).join(" · ") || "—"}</td>
@@ -177,13 +221,7 @@ export function HeldCartsDialog({
                       size="sm"
                       variant="primary"
                       disabled={currentHasLines || r.locked}
-                      onClick={async () => {
-                        try {
-                          onRestored(await api.pos.restore(r.cart_id));
-                        } catch (e) {
-                          handle(e);
-                        }
-                      }}
+                      onClick={() => void resume(r.cart_id)}
                     >
                       {t("Resume")}
                     </Button>
@@ -296,7 +334,12 @@ export function CustomerPicker({
                     {c.phone ?? t("No phone")} {c.area ? `· ${c.area}` : ""}
                   </div>
                 </div>
-                <span className="tiny">{c.purchase_count} purchases</span>
+                {c.loyalty_points !== undefined ? (
+                  <span className="chip" title={t("Loyalty points")}>
+                    {t("{0} pts", c.loyalty_points)}
+                  </span>
+                ) : null}
+                <span className="tiny">{t("{0} purchases", c.purchase_count)}</span>
               </div>
             ))}
             {rows.length === 0 ? <div className="empty">{t("No customers found.")}</div> : null}
@@ -852,6 +895,79 @@ export function DeliveryQuickDialog({
         <TextInput label={t("Notes")} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
+    </Modal>
+  );
+}
+
+/** Redeem loyalty points on this sale as a discount (0 clears it). */
+export function LoyaltyRedeemDialog({
+  cart,
+  onClose,
+  onDone,
+}: {
+  cart: Cart;
+  onClose: () => void;
+  onDone: (c: Cart) => void;
+}) {
+  const l = cart.loyalty!;
+  const [points, setPoints] = useState(String(l.points || l.balance));
+  const [busy, setBusy] = useState(false);
+  const { error, handle } = useErr();
+  const n = Math.max(0, Math.floor(Number(points.replace(/[^\d]/g, "")) || 0));
+  const apply = async (p: number) => {
+    setBusy(true);
+    try {
+      onDone(await api.pos.loyaltyRedeem(p));
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t("Redeem points")}
+      size="sm"
+      onClose={onClose}
+      footer={
+        <>
+          {l.points > 0 ? (
+            <Button onClick={() => void apply(0)} disabled={busy}>
+              {t("Remove redemption")}
+            </Button>
+          ) : (
+            <Button onClick={onClose}>{t("Cancel")}</Button>
+          )}
+          <Button variant="primary" className="right" loading={busy} disabled={n <= 0} onClick={() => void apply(n)}>
+            {t("Redeem")}
+          </Button>
+        </>
+      }
+    >
+      <div className="col gap-16">
+        <dl className="kv">
+          <dt>{t("Balance")}</dt>
+          <dd>{t("{0} points", l.balance)}</dd>
+          <dt>{t("Value of each point")}</dt>
+          <dd className="money">{formatMoney(l.redeem_minor_per_point)}</dd>
+          <dt>{t("Minimum to redeem")}</dt>
+          <dd>{t("{0} points", l.min_redeem_points)}</dd>
+        </dl>
+        <TextInput
+          label={t("Points to redeem")}
+          className="num"
+          inputMode="numeric"
+          value={points}
+          autoFocus
+          onChange={(e) => setPoints(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && n > 0 && void apply(n)}
+          hint={t(
+            "Discount about {0}. It is capped at what the sale can absorb; it is not cash.",
+            formatMoney(n * l.redeem_minor_per_point),
+          )}
+        />
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+      </div>
     </Modal>
   );
 }

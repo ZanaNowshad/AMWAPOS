@@ -39,6 +39,11 @@ export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   windows_hello: () => t("Windows Hello step-up"),
   pdf_receipts: () => t("PDF receipts"),
   updates: () => t("Automatic update checks"),
+  "inventory.locations": () => t("Stock locations and transfers"),
+  "loyalty.enabled": () => t("Loyalty points"),
+  "orders.digital": () => t("Digital orders (phone, WhatsApp, web)"),
+  "org.multi_branch": () => t("Multiple branches"),
+  "pwa.companion": () => t("Owner phone view"),
 };
 
 /** Shows `children` only when the feature is on; otherwise a "not enabled" notice. */
