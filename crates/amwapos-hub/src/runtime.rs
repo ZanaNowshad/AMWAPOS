@@ -384,7 +384,32 @@ impl Runtime {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let conv = args.get("conversation_id").and_then(|v| v.as_str()).map(|s| s.to_string());
                 let locale = args.get("locale").and_then(|v| v.as_str()).filter(|l| *l == "ar").unwrap_or("en").to_string();
-                crate::ai_client::ask(self.core.clone(), t, conv, arg(&args, "message")?, locale).await
+                crate::ai_client::ask(self.clone(), t, conv, arg(&args, "message")?, locale).await
+            }
+            // A proposal runs the same command the admin page runs, through
+            // this dispatcher, so Hello step-up and manager approval apply.
+            "ai.proposal_confirm" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let id = arg(&args, "proposal_id")?;
+                let approval = args.get("approval_token").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let inputs = args.get("inputs").cloned().unwrap_or(Value::Null);
+                let (c, t2, id2) = (self.core.clone(), t.clone(), id.clone());
+                let prep = blocking(move || c.ai_proposal_prepare(&t2, &id2, approval, &inputs)).await?;
+                let Some(prep) = prep else {
+                    let c = self.core.clone();
+                    return blocking(move || commands::dispatch(&c, "ai.proposal_confirm", Some(&t), args)).await;
+                };
+                let outcome = Box::pin(self.dispatch(&prep.command, Some(t.clone()), prep.args.clone())).await;
+                let c = self.core.clone();
+                blocking(move || c.ai_proposal_finish(&t, &prep.proposal_id, outcome, prep.secret_result)).await
+            }
+            "invoicescan.ai_parse" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let scan_id = arg(&args, "scan_id")?;
+                let c = self.core.clone();
+                blocking(move || c.session(&t)?.require("ocr.scan")).await?;
+                let replaced = crate::ocr_worker::ai_parse_now(&self.core, &scan_id).await?;
+                Ok(json!({ "scan_id": scan_id, "replaced": replaced }))
             }
             "ai.test" | "ai.models" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;

@@ -279,20 +279,25 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
 /// `ocr.ai_parse`: ask the configured AI provider to extract the invoice
 /// lines from the OCR text. Any failure keeps the rules parser's result.
 async fn ai_parse(core: &Arc<AppCore>, scan_id: &str) {
-    let (c, id) = (core.clone(), scan_id.to_string());
-    let Ok(Some(turn)) = blocking(move || c.ocr_ai_parse_turn(&id)).await else { return };
-    let reply = match crate::ai_client::complete_once(&turn).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::info!(error = %e.message, "AI invoice parse unavailable; rules parse kept");
-            return;
-        }
-    };
-    let Some(v) = crate::ai_client::json_object(&reply) else { return };
-    let (c, id) = (core.clone(), scan_id.to_string());
-    if let Err(e) = blocking(move || c.inv_apply_ai_parse(&id, &v)).await {
-        tracing::info!(error = %e.message, "AI invoice parse not applied");
+    if let Err(e) = ai_parse_now(core, scan_id).await {
+        tracing::info!(error = %e.message, "AI invoice parse not applied; rules parse kept");
     }
+}
+
+/// One AI parse of a scan in review. Ok(true) when the lines were replaced.
+/// Also behind the "Improve parse" button (`invoicescan.ai_parse`).
+pub async fn ai_parse_now(core: &Arc<AppCore>, scan_id: &str) -> AppResult<bool> {
+    let (c, id) = (core.clone(), scan_id.to_string());
+    let Some(turn) = blocking(move || c.ocr_ai_parse_turn(&id)).await? else {
+        return Err(AppError::conflict(
+            "AI parsing needs the 'AI reads invoices' switch, a real AI provider with consent, and a scan waiting for review.",
+        ));
+    };
+    let reply = crate::ai_client::complete_once(&turn).await?;
+    let v = crate::ai_client::json_object(&reply)
+        .ok_or_else(|| AppError::new(ErrorCode::AiProviderError, "The AI reply was not a JSON object; the rules parse was kept."))?;
+    let (c, id) = (core.clone(), scan_id.to_string());
+    blocking(move || c.inv_apply_ai_parse(&id, &v)).await
 }
 
 async fn run(w: Arc<OcrWorker>) {

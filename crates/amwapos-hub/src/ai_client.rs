@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use amwapos_core::ai::{AiConnection, AiSettings, AiTurn};
-use amwapos_core::{AppCore, AppError, AppResult, ErrorCode};
+use amwapos_core::{AppError, AppResult, ErrorCode};
 use serde_json::{json, Value};
 
 const MAX_ROUNDS: usize = 8;
@@ -169,8 +169,11 @@ fn fake(turn: &AiTurn) -> Reply {
         .iter()
         .rev()
         .filter(|m| m["role"] == "user")
-        .find_map(|m| m["content"].as_array()?.iter().find(|b| b["type"] == "text")?.get("text")?.as_str().map(str::to_lowercase))
+        .filter_map(|m| m["content"].as_array()?.iter().find(|b| b["type"] == "text")?.get("text")?.as_str().map(str::to_lowercase))
+        .find(|t| !t.starts_with(&amwapos_core::ai::NUDGE_PREFIX.to_lowercase()))
         .unwrap_or_default();
+    let nudged =
+        turn.messages.last().and_then(|m| m["content"][0]["text"].as_str()).is_some_and(|t| t.starts_with(amwapos_core::ai::NUDGE_PREFIX));
     let last = turn.messages.last().cloned().unwrap_or(Value::Null);
     let results: Vec<Value> = if last["role"] == "user" {
         last["content"].as_array().cloned().unwrap_or_default().into_iter().filter(|b| b["type"] == "tool_result").collect()
@@ -221,8 +224,22 @@ fn fake(turn: &AiTurn) -> Reply {
         let short: String = body.chars().take(800).collect();
         return say(format!("Here is what I found (offline test model):\n{short}"));
     }
+    // B1 test phrasings: "guess" keeps stating figures without a tool;
+    // "estimate" answers from memory first, then calls a tool when nudged.
+    if question.contains("guess") || (question.contains("estimate") && !nudged) {
+        return say("Sales today were about 123.450.".into());
+    }
+    if question.contains("estimate") && has("dashboard_kpis") {
+        return call("dashboard_kpis", json!({}));
+    }
     if let Some((name, _)) = &price_intent {
         return call("search_products", json!({ "query": name, "limit": 1 }));
+    }
+    // Eval pack (B10): golden phrasings → the tool a real model should pick.
+    for (words, tool, input) in EVAL_ROUTES {
+        if has(tool) && words.iter().any(|w| question.contains(w)) {
+            return call(tool, serde_json::from_str(input).unwrap_or(json!({})));
+        }
     }
     if question.contains("low stock") || question.contains("reorder") {
         return call("low_stock", json!({ "limit": 20 }));
@@ -237,6 +254,27 @@ fn fake(turn: &AiTurn) -> Reply {
          An owner can add a provider key in Settings → AI for real answers."
         .into())
 }
+
+/// Golden questions for the offline eval pack: phrasing → expected tool.
+pub const EVAL_ROUTES: &[(&[&str], &str, &str)] = &[
+    (&["kpi", "dashboard"], "dashboard_kpis", "{}"),
+    (&["end of day pack", "eod pack"], "eod_pack", "{}"),
+    (&["shifts"], "list_shifts", "{\"limit\":10}"),
+    (&["suppliers"], "search_suppliers", "{\"q\":\"\"}"),
+    (&["audit"], "audit_search", "{\"limit\":20}"),
+    (&["feature flags", "which modules"], "list_feature_flags", "{}"),
+    (&["backup health", "last backup"], "backup_health", "{}"),
+    (&["staff", "users"], "list_users", "{}"),
+    (&["deliveries"], "list_deliveries", "{}"),
+    (&["purchase orders"], "list_pos", "{}"),
+    (&["customers"], "search_customers", "{\"q\":\"\",\"limit\":10}"),
+    (&["unknown barcodes", "ghost barcodes"], "unknown_barcodes_list", "{}"),
+    (&["diagnostics"], "diagnostics_summary", "{}"),
+    (&["whatsapp status"], "whatsapp_status", "{}"),
+    (&["devices"], "list_devices", "{}"),
+    (&["categories"], "list_categories", "{}"),
+    (&["pending proposals", "action inbox"], "pending_proposals", "{}"),
+];
 
 fn find_key(v: &Value, key: &str) -> Option<String> {
     match v {
@@ -503,7 +541,14 @@ pub fn json_object(text: &str) -> Option<Value> {
 /// Ask a question: run the tool loop until the model finishes (or the round
 /// limit), storing every message. Settings are re-read on every round, so a
 /// provider or model change applies to the next request.
-pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<String>, text: String, locale: String) -> AppResult<Value> {
+pub async fn ask(
+    rt: Arc<crate::runtime::Runtime>,
+    token: String,
+    conversation_id: Option<String>,
+    text: String,
+    locale: String,
+) -> AppResult<Value> {
+    let core = rt.core.clone();
     let mut turn = {
         let (c, t, l) = (core.clone(), token.clone(), locale.clone());
         blocking(move || c.ai_begin_locale(&t, conversation_id, &text, &l)).await?
@@ -511,6 +556,8 @@ pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<Stri
     let cid = turn.conversation_id.clone();
     let (mut input, mut output, mut rounds) = (0i64, 0i64, 0i64);
     let mut outcome = "completed".to_string();
+    // B1: a reply with figures must be backed by a tool call in this question.
+    let (mut tools_called, mut nudged) = (false, false);
     for _ in 0..MAX_ROUNDS {
         rounds += 1;
         let http = http_client(&turn.settings)?;
@@ -532,22 +579,35 @@ pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<Stri
         }
         match reply.stop_reason.as_str() {
             "tool_use" => {
+                tools_called = true;
                 let calls: Vec<Value> =
                     reply.content.as_array().cloned().unwrap_or_default().into_iter().filter(|b| b["type"] == "tool_use").collect();
-                let (c, t, id) = (core.clone(), token.clone(), cid.clone());
                 // All results go back in one user message; every tool is authorized in the core.
-                blocking(move || {
-                    let mut out = vec![];
-                    for call in &calls {
-                        let (v, is_error) = c.ai_tool(&t, &id, call["name"].as_str().unwrap_or_default(), &call["input"]);
-                        out.push(
-                            json!({ "type": "tool_result", "tool_use_id": call["id"], "content": v.to_string(), "is_error": is_error }),
-                        );
-                    }
-                    c.ai_store_tool_results(&id, &json!(out))?;
-                    Ok(())
-                })
-                .await?;
+                let mut out = vec![];
+                for call in calls {
+                    let name = call["name"].as_str().unwrap_or_default().to_string();
+                    let (c, t, n, i) = (core.clone(), token.clone(), name.clone(), call["input"].clone());
+                    let routed = blocking(move || Ok(c.ai_tool_runtime(&t, &n, &i))).await?;
+                    let (v, is_error) = match routed {
+                        // Runtime-backed reads (WhatsApp/OCR status, hub addresses, updates).
+                        Ok(Some((cmd, args))) => {
+                            let r = Box::pin(rt.dispatch(&cmd, Some(token.clone()), args)).await;
+                            let (c, id) = (core.clone(), cid.clone());
+                            blocking(move || Ok(c.ai_tool_runtime_wrap(&id, &name, r))).await?
+                        }
+                        Err(e) => {
+                            let (c, id) = (core.clone(), cid.clone());
+                            blocking(move || Ok(c.ai_tool_runtime_wrap(&id, &name, Err(e)))).await?
+                        }
+                        Ok(None) => {
+                            let (c, t, id, i) = (core.clone(), token.clone(), cid.clone(), call["input"].clone());
+                            blocking(move || Ok(c.ai_tool(&t, &id, &name, &i))).await?
+                        }
+                    };
+                    out.push(json!({ "type": "tool_result", "tool_use_id": call["id"], "content": v.to_string(), "is_error": is_error }));
+                }
+                let (c, id) = (core.clone(), cid.clone());
+                blocking(move || c.ai_store_tool_results(&id, &json!(out))).await?;
             }
             "pause_turn" => {}
             "refusal" => {
@@ -558,7 +618,24 @@ pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<Stri
                 outcome = "truncated".into();
                 break;
             }
-            _ => break,
+            _ => {
+                let said: String = reply
+                    .content
+                    .as_array()
+                    .map(|a| a.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("\n"))
+                    .unwrap_or_default();
+                if tools_called || !amwapos_core::ai::has_figures(&said) {
+                    break;
+                }
+                let (c, id) = (core.clone(), cid.clone());
+                if nudged {
+                    blocking(move || c.ai_mark_unverified(&id)).await?;
+                    outcome = "unverified".into();
+                    break;
+                }
+                nudged = true;
+                blocking(move || c.ai_nudge(&id)).await?;
+            }
         }
         let (c, t, id, l) = (core.clone(), token.clone(), cid.clone(), locale.clone());
         turn = blocking(move || c.ai_continue_locale(&t, &id, &l)).await?;

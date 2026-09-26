@@ -304,7 +304,14 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "ai.conversations" => out(core.ai_conversations(tk()?)),
         "ai.conversation" => out(core.ai_conversation(tk()?, &req::<String>(&args, "conversation_id")?)),
         "ai.proposals" => out(core.ai_proposals(tk()?, opt(&args, "status")?)),
-        "ai.proposal_confirm" => out(core.ai_proposal_confirm(tk()?, &req::<String>(&args, "proposal_id")?)),
+        "ai.proposal_confirm" => Ok(core.ai_proposal_confirm_with(
+            tk()?,
+            &req::<String>(&args, "proposal_id")?,
+            opt(&args, "approval_token")?,
+            &args.get("inputs").cloned().unwrap_or(Value::Null),
+        )?),
+        "ai.digest" => Ok(core.ai_digest(tk()?, opt(&args, "date")?)?),
+        "ai.playbook" => Ok(core.ai_playbook(tk()?, &req::<String>(&args, "name")?)?),
         "ai.proposal_reject" => out(core.ai_proposal_reject(tk()?, &req::<String>(&args, "proposal_id")?)),
         "ai.proposal_undo" => out(core.ai_proposal_undo(tk()?, &req::<String>(&args, "proposal_id")?)),
         // migration from another system
