@@ -300,7 +300,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "backup.health" => out(core.backup_health(tk()?)),
         // AI assistant (the question/answer loop itself is "ai.ask" in the runtime)
         "ai.status" => out(core.ai_status(tk()?)),
-        "ai.configure" => out(core.ai_configure(tk()?, req(&args, "settings")?, opt(&args, "api_key")?)),
+        "ai.configure" => out(core.ai_configure(tk()?, req(&args, "settings")?, opt(&args, "api_key")?, opt(&args, "extra_header_value")?)),
         "ai.conversations" => out(core.ai_conversations(tk()?)),
         "ai.conversation" => out(core.ai_conversation(tk()?, &req::<String>(&args, "conversation_id")?)),
         "ai.proposals" => out(core.ai_proposals(tk()?, opt(&args, "status")?)),

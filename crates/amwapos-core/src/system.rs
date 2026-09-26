@@ -561,12 +561,41 @@ impl AppCore {
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(rows)
         })?;
-        Ok(json!({
+        let out = json!({
             "generated_at": time::now_str(),
             "items": items,
             "migrations": migrations,
             "recent_print_errors": recent_errors,
-            "redaction": "PIN hashes, device credentials, API keys and customer details are excluded.",
-        }))
+            "redaction": "PIN hashes, device credentials, API keys, extra AI header values, QR and pairing codes, WhatsApp session data and customer details are excluded.",
+        });
+        Ok(redact_secrets(out, &self.ai_secret_values()))
+    }
+}
+
+/// Replace every known secret value anywhere in an export (defence in depth:
+/// secrets are never collected, but an error text could echo one).
+pub fn redact_secrets(v: Value, secrets: &[String]) -> Value {
+    let secrets: Vec<&String> = secrets.iter().filter(|s| s.len() >= 6).collect();
+    if secrets.is_empty() {
+        return v;
+    }
+    let mut text = v.to_string();
+    for s in secrets {
+        // Match the JSON-escaped form too.
+        let escaped = serde_json::to_string(s).unwrap_or_default();
+        let inner = escaped.trim_matches('"');
+        text = text.replace(inner, "[redacted]");
+    }
+    serde_json::from_str(&text).unwrap_or(Value::Null)
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    #[test]
+    fn keys_are_replaced() {
+        let v = serde_json::json!({ "a": "error: bad key sk-live-abcdef123 here", "b": ["sk-live-abcdef123"] });
+        let r = super::redact_secrets(v, &["sk-live-abcdef123".into()]);
+        assert!(!r.to_string().contains("sk-live-abcdef123"));
+        assert_eq!(r["b"][0], "[redacted]");
     }
 }

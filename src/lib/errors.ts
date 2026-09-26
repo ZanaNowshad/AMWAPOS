@@ -33,6 +33,20 @@ export function explain(e: unknown): { title: string; message: string; action: s
       return { title: t("Not enough disk space"), message, action: changed };
     case "sync":
       return { title: t("Sync problem"), message, action: t("Local work continues.") };
+    case "AI_NOT_ENABLED":
+      return {
+        title: t("The AI assistant is off"),
+        message,
+        action: t("An owner can turn it on in Settings → Features."),
+      };
+    case "AI_NO_KEY":
+      return { title: t("No AI key stored"), message, action: t("An owner can add an API key in Settings → AI.") };
+    case "AI_PROVIDER_ERROR":
+      return { title: t("The AI provider returned an error"), message, action: t("No store data was changed.") };
+    case "AI_TIMEOUT":
+      return { title: t("The AI provider did not answer in time"), message, action: t("Try again in a moment.") };
+    case "AI_MODEL_NOT_FOUND":
+      return { title: t("AI model not found"), message, action: t("Choose another model in Settings → AI.") };
     default:
       return { title: t("Something needs attention"), message, action: changed };
   }

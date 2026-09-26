@@ -1,26 +1,30 @@
 //! AI provider calls and the tool loop. The core supplies the conversation,
-//! system prompt and tool catalogue, executes every tool call itself (as the
-//! signed-in user) and stores every message; this module only speaks HTTP.
+//! the system prompt (constitution + playbooks, assembled in Rust) and the
+//! tool catalogue, executes every tool call itself (as the signed-in user)
+//! and stores every message; this module only speaks HTTP.
+//!
+//! Bring your own API key. Consumer subscriptions (ChatGPT Plus, Claude Pro,
+//! Gemini Advanced, Codex) cannot be signed into: there is no OAuth here.
 //!
 //! Providers:
-//! - `fake`: an offline, deterministic test model (the default until an owner
-//!   adds a key). It exercises the real tool loop and proposal flow with no
-//!   network and no data leaving the computer.
-//! - `anthropic`: Messages API (`POST /v1/messages`), manual tool loop,
-//!   adaptive thinking on current models, server-side refusal fallbacks.
-//! - `openai_compatible`: `POST {base}/chat/completions` with function tools,
-//!   for stores that run another provider or a local model. Messages are kept
-//!   in one neutral block format and translated here.
+//! - `fake`: offline deterministic test model (the default); no network.
+//! - `openai`, `openrouter`, `custom`: OpenAI Chat Completions
+//!   (`GET {base}/models`, `POST {base}/chat/completions`, base ends in /v1).
+//! - `anthropic`: Messages API (`POST /v1/messages`, `GET /v1/models`).
+//! - `google`: Gemini `models/{id}:generateContent` and `models` (AI Studio key,
+//!   sent as the `x-goog-api-key` header, never in the URL).
+//!
+//! One retry on 429/502/503; the timeout comes from settings. Errors carry the
+//! HTTP status and a message with any secret replaced.
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use amwapos_core::ai::AiTurn;
+use amwapos_core::ai::{AiConnection, AiSettings, AiTurn};
 use amwapos_core::{AppCore, AppError, AppResult, ErrorCode};
 use serde_json::{json, Value};
 
 const MAX_ROUNDS: usize = 8;
-const ANTHROPIC_URL: &str = "https://api.anthropic.com";
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + 'static) -> AppResult<T> {
     tokio::task::spawn_blocking(f).await.map_err(|e| AppError::internal(format!("worker failed: {e}")))?
@@ -33,21 +37,81 @@ struct Reply {
     output_tokens: i64,
 }
 
-fn provider_error(status: u16, body: &Value) -> AppError {
-    let msg = body
+/// Replace every secret in provider text before it reaches the UI or a log.
+fn sanitize(text: &str, secrets: &[&str]) -> String {
+    let mut t: String = text.chars().take(300).collect();
+    for s in secrets.iter().filter(|s| s.len() >= 4) {
+        t = t.replace(*s, "***");
+    }
+    t
+}
+
+fn secrets_of<'a>(key: &'a str, header: &'a Option<(String, String)>) -> Vec<&'a str> {
+    let mut v = vec![key];
+    if let Some((_, h)) = header {
+        v.push(h.as_str());
+    }
+    v
+}
+
+fn provider_error(status: u16, body: &Value, secrets: &[&str], model_call: bool) -> AppError {
+    let raw = body
         .pointer("/error/message")
+        .or_else(|| body.pointer("/error"))
         .and_then(|m| m.as_str())
-        .unwrap_or("The AI provider returned an error.")
-        .chars()
-        .take(300)
-        .collect::<String>();
-    let (code, kind) = match status {
-        401 | 403 => (ErrorCode::Conflict, "ai_auth"),
-        429 => (ErrorCode::Conflict, "ai_rate_limited"),
-        400 | 404 | 413 | 422 => (ErrorCode::Validation, "ai_request"),
-        _ => (ErrorCode::Conflict, "ai_unavailable"),
+        .unwrap_or("The AI provider returned an error.");
+    let msg = sanitize(raw, secrets);
+    let lower = msg.to_lowercase();
+    if model_call
+        && (status == 404
+            || (status == 400 && lower.contains("model") && (lower.contains("not found") || lower.contains("does not exist"))))
+    {
+        return AppError::new(ErrorCode::AiModelNotFound, format!("The model was not found at the provider ({status}): {msg}"))
+            .with_details(json!({ "kind": "ai_model", "status": status }));
+    }
+    let kind = match status {
+        401 | 403 => "ai_auth",
+        429 => "ai_rate_limited",
+        _ => "ai_provider",
     };
-    AppError::new(code, format!("AI provider error ({status}): {msg}")).with_details(json!({ "kind": kind, "status": status }))
+    AppError::new(ErrorCode::AiProviderError, format!("AI provider error ({status}): {msg}"))
+        .with_details(json!({ "kind": kind, "status": status }))
+}
+
+fn net_error(e: reqwest::Error, secrets: &[&str]) -> AppError {
+    if e.is_timeout() {
+        return AppError::new(
+            ErrorCode::AiTimeout,
+            "The AI provider did not answer in time. Try again, or raise the timeout in Settings → AI.",
+        )
+        .with_details(json!({ "kind": "ai_timeout" }));
+    }
+    AppError::new(ErrorCode::AiProviderError, format!("Could not reach the AI provider: {}", sanitize(&e.to_string(), secrets)))
+        .with_details(json!({ "kind": "ai_unreachable", "status": 0 }))
+}
+
+/// Send once, and once more on 429/502/503. Returns (status, JSON body).
+async fn send(req: reqwest::RequestBuilder, secrets: &[&str]) -> AppResult<(u16, Value)> {
+    let retry = req.try_clone();
+    let resp = req.send().await.map_err(|e| net_error(e, secrets))?;
+    let mut status = resp.status().as_u16();
+    let mut v: Value = resp.json().await.unwrap_or(Value::Null);
+    if matches!(status, 429 | 502 | 503) {
+        if let Some(r) = retry {
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            let resp = r.send().await.map_err(|e| net_error(e, secrets))?;
+            status = resp.status().as_u16();
+            v = resp.json().await.unwrap_or(Value::Null);
+        }
+    }
+    Ok((status, v))
+}
+
+fn with_header(req: reqwest::RequestBuilder, header: &Option<(String, String)>) -> reqwest::RequestBuilder {
+    match header {
+        Some((k, v)) => req.header(k.as_str(), v.as_str()),
+        None => req,
+    }
 }
 
 fn supports_adaptive_thinking(model: &str) -> bool {
@@ -62,16 +126,16 @@ fn supports_default_fallbacks(model: &str) -> bool {
 
 async fn anthropic(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
     let st = &turn.settings;
-    let base = if st.base_url.is_empty() { ANTHROPIC_URL } else { st.base_url.as_str() };
+    let base = st.effective_base();
     let mut body = json!({
-        "model": st.model,
-        "max_tokens": st.max_tokens,
+        "model": st.model_id,
+        "max_tokens": st.max_output_tokens,
         "system": turn.system,
         "tools": turn.tools,
         "messages": turn.messages,
         "cache_control": { "type": "ephemeral" },
     });
-    if supports_adaptive_thinking(&st.model) {
+    if supports_adaptive_thinking(&st.model_id) {
         body["thinking"] = json!({ "type": "adaptive" });
     }
     let mut req = http
@@ -79,18 +143,14 @@ async fn anthropic(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
         .header("x-api-key", &turn.api_key)
         .header("anthropic-version", "2023-06-01")
         .header("content-type", "application/json");
-    if st.fallbacks && supports_default_fallbacks(&st.model) {
+    if st.fallbacks && supports_default_fallbacks(&st.model_id) {
         body["fallbacks"] = json!("default");
         req = req.header("anthropic-beta", "server-side-fallback-2026-07-01");
     }
-    let resp = req.json(&body).send().await.map_err(|e| {
-        AppError::new(ErrorCode::Conflict, format!("Could not reach the AI provider: {e}"))
-            .with_details(json!({ "kind": "ai_unreachable" }))
-    })?;
-    let status = resp.status().as_u16();
-    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let (status, v) = send(with_header(req, &turn.extra_header).json(&body), &secrets).await?;
     if status != 200 {
-        return Err(provider_error(status, &v));
+        return Err(provider_error(status, &v, &secrets, true));
     }
     Ok(Reply {
         content: v.get("content").cloned().unwrap_or(json!([])),
@@ -223,15 +283,16 @@ async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<R
         .iter()
         .map(|t| json!({ "type": "function", "function": { "name": t["name"], "description": t["description"], "parameters": t["input_schema"] } }))
         .collect();
-    let body = json!({ "model": st.model, "max_tokens": st.max_tokens, "messages": to_openai_messages(&turn.system, &turn.messages), "tools": tools });
-    let resp = http.post(format!("{}/chat/completions", st.base_url)).bearer_auth(&turn.api_key).json(&body).send().await.map_err(|e| {
-        AppError::new(ErrorCode::Conflict, format!("Could not reach the AI provider: {e}"))
-            .with_details(json!({ "kind": "ai_unreachable" }))
-    })?;
-    let status = resp.status().as_u16();
-    let v: Value = resp.json().await.unwrap_or(Value::Null);
+    let mut body =
+        json!({ "model": st.model_id, "max_tokens": st.max_output_tokens, "messages": to_openai_messages(&turn.system, &turn.messages) });
+    if !tools.is_empty() {
+        body["tools"] = json!(tools);
+    }
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let req = with_header(http.post(format!("{}/chat/completions", st.effective_base())).bearer_auth(&turn.api_key), &turn.extra_header);
+    let (status, v) = send(req.json(&body), &secrets).await?;
     if status != 200 {
-        return Err(provider_error(status, &v));
+        return Err(provider_error(status, &v, &secrets, true));
     }
     let msg = v.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
     let mut content = vec![];
@@ -247,6 +308,7 @@ async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<R
         Some("tool_calls") => "tool_use",
         Some("length") => "max_tokens",
         Some("content_filter") => "refusal",
+        _ if content.iter().any(|b| b["type"] == "tool_use") => "tool_use",
         _ => "end_turn",
     };
     Ok(Reply {
@@ -257,14 +319,173 @@ async fn openai_compatible(http: &reqwest::Client, turn: &AiTurn) -> AppResult<R
     })
 }
 
+/// JSON schema subset Gemini accepts (no additionalProperties).
+fn gemini_schema(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => Value::Object(
+            m.iter().filter(|(k, _)| k.as_str() != "additionalProperties").map(|(k, x)| (k.clone(), gemini_schema(x))).collect(),
+        ),
+        Value::Array(a) => Value::Array(a.iter().map(gemini_schema).collect()),
+        x => x.clone(),
+    }
+}
+
+/// Neutral (block) history → Gemini contents.
+fn to_gemini_contents(messages: &[Value]) -> Vec<Value> {
+    let mut names = std::collections::HashMap::new();
+    let mut out = vec![];
+    for m in messages {
+        let blocks = m["content"].as_array().cloned().unwrap_or_default();
+        let mut parts = vec![];
+        for b in &blocks {
+            match b["type"].as_str() {
+                Some("text") => parts.push(json!({ "text": b["text"] })),
+                Some("tool_use") => {
+                    names.insert(b["id"].as_str().unwrap_or_default().to_string(), b["name"].clone());
+                    parts.push(json!({ "functionCall": { "name": b["name"], "args": b["input"] } }));
+                }
+                Some("tool_result") => {
+                    let name = names.get(b["tool_use_id"].as_str().unwrap_or_default()).cloned().unwrap_or(json!("tool"));
+                    let content = b["content"].as_str().and_then(|c| serde_json::from_str::<Value>(c).ok()).unwrap_or(b["content"].clone());
+                    parts.push(json!({ "functionResponse": { "name": name, "response": { "content": content } } }));
+                }
+                _ => {}
+            }
+        }
+        if !parts.is_empty() {
+            out.push(json!({ "role": if m["role"] == "assistant" { "model" } else { "user" }, "parts": parts }));
+        }
+    }
+    out
+}
+
+async fn google(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+    let st = &turn.settings;
+    let decls: Vec<Value> = turn
+        .tools
+        .iter()
+        .map(|t| {
+            let mut d = json!({ "name": t["name"], "description": t["description"] });
+            if t["input_schema"]["properties"].as_object().is_some_and(|p| !p.is_empty()) {
+                d["parameters"] = gemini_schema(&t["input_schema"]);
+            }
+            d
+        })
+        .collect();
+    let mut body = json!({
+        "systemInstruction": { "parts": [{ "text": turn.system }] },
+        "contents": to_gemini_contents(&turn.messages),
+        "generationConfig": { "maxOutputTokens": st.max_output_tokens },
+    });
+    if !decls.is_empty() {
+        body["tools"] = json!([{ "functionDeclarations": decls }]);
+    }
+    let model = st.model_id.trim_start_matches("models/");
+    let secrets = secrets_of(&turn.api_key, &turn.extra_header);
+    let req = with_header(
+        http.post(format!("{}/models/{model}:generateContent", st.effective_base())).header("x-goog-api-key", &turn.api_key),
+        &turn.extra_header,
+    );
+    let (status, v) = send(req.json(&body), &secrets).await?;
+    if status != 200 {
+        return Err(provider_error(status, &v, &secrets, true));
+    }
+    let parts = v.pointer("/candidates/0/content/parts").and_then(|p| p.as_array()).cloned().unwrap_or_default();
+    let mut content = vec![];
+    for (i, p) in parts.iter().enumerate() {
+        if let Some(t) = p["text"].as_str().filter(|t| !t.is_empty()) {
+            content.push(json!({ "type": "text", "text": t }));
+        }
+        if let Some(fc) = p.get("functionCall") {
+            content.push(json!({ "type": "tool_use", "id": format!("g{}_{i}", turn.messages.len()), "name": fc["name"], "input": fc.get("args").cloned().unwrap_or(json!({})) }));
+        }
+    }
+    let stop = if content.iter().any(|b| b["type"] == "tool_use") {
+        "tool_use"
+    } else {
+        match v.pointer("/candidates/0/finishReason").and_then(|f| f.as_str()) {
+            Some("MAX_TOKENS") => "max_tokens",
+            Some("SAFETY") | Some("PROHIBITED_CONTENT") | Some("BLOCKLIST") => "refusal",
+            _ => "end_turn",
+        }
+    };
+    Ok(Reply {
+        content: json!(content),
+        stop_reason: stop.to_string(),
+        input_tokens: v.pointer("/usageMetadata/promptTokenCount").and_then(|x| x.as_i64()).unwrap_or(0),
+        output_tokens: v.pointer("/usageMetadata/candidatesTokenCount").and_then(|x| x.as_i64()).unwrap_or(0),
+    })
+}
+
+fn http_client(st: &AiSettings) -> AppResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_millis(st.timeout_ms.max(1) as u64))
+        .build()
+        .map_err(|e| AppError::internal(e.to_string()))
+}
+
+async fn call_provider(http: &reqwest::Client, turn: &AiTurn) -> AppResult<Reply> {
+    match turn.settings.provider.as_str() {
+        "fake" => Ok(fake(turn)),
+        "openai" | "openrouter" | "custom" => openai_compatible(http, turn).await,
+        "anthropic" => anthropic(http, turn).await,
+        "google" => google(http, turn).await,
+        _ => Err(AppError::new(ErrorCode::AiProviderError, "Unknown AI provider.")),
+    }
+}
+
+/// Model ids the provider offers (for the Settings dropdown).
+pub async fn list_models(conn: &AiConnection) -> AppResult<Vec<String>> {
+    let st = &conn.settings;
+    if st.provider == "fake" {
+        return Ok(vec!["fake-local".into()]);
+    }
+    let http = http_client(st)?;
+    let base = st.effective_base();
+    let secrets = secrets_of(&conn.api_key, &conn.extra_header);
+    let req = match st.provider.as_str() {
+        "anthropic" => http.get(format!("{base}/v1/models")).header("x-api-key", &conn.api_key).header("anthropic-version", "2023-06-01"),
+        "google" => http.get(format!("{base}/models")).header("x-goog-api-key", &conn.api_key),
+        _ => http.get(format!("{base}/models")).bearer_auth(&conn.api_key),
+    };
+    let (status, v) = send(with_header(req, &conn.extra_header), &secrets).await?;
+    if status != 200 {
+        return Err(provider_error(status, &v, &secrets, false));
+    }
+    let mut ids: Vec<String> = if st.provider == "google" {
+        v["models"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|m| m["supportedGenerationMethods"].as_array().is_none_or(|a| a.iter().any(|x| x == "generateContent")))
+            .filter_map(|m| m["name"].as_str().map(|n| n.trim_start_matches("models/").to_string()))
+            .collect()
+    } else {
+        v["data"].as_array().cloned().unwrap_or_default().into_iter().filter_map(|m| m["id"].as_str().map(str::to_string)).collect()
+    };
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
+/// "Test connection": list models; the result never contains the key.
+pub async fn test_connection(conn: &AiConnection) -> Value {
+    match list_models(conn).await {
+        Ok(ids) => json!({ "ok": true, "status": 200, "models": ids.len(),
+                            "model_listed": conn.settings.model_id.is_empty() || ids.contains(&conn.settings.model_id) }),
+        Err(e) => json!({ "ok": false, "status": e.details.as_ref().and_then(|d| d.get("status")).cloned().unwrap_or(Value::Null),
+                           "code": e.code, "error": e.message }),
+    }
+}
+
 /// One request without tools (extraction). Returns the text of the reply.
 pub async fn complete_once(turn: &AiTurn) -> AppResult<String> {
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(180)).build().map_err(|e| AppError::internal(e.to_string()))?;
-    let reply = match turn.settings.provider.as_str() {
-        "openai_compatible" => openai_compatible(&http, turn).await?,
-        "anthropic" => anthropic(&http, turn).await?,
-        _ => return Err(AppError::conflict("No AI provider is configured.")),
-    };
+    if turn.settings.provider == "fake" {
+        return Err(AppError::conflict("No AI provider is configured."));
+    }
+    let http = http_client(&turn.settings)?;
+    let reply = call_provider(&http, turn).await?;
     Ok(reply
         .content
         .as_array()
@@ -280,28 +501,25 @@ pub fn json_object(text: &str) -> Option<Value> {
 }
 
 /// Ask a question: run the tool loop until the model finishes (or the round
-/// limit), storing every message. Returns the conversation for display.
-pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<String>, text: String) -> AppResult<Value> {
+/// limit), storing every message. Settings are re-read on every round, so a
+/// provider or model change applies to the next request.
+pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<String>, text: String, locale: String) -> AppResult<Value> {
     let mut turn = {
-        let (c, t) = (core.clone(), token.clone());
-        blocking(move || c.ai_begin(&t, conversation_id, &text)).await?
+        let (c, t, l) = (core.clone(), token.clone(), locale.clone());
+        blocking(move || c.ai_begin_locale(&t, conversation_id, &text, &l)).await?
     };
     let cid = turn.conversation_id.clone();
-    let http = reqwest::Client::builder().timeout(Duration::from_secs(600)).build().map_err(|e| AppError::internal(e.to_string()))?;
     let (mut input, mut output, mut rounds) = (0i64, 0i64, 0i64);
-    let mut outcome = "completed";
+    let mut outcome = "completed".to_string();
     for _ in 0..MAX_ROUNDS {
         rounds += 1;
-        let reply = match turn.settings.provider.as_str() {
-            "fake" => Ok(fake(&turn)),
-            "openai_compatible" => openai_compatible(&http, &turn).await,
-            _ => anthropic(&http, &turn).await,
-        };
-        let reply = match reply {
+        let http = http_client(&turn.settings)?;
+        let reply = match call_provider(&http, &turn).await {
             Ok(r) => r,
             Err(e) => {
                 let (c, t, id) = (core.clone(), token.clone(), cid.clone());
-                let _ = blocking(move || c.ai_audit_request(&t, &id, rounds, input, output, "error")).await;
+                let last = format!("error: {:?} {}", e.code, e.message.chars().take(160).collect::<String>());
+                let _ = blocking(move || c.ai_audit_request(&t, &id, rounds, input, output, &last)).await;
                 return Err(e);
             }
         };
@@ -317,8 +535,8 @@ pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<Stri
                 let calls: Vec<Value> =
                     reply.content.as_array().cloned().unwrap_or_default().into_iter().filter(|b| b["type"] == "tool_use").collect();
                 let (c, t, id) = (core.clone(), token.clone(), cid.clone());
-                // All results go back in one user message.
-                let results = blocking(move || {
+                // All results go back in one user message; every tool is authorized in the core.
+                blocking(move || {
                     let mut out = vec![];
                     for call in &calls {
                         let (v, is_error) = c.ai_tool(&t, &id, call["name"].as_str().unwrap_or_default(), &call["input"]);
@@ -329,29 +547,28 @@ pub async fn ask(core: Arc<AppCore>, token: String, conversation_id: Option<Stri
                     c.ai_store_tool_results(&id, &json!(out))?;
                     Ok(())
                 })
-                .await;
-                results?;
+                .await?;
             }
             "pause_turn" => {}
             "refusal" => {
-                outcome = "refused";
+                outcome = "refused".into();
                 break;
             }
             "max_tokens" => {
-                outcome = "truncated";
+                outcome = "truncated".into();
                 break;
             }
             _ => break,
         }
-        let (c, t, id) = (core.clone(), token.clone(), cid.clone());
-        turn = blocking(move || c.ai_continue(&t, &id)).await?;
+        let (c, t, id, l) = (core.clone(), token.clone(), cid.clone(), locale.clone());
+        turn = blocking(move || c.ai_continue_locale(&t, &id, &l)).await?;
         if rounds as usize == MAX_ROUNDS {
-            outcome = "round_limit";
+            outcome = "round_limit".into();
         }
     }
     let (c, t, id) = (core.clone(), token.clone(), cid.clone());
     blocking(move || {
-        c.ai_audit_request(&t, &id, rounds, input, output, outcome)?;
+        c.ai_audit_request(&t, &id, rounds, input, output, &outcome)?;
         c.ai_conversation(&t, &id)
     })
     .await

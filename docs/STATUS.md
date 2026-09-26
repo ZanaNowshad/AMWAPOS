@@ -135,3 +135,22 @@ Tests: `crates/amwapos-core/tests/pillars.rs` (transfers in transit + idempotenc
 loyalty money/VAT/refund reversal, digital-order idempotent convert, multi-branch
 isolation with the flag on and identical behaviour with it off, end-of-day pack)
 and `crates/amwapos-hub/tests/companion.rs` (flag, token, revoke, LAN routes).
+
+## AI: bring your own API key, 2026-09-26
+
+- Providers: `fake | openai | anthropic | google | openrouter | custom`. The fake
+  model is active whenever provider=fake or no key is stored; it never uses the
+  network. No OAuth / device-code / subscription sign-in exists or is planned.
+- Keys and the optional extra-header value live only in Windows Credential
+  Manager (service `AMWAPOS`, accounts `ai/<provider>` and `ai/<provider>/header`).
+  Settings (provider, model_id, base_url, header name, max_output_tokens,
+  timeout_ms, model list cache) are in SQLite; no secret is.
+- Owner-only: `ai.configure`, `ai.test`, `ai.models`. Changes apply on the next
+  request (settings are re-read every round).
+- Every prompt starts with `crates/amwapos-core/src/ai_prompts/constitution.txt`
+  (verbatim) plus matching lines of `ai_prompts/playbooks.txt`; untrusted text is
+  wrapped in `<<<DATA … END DATA>>>`; proposals need the user's own change request,
+  and zeroing stock after DATA was read is refused. One retry on 429/502/503.
+- Errors: `AI_NOT_ENABLED`, `AI_NO_KEY`, `AI_PROVIDER_ERROR`, `AI_TIMEOUT`,
+  `AI_MODEL_NOT_FOUND`. Diagnostics export replaces any stored AI secret value.
+- Tests: `crates/amwapos-hub/tests/ai_byok.rs` (loopback stubs only).

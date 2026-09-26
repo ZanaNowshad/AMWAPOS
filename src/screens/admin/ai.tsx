@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Bot, Plus, Send } from "lucide-react";
 import { api } from "../../api";
-import type { AiConversation, AiProposal, AiSettings } from "../../api/types";
+import type { AiConversation, AiProposal, AiProvider, AiSettings, AiTestResult } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { FeatureGate } from "../../components/FeatureGate";
@@ -10,7 +10,7 @@ import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, TextInput 
 import { Confirm, useAction, useLoad } from "./common";
 import { formatMoney, formatQty } from "../../lib/money";
 import { formatDateTime, relative } from "../../lib/time";
-import { t, tb } from "../../i18n";
+import { getLang, t, tb } from "../../i18n";
 
 const TOOL_LABEL: Record<string, () => string> = {
   list_reports: () => t("Listed reports"),
@@ -224,6 +224,14 @@ export function AiAssistantPage() {
         title={t("AI Assistant")}
         subtitle={t("Ask about sales, stock, margins and purchasing. The assistant reads data with your permissions.")}
       />
+      {st ? (
+        <div className="row" style={{ marginBottom: 12 }} data-testid="ai-provider-chip">
+          <Chip tone={st.active_provider === "fake" ? "default" : "info"}>
+            {st.active_provider === "fake" ? t("Offline test model") : providerLabel(st.active_provider)} ·{" "}
+            {st.model_id}
+          </Chip>
+        </div>
+      ) : null}
       <FeatureGate feature="ai.enabled">
         {!st ? (
           <Skeleton />
@@ -231,7 +239,7 @@ export function AiAssistantPage() {
           <Banner tone="info" title={t("The assistant is not set up yet")}>
             <div className="col gap-8">
               {!st.key_configured ? <div>• {t("No AI provider key is stored.")}</div> : null}
-              {!st.settings.consent ? (
+              {st.settings.consent === false ? (
                 <div>• {t("An owner has not agreed to send store data to the provider.")}</div>
               ) : null}
               {has("settings.manage") ? (
@@ -277,13 +285,7 @@ export function AiAssistantPage() {
                       "The assistant may propose price, stock and purchase-order changes. Nothing changes until a person confirms.",
                     )
                   : t("Read-only: the assistant cannot change anything.")}{" "}
-                {t("Provider")}:{" "}
-                {st.settings.provider === "anthropic"
-                  ? "Anthropic"
-                  : st.settings.provider === "fake"
-                    ? t("Offline test model")
-                    : t("OpenAI-compatible")}{" "}
-                · {st.settings.model}
+                {t("Provider")}: {providerLabel(st.active_provider)} · {st.model_id}
               </div>
               {conv?.untrusted_seen ? (
                 <Banner tone="warning">
@@ -346,7 +348,7 @@ export function AiAssistantPage() {
                   loading={act.busy}
                   disabled={!text.trim()}
                   onClick={async () => {
-                    const r = await act.run(() => api.ai.ask(text, conv?.conversation_id ?? null));
+                    const r = await act.run(() => api.ai.ask(text, conv?.conversation_id ?? null, getLang()));
                     if (r) {
                       setText("");
                       setConv(r);
@@ -366,120 +368,275 @@ export function AiAssistantPage() {
   );
 }
 
-/** Settings → AI (owner). */
+export function providerLabel(p: AiProvider): string {
+  switch (p) {
+    case "openai":
+      return "OpenAI";
+    case "anthropic":
+      return "Anthropic";
+    case "google":
+      return "Google (Gemini)";
+    case "openrouter":
+      return "OpenRouter";
+    case "custom":
+      return t("Custom (OpenAI-compatible)");
+    default:
+      return t("Offline test model");
+  }
+}
+
+const BASE_HINT: Record<AiProvider, string> = {
+  fake: "",
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com",
+  google: "",
+  openrouter: "https://openrouter.ai/api/v1",
+  custom: "https://…/v1",
+};
+
+/** Settings → AI (owner only). Bring your own API key; no subscription sign-in. */
 export function AiSettingsSection() {
   const toast = useToast();
+  const { session } = useSession();
   const { data, setData, error } = useLoad(() => api.ai.status(), []);
   const [s, setS] = useState<AiSettings | null>(null);
   const [key, setKey] = useState("");
+  const [header, setHeader] = useState("");
+  const [test, setTest] = useState<AiTestResult | null>(null);
   const act = useAction();
   useEffect(() => {
-    if (data && !s) setS(data.settings);
+    if (data && !s && data.is_owner) setS(data.settings as AiSettings);
   }, [data, s]);
+  if (session?.role_id !== "role_owner") {
+    return <Banner tone="info">{t("Only the owner can change the AI provider and keys.")}</Banner>;
+  }
   if (error) return <Banner tone="danger">{error}</Banner>;
   if (!data || !s) return <Skeleton />;
-  const save = async (apiKey: string | null) => {
-    const r = await act.run(() => api.ai.configure(s, apiKey));
+  const save = async (apiKey: string | null, headerValue: string | null) => {
+    const r = await act.run(() => api.ai.configure(s, apiKey, headerValue));
     if (r) {
       setData(r);
-      setS(r.settings);
+      setS(r.settings as AiSettings);
       setKey("");
+      setHeader("");
       toast("success", t("Settings saved"));
     }
   };
+  const real = s.provider !== "fake";
+  const models = s.list_models_cache ?? [];
   return (
     <div className="card card-pad col gap-16">
+      <Banner tone="info" title={t("Use an API key, not a chat subscription")}>
+        {t(
+          "ChatGPT Plus, Claude Pro, Gemini Advanced, and Codex logins do not work here. Create an API key at platform.openai.com, console.anthropic.com, aistudio.google.com, or openrouter.ai. For other servers, choose Custom and enter a base URL that speaks OpenAI Chat Completions.",
+        )}
+      </Banner>
       {!data.enabled ? (
         <Banner tone="info">
           {t("The AI assistant module is switched off.")}{" "}
           <Link to="/admin/settings?section=features">{t("Settings → Features")}</Link>
         </Banner>
       ) : null}
+      <div className="row">
+        <span className="small muted">{t("Active now")}:</span>
+        <Chip tone={data.active_provider === "fake" ? "default" : "info"}>
+          {providerLabel(data.active_provider)} · {data.model_id}
+        </Chip>
+        {real && !data.key_configured ? (
+          <span className="tiny">{t("No key stored: the offline test model answers.")}</span>
+        ) : null}
+      </div>
       <div className="form-grid">
         <Field label={t("Provider")}>
           <select
             className="select"
             value={s.provider}
+            data-testid="ai-provider"
             onChange={(e) => {
-              const provider = e.target.value as AiSettings["provider"];
+              const provider = e.target.value as AiProvider;
+              setTest(null);
               setS({
                 ...s,
                 provider,
-                model: provider === "anthropic" ? "claude-opus-5" : provider === "fake" ? "fake-local" : s.model,
-                base_url: provider === "anthropic" ? "" : s.base_url,
+                model_id: provider === "fake" ? "fake-local" : provider === s.provider ? s.model_id : "",
+                base_url: provider === s.provider ? s.base_url : "",
+                list_models_cache: provider === s.provider ? s.list_models_cache : [],
               });
             }}
           >
-            <option value="fake">{t("Offline test model (no key, nothing sent)")}</option>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="openai_compatible">{t("OpenAI-compatible endpoint")}</option>
+            {(["fake", "openai", "anthropic", "google", "openrouter", "custom"] as AiProvider[]).map((p) => (
+              <option key={p} value={p}>
+                {p === "fake" ? t("Offline test model (no key, nothing sent)") : providerLabel(p)}
+              </option>
+            ))}
           </select>
         </Field>
-        <TextInput
-          label={t("Model")}
-          value={s.model}
-          dir="ltr"
-          onChange={(e) => setS({ ...s, model: e.target.value })}
-        />
-        <TextInput
-          label={t("Endpoint URL")}
-          value={s.base_url}
-          dir="ltr"
-          placeholder={s.provider === "anthropic" ? "https://api.anthropic.com" : "https://…/v1"}
-          hint={
-            s.provider === "anthropic"
-              ? t("Leave empty for the public Anthropic API.")
-              : t("Base URL ending before /chat/completions.")
-          }
-          onChange={(e) => setS({ ...s, base_url: e.target.value })}
-        />
-        <TextInput
-          label={t("Maximum answer size (tokens)")}
-          className="num"
-          value={String(s.max_tokens)}
-          onChange={(e) => setS({ ...s, max_tokens: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
-        />
+        {real ? (
+          <Field label={t("Model")} hint={t("Pick from the list or type any model id.")}>
+            <div className="col gap-8">
+              {models.length ? (
+                <select
+                  className="select"
+                  aria-label={t("Models from the provider")}
+                  value={models.includes(s.model_id) ? s.model_id : ""}
+                  onChange={(e) => e.target.value && setS({ ...s, model_id: e.target.value })}
+                >
+                  <option value="">{t("Choose a model…")}</option>
+                  {models.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              <input
+                className="input"
+                dir="ltr"
+                aria-label={t("Model id")}
+                placeholder={t("Model id")}
+                value={s.model_id}
+                onChange={(e) => setS({ ...s, model_id: e.target.value })}
+              />
+            </div>
+          </Field>
+        ) : null}
+        {real && s.provider !== "google" ? (
+          <TextInput
+            label={s.provider === "custom" ? t("Base URL (required)") : t("Base URL (optional override)")}
+            value={s.base_url}
+            dir="ltr"
+            placeholder={BASE_HINT[s.provider]}
+            hint={
+              s.provider === "custom"
+                ? t("A server that speaks OpenAI Chat Completions; /v1 is added if missing.")
+                : t("Leave empty for the provider's public API.")
+            }
+            onChange={(e) => setS({ ...s, base_url: e.target.value })}
+          />
+        ) : null}
+        {real ? (
+          <TextInput
+            label={t("Maximum output tokens")}
+            className="num"
+            value={String(s.max_output_tokens)}
+            hint={t("256 to 32000.")}
+            onChange={(e) => setS({ ...s, max_output_tokens: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+        ) : null}
+        {real ? (
+          <TextInput
+            label={t("Timeout (ms)")}
+            className="num"
+            value={String(s.timeout_ms)}
+            hint={t("Up to 120000.")}
+            onChange={(e) => setS({ ...s, timeout_ms: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+          />
+        ) : null}
       </div>
-      {s.provider === "anthropic" ? (
-        <Checkbox
-          label={t("Retry declined requests on Anthropic's fallback model")}
-          checked={s.fallbacks}
-          onChange={(x) => setS({ ...s, fallbacks: x })}
-        />
+      {real ? (
+        <>
+          <TextInput
+            label={t("API key")}
+            type="password"
+            autoComplete="off"
+            value={key}
+            data-testid="ai-key"
+            placeholder={data.key_configured ? t("Stored — leave empty to keep") : ""}
+            hint={t(
+              "Stored in Windows Credential Manager on this computer, never in the database. It is never shown again.",
+            )}
+            onChange={(e) => setKey(e.target.value)}
+          />
+          <div className="form-grid">
+            <TextInput
+              label={t("Extra header name (optional)")}
+              value={s.extra_header_name}
+              dir="ltr"
+              placeholder="X-Org-Id"
+              onChange={(e) => setS({ ...s, extra_header_name: e.target.value })}
+            />
+            <TextInput
+              label={t("Extra header value")}
+              type="password"
+              autoComplete="off"
+              value={header}
+              placeholder={data.extra_header_configured ? t("Stored — leave empty to keep") : ""}
+              hint={t("Also kept in Credential Manager.")}
+              onChange={(e) => setHeader(e.target.value)}
+            />
+          </div>
+          {s.provider === "anthropic" ? (
+            <Checkbox
+              label={t("Retry declined requests on Anthropic's fallback model")}
+              checked={s.fallbacks}
+              onChange={(x) => setS({ ...s, fallbacks: x })}
+            />
+          ) : null}
+          <div className="col gap-8">
+            <Checkbox
+              label={t("I agree to send store data to this AI provider")}
+              checked={s.consent}
+              onChange={(x) => setS({ ...s, consent: x })}
+            />
+            <div className="tiny" style={{ marginInlineStart: 24 }}>
+              {t(
+                "When someone asks a question, AMWAPOS sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.",
+              )}
+              {s.consent_at ? ` ${t("Agreed on {0}.", formatDateTime(s.consent_at))}` : ""}
+            </div>
+          </div>
+        </>
       ) : null}
-      <div className="col gap-8">
-        <Checkbox
-          label={t("I agree to send store data to this AI provider")}
-          checked={s.consent}
-          onChange={(x) => setS({ ...s, consent: x })}
-        />
-        <div className="tiny" style={{ marginInlineStart: 24 }}>
-          {t(
-            "When someone asks a question, AMWAPOS sends the question and the results of the lookups the assistant makes (product names, prices, stock, report totals) to the provider. PINs, keys and full customer lists are never sent. Customer messages are sent only if WhatsApp is on and the assistant reads them.",
-          )}
-          {s.consent_at ? ` ${t("Agreed on {0}.", formatDateTime(s.consent_at))}` : ""}
-        </div>
-      </div>
-      <TextInput
-        label={t("API key")}
-        type="password"
-        autoComplete="off"
-        value={key}
-        placeholder={data.key_configured ? t("Stored — leave empty to keep") : ""}
-        hint={t("Stored in Windows Credential Manager on this computer. It is never shown again.")}
-        onChange={(e) => setKey(e.target.value)}
-      />
+      {test ? (
+        <Banner tone={test.ok ? "success" : "danger"} title={test.ok ? t("Connection works") : t("Connection failed")}>
+          {test.ok
+            ? t("{0} models available.", test.models ?? 0) +
+              (test.model_listed === false ? ` ${t("The chosen model is not in the list.")}` : "")
+            : `${test.status ? `HTTP ${test.status} · ` : ""}${tb(test.error ?? "")}`}
+        </Banner>
+      ) : null}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-      <div className="row">
-        {data.key_configured ? (
-          <Button variant="ghost" onClick={() => void save("")}>
+      <div className="row wrap">
+        {real && data.key_configured ? (
+          <Button variant="ghost" onClick={() => void save("", null)}>
             {t("Remove key")}
           </Button>
         ) : null}
-        <Button variant="primary" className="right" loading={act.busy} onClick={() => void save(key || null)}>
+        {real ? (
+          <>
+            <Button
+              disabled={!data.key_configured || act.busy}
+              onClick={async () => {
+                const r = await act.run(() => api.ai.test());
+                if (r) setTest(r);
+              }}
+            >
+              {t("Test connection")}
+            </Button>
+            <Button
+              disabled={!data.key_configured || act.busy}
+              onClick={async () => {
+                const r = await act.run(() => api.ai.models());
+                if (r) {
+                  setS({ ...s, list_models_cache: r.models });
+                  toast("success", t("{0} models loaded", r.models.length));
+                }
+              }}
+            >
+              {t("Refresh models")}
+            </Button>
+          </>
+        ) : null}
+        <Button
+          variant="primary"
+          className="right"
+          loading={act.busy}
+          onClick={() => void save(key || null, header || null)}
+        >
           {t("Save")}
         </Button>
       </div>
+      <div className="tiny">{t("Changes apply to the next question; no restart is needed.")}</div>
     </div>
   );
 }

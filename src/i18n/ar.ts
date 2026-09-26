@@ -12,6 +12,7 @@ export const AR: Record<string, string> = {
   "(optional)": "(اختياري)",
   ". A safety backup of the replaced data was saved to": ". تم حفظ نسخة احتياطية أمان للبيانات المستبدلة في",
   "1 to 24 hours": "من 1 إلى 24 ساعة",
+  "256 to 32000.": "من 256 إلى 32000.",
   "4–8 digits. Avoid 1234 or repeated digits.": "من 4 إلى 8 أرقام. تجنّب 1234 أو الأرقام المكررة.",
   "4–8 digits. The user should change it after first login.":
     "من 4 إلى 8 أرقام. يجب على المستخدم تغييره بعد أول تسجيل دخول.",
@@ -48,6 +49,8 @@ export const AR: Record<string, string> = {
   "A sale is currently in progress. Hold it or cancel it before logging out.":
     "هناك عملية بيع جارية. علّقها أو ألغِها قبل تسجيل الخروج.",
   "A screenshot is not proof of payment": "لقطة الشاشة ليست إثباتاً للدفع",
+  "A server that speaks OpenAI Chat Completions; /v1 is added if missing.":
+    "خادم يدعم OpenAI Chat Completions؛ تُضاف /v1 إن لم تكن موجودة.",
   "A shift report prints on close.": "يُطبع تقرير الوردية عند الإغلاق.",
   "A stocktake in {0} cannot move to {1}.": "لا يمكن نقل جرد في حالة {0} إلى {1}.",
   "A supplier named {0} already exists.": "يوجد مورّد باسم {0} مسبقاً.",
@@ -60,6 +63,7 @@ export const AR: Record<string, string> = {
   "AI assistant": "المساعد الذكي",
   "AI assistant (read-only questions)": "المساعد الذكي (أسئلة للقراءة فقط)",
   "AI commentary (optional)": "تعليق الذكاء الاصطناعي (اختياري)",
+  "AI model not found": "لم يُعثر على نموذج الذكاء الاصطناعي",
   "AI proposed changes (preview and confirm)": "تغييرات يقترحها المساعد الذكي (معاينة وتأكيد)",
   AMWAPOS: "AMWAPOS",
   "AMWAPOS Setup": "إعداد AMWAPOS",
@@ -92,6 +96,7 @@ export const AR: Record<string, string> = {
   Activate: "تفعيل",
   Active: "نشط",
   "Active links": "الروابط النشطة",
+  "Active now": "النشط الآن",
   "Active product": "منتج نشط",
   "Active products": "المنتجات النشطة",
   Add: "إضافة",
@@ -157,6 +162,7 @@ export const AR: Record<string, string> = {
   "Allows selected customers to buy on account up to a credit limit.":
     "يسمح لعملاء محددين بالشراء على الحساب حتى حد ائتماني.",
   "Already exists": "موجود مسبقاً",
+  "Also kept in Credential Manager.": "تُحفظ أيضاً في مدير بيانات الاعتماد.",
   Amount: "المبلغ",
   "Amount Due": "المبلغ المستحق",
   "Amount differs from the expected amount": "المبلغ يختلف عن المبلغ المتوقع",
@@ -169,6 +175,8 @@ export const AR: Record<string, string> = {
   "An active user named {0} already exists.": "يوجد مستخدم نشط باسم {0} مسبقاً.",
   "An operation id is required.": "معرّف العملية مطلوب.",
   "An order line does not belong to this purchase order.": "أحد أسطر الطلب لا ينتمي إلى أمر الشراء هذا.",
+  "An owner can add an API key in Settings → AI.": "يمكن للمالك إضافة مفتاح API من الإعدادات ← الذكاء الاصطناعي.",
+  "An owner can turn it on in Settings → Features.": "يمكن للمالك تشغيله من الإعدادات ← الميزات.",
   "An owner has not agreed to send store data to the provider.": "لم يوافق المالك على إرسال بيانات المتجر إلى المزوّد.",
   "An owner must agree to send store data to the AI provider in Settings → AI before the assistant can be used.":
     "يجب أن يوافق المالك على إرسال بيانات المتجر إلى مزوّد الذكاء الاصطناعي من الإعدادات ← المساعد الذكي قبل استخدام المساعد.",
@@ -295,6 +303,8 @@ export const AR: Record<string, string> = {
   Barcodes: "الباركودات",
   "Barcodes added": "تمت إضافة الباركودات",
   "Barcodes scanned at the till that are not in the catalogue.": "باركودات مُسحت عند نقطة البيع وليست في الكتالوج.",
+  "Base URL (optional override)": "العنوان الأساسي (تجاوز اختياري)",
+  "Base URL (required)": "العنوان الأساسي (مطلوب)",
   "Base URL ending before /chat/completions.": "العنوان الأساسي قبل ‎/chat/completions‎.",
   Baskets: "السلال",
   Before: "قبل",
@@ -402,10 +412,14 @@ export const AR: Record<string, string> = {
   "Change {0}": "الباقي {0}",
   "Change {0} price(s)": "تغيير {0} سعر(أسعار)",
   "Changed by": "غيّره",
+  "Changes apply to the next question; no restart is needed.":
+    "تُطبَّق التغييرات على السؤال التالي؛ لا حاجة لإعادة التشغيل.",
   "Changes that could not be applied": "تغييرات تعذّر تطبيقها",
   "Changing a role signs out its users so the new permissions apply immediately.":
     "تغيير الدور يسجّل خروج مستخدميه حتى تُطبّق الصلاحيات الجديدة فوراً.",
   Channel: "القناة",
+  "ChatGPT Plus, Claude Pro, Gemini Advanced, and Codex logins do not work here. Create an API key at platform.openai.com, console.anthropic.com, aistudio.google.com, or openrouter.ai. For other servers, choose Custom and enter a base URL that speaks OpenAI Chat Completions.":
+    "تسجيلات الدخول عبر ChatGPT Plus وClaude Pro وGemini Advanced وCodex لا تعمل هنا. أنشئ مفتاح API من platform.openai.com أو console.anthropic.com أو aistudio.google.com أو openrouter.ai. للخوادم الأخرى، اختر «مخصص» وأدخل عنواناً أساسياً لخادم يدعم OpenAI Chat Completions.",
   "Check every line against the message before confirming. Unmatched text stays as a note on the line.":
     "راجع كل بند مقابل الرسالة قبل التأكيد. يبقى النص غير المطابق كملاحظة على البند.",
   "Check for updates": "التحقق من التحديثات",
@@ -428,11 +442,14 @@ export const AR: Record<string, string> = {
   "Choose a conversation.": "اختر محادثة.",
   "Choose a different category to move products into.": "اختر فئة مختلفة لنقل المنتجات إليها.",
   "Choose a folder": "اختر مجلداً",
+  "Choose a model in Settings → AI.": "اختر نموذجاً من الإعدادات ← الذكاء الاصطناعي.",
+  "Choose a model…": "اختر نموذجاً…",
   "Choose an active supplier.": "اختر مورّداً نشطاً.",
   "Choose an active tax rule.": "اختر قاعدة ضريبية نشطة.",
   "Choose an image file (PNG, JPG, WEBP, BMP or TIFF). For a PDF invoice, save a page as an image first.":
     "اختر ملف صورة (PNG أو JPG أو WEBP أو BMP أو TIFF). لفاتورة PDF احفظ الصفحة كصورة أولاً.",
   "Choose an image file.": "اختر ملف صورة.",
+  "Choose another model in Settings → AI.": "اختر نموذجاً آخر من الإعدادات ← الذكاء الاصطناعي.",
   "Choose category…": "اختر فئة…",
   "Choose file": "اختر ملفاً",
   "Choose files (CSV, Excel, ZIP)": "اختر ملفات (CSV أو Excel أو ZIP)",
@@ -488,6 +505,8 @@ export const AR: Record<string, string> = {
   "Connected, syncing": "متصل، جارٍ المزامنة",
   Connecting: "جارٍ الاتصال",
   Connection: "الاتصال",
+  "Connection failed": "فشل الاتصال",
+  "Connection works": "الاتصال يعمل",
   Contact: "جهة الاتصال",
   "Contact name": "اسم جهة الاتصال",
   "Contact person": "مسؤول الاتصال",
@@ -553,6 +572,7 @@ export const AR: Record<string, string> = {
   "Current price": "السعر الحالي",
   "Current version": "الإصدار الحالي",
   Custom: "مخصص",
+  "Custom (OpenAI-compatible)": "مخصص (متوافق مع OpenAI)",
   "Custom item": "صنف مخصص",
   "Custom item {0}": "صنف مخصص {0}",
   "Custom items are disabled in POS settings.": "الأصناف المخصصة معطّلة في إعدادات نقطة البيع.",
@@ -763,6 +783,8 @@ export const AR: Record<string, string> = {
   "Export CSV": "تصدير CSV",
   "Export Diagnostics": "تصدير التشخيص",
   "External reference": "مرجع خارجي",
+  "Extra header name (optional)": "اسم ترويسة إضافية (اختياري)",
+  "Extra header value": "قيمة الترويسة الإضافية",
   Failed: "فشل",
   "Failed, retrying": "فشل، جارٍ إعادة المحاولة",
   "Fast retail. Accurate operations.": "بيع سريع. عمليات دقيقة.",
@@ -957,6 +979,7 @@ export const AR: Record<string, string> = {
   "Last used {0}": "آخر استخدام {0}",
   Late: "متأخر",
   "Late orders": "طلبات متأخرة",
+  "Leave empty for the provider's public API.": "اتركه فارغاً لاستخدام واجهة المزود العامة.",
   "Leave empty for the public Anthropic API.": "اتركه فارغاً لاستخدام واجهة Anthropic العامة.",
   "Leave empty to generate.": "اتركه فارغاً ليُنشأ تلقائياً.",
   "Leave empty to keep the current PIN. PINs are never shown.":
@@ -1051,6 +1074,7 @@ export const AR: Record<string, string> = {
     "يطابق لقطات شاشة الدفع الواردة عبر واتساب مع المبالغ المتوقعة. لا تُعدّ لقطة الشاشة تسوية بنكية أبداً.",
   "Maximum PIN length.": "أقصى طول للرمز السري.",
   "Maximum answer size (tokens)": "الحد الأقصى لحجم الإجابة (رموز)",
+  "Maximum output tokens": "الحد الأقصى لرموز الإجابة",
   "Medium risk": "مخاطرة متوسطة",
   "Medium — depends on the accuracy of recorded costs.": "متوسطة — تعتمد على دقة التكاليف المسجّلة.",
   Message: "رسالة",
@@ -1071,6 +1095,8 @@ export const AR: Record<string, string> = {
   "Mode must be standalone or hub. Terminals are set up by pairing with a hub.":
     "يجب أن يكون الوضع مستقلاً أو خادماً. تُعدّ نقاط البيع بالاقتران مع خادم.",
   Model: "النموذج",
+  "Model id": "معرّف النموذج",
+  "Models from the provider": "النماذج المتاحة من المزود",
   "Models missing": "النماذج مفقودة",
   Monday: "الاثنين",
   More: "المزيد",
@@ -1138,9 +1164,12 @@ export const AR: Record<string, string> = {
   "Next attempt {0}.": "المحاولة التالية {0}.",
   "Next automatic backup": "النسخة الاحتياطية التلقائية التالية",
   No: "لا",
+  "No AI key stored": "لا يوجد مفتاح ذكاء اصطناعي محفوظ",
   "No AI provider key is configured. An owner can add one in Settings → AI.":
     "لا يوجد مفتاح مزوّد ذكاء اصطناعي. يمكن للمالك إضافته من الإعدادات ← المساعد الذكي.",
   "No AI provider key is stored.": "لا يوجد مفتاح مزوّد ذكاء اصطناعي محفوظ.",
+  "No API key is stored for the selected AI provider. An owner can add one in Settings → AI.":
+    "لا يوجد مفتاح API محفوظ لمزود الذكاء الاصطناعي المختار. يمكن للمالك إضافته من الإعدادات ← الذكاء الاصطناعي.",
   "No account activity.": "لا توجد حركات على الحساب.",
   "No active links.": "لا توجد روابط نشطة.",
   "No active tax rule has rate {0}%. Create it first.": "لا توجد قاعدة ضريبية نشطة بنسبة {0}%. أنشئها أولاً.",
@@ -1176,6 +1205,7 @@ export const AR: Record<string, string> = {
     "لم يُتعرف على أي أسطر أصناف. تحقق من جودة الصورة أو أدخل الأمر يدوياً.",
   "No items yet": "لا توجد أصناف بعد",
   "No items yet.": "لا توجد أصناف بعد.",
+  "No key stored: the offline test model answers.": "لا يوجد مفتاح محفوظ: يجيب نموذج الاختبار دون اتصال.",
   "No manifest": "لا يوجد ملف بيان",
   "No match": "لا تطابق",
   "No matching page.": "لا توجد صفحة مطابقة.",
@@ -1216,6 +1246,7 @@ export const AR: Record<string, string> = {
   "No stock-tracked products match this scope.": "لا توجد منتجات متتبَّعة المخزون ضمن هذا النطاق.",
   "No stocktakes yet. Start one to count stock with a scanner.":
     "لا يوجد جرد بعد. ابدأ جرداً لعدّ المخزون بالماسح الضوئي.",
+  "No store data was changed.": "لم تتغير أي بيانات في المتجر.",
   "No successful backup yet": "لا توجد نسخة احتياطية ناجحة بعد",
   "No supplier": "بلا مورّد",
   "No suppliers yet": "لا يوجد مورّدون بعد",
@@ -1307,6 +1338,7 @@ export const AR: Record<string, string> = {
     "لا يمكن استلام إلا أوامر الشراء المطلوبة. قدّم الطلب أولاً.",
   "Only scans waiting for review can be edited.": "لا يمكن تعديل إلا المسوحات التي تنتظر المراجعة.",
   "Only terminals synchronize with a hub.": "تتزامن نقاط البيع فقط مع الخادم.",
+  "Only the owner can change the AI provider and keys.": "المالك وحده يمكنه تغيير مزود الذكاء الاصطناعي والمفاتيح.",
   "Only weighted-average costing is supported in this version.":
     "يدعم هذا الإصدار احتساب التكلفة بالمتوسط المرجّح فقط.",
   Open: "مفتوح",
@@ -1451,6 +1483,7 @@ export const AR: Record<string, string> = {
   "Phone view": "عرض الهاتف",
   "Phone, WhatsApp and web orders. A person confirms each one; a cashier sells it on a till.":
     "طلبات الهاتف وواتساب والويب. يؤكد شخص كل طلب، ثم يبيعه الكاشير على نقطة البيع.",
+  "Pick from the list or type any model id.": "اختر من القائمة أو اكتب معرّف أي نموذج.",
   "Place Order": "تقديم الطلب",
   "Place order": "تقديم الطلب",
   Placeholders: "المتغيرات",
@@ -1643,6 +1676,7 @@ export const AR: Record<string, string> = {
   Reference: "المرجع",
   "Reference (optional)": "المرجع (اختياري)",
   Refresh: "تحديث",
+  "Refresh models": "تحديث النماذج",
   Refund: "استرجاع",
   "Refund Receipt": "إيصال الاسترجاع",
   "Refund amount": "مبلغ الاسترجاع",
@@ -2023,6 +2057,8 @@ export const AR: Record<string, string> = {
   Storage: "التخزين",
   "Store operations and overrides": "عمليات المتجر والاستثناءات",
   "Stored as {0}": "مخزّن كـ {0}",
+  "Stored in Windows Credential Manager on this computer, never in the database. It is never shown again.":
+    "يُحفظ في مدير بيانات اعتماد Windows على هذا الحاسوب، وليس في قاعدة البيانات أبداً. لن يُعرض مرة أخرى.",
   "Stored in Windows Credential Manager on this computer. It is never shown again.":
     "محفوظ في مدير بيانات اعتماد ويندوز على هذا الحاسوب. لن يُعرض مرة أخرى.",
   "Stored — leave empty to keep": "محفوظ — اتركه فارغاً للإبقاء عليه",
@@ -2096,10 +2132,18 @@ export const AR: Record<string, string> = {
   Test: "اختبار",
   "Test Print": "طباعة تجريبية",
   "Test cash drawer": "اختبار درج النقد",
+  "Test connection": "اختبار الاتصال",
   "Test page sent to the printer.": "تم إرسال صفحة الاختبار إلى الطابعة.",
   "Text read from the image": "النص المقروء من الصورة",
   "Thank you for shopping with us": "شكراً لتسوقكم معنا",
+  "The AI assistant is off": "المساعد الذكي متوقف",
+  "The AI assistant is switched off. An owner can turn it on in Settings → Features.":
+    "المساعد الذكي متوقف. يمكن للمالك تشغيله من الإعدادات ← الميزات.",
   "The AI assistant module is switched off.": "وحدة المساعد الذكي متوقفة.",
+  "The AI provider did not answer in time": "لم يرد مزود الذكاء الاصطناعي في الوقت المحدد",
+  "The AI provider did not answer in time. Try again, or raise the timeout in Settings → AI.":
+    "لم يرد مزود الذكاء الاصطناعي في الوقت المحدد. حاول مجدداً أو ارفع مهلة الانتظار من الإعدادات ← الذكاء الاصطناعي.",
+  "The AI provider returned an error": "أعاد مزود الذكاء الاصطناعي خطأ",
   "The AMWAPOS WhatsApp sidecar (bundled in a later release)": "ملحق واتساب الخاص بـ AMWAPOS (يُضمَّن في إصدار لاحق)",
   "The English OCR model is missing or damaged. Reinstall AMWAPOS to restore it.":
     "نموذج التعرف الضوئي الإنجليزي مفقود أو تالف. أعد تثبيت AMWAPOS لاستعادته.",
@@ -2131,6 +2175,7 @@ export const AR: Record<string, string> = {
     "أُعيد حساب السلة بأسعار اليوم. أخبر العميل قبل استلام الدفع.",
   "The category will be hidden from pickers. Historical sales keep their category.":
     "ستُخفى الفئة من القوائم. تحتفظ المبيعات السابقة بفئتها.",
+  "The chosen model is not in the list.": "النموذج المختار غير موجود في القائمة.",
   "The currency cannot be changed after sales have been recorded.": "لا يمكن تغيير العملة بعد تسجيل مبيعات.",
   "The currency is locked after the first sale.": "تُقفل العملة بعد أول عملية بيع.",
   "The current PIN is incorrect.": "الرمز السري الحالي غير صحيح.",
@@ -2317,6 +2362,7 @@ export const AR: Record<string, string> = {
   "Ticket number": "رقم التذكرة",
   Time: "الوقت",
   Timeline: "الخط الزمني",
+  "Timeout (ms)": "مهلة الانتظار (مللي ثانية)",
   Timezone: "المنطقة الزمنية",
   Title: "العنوان",
   To: "إلى",
@@ -2404,6 +2450,7 @@ export const AR: Record<string, string> = {
   "Unresolved changes": "تغييرات غير محلولة",
   "Unsupported message type": "نوع رسالة غير مدعوم",
   Until: "حتى",
+  "Up to 120000.": "حتى 120000.",
   "Up to 3 decimals ({0}).": "حتى 3 منازل عشرية ({0}).",
   "Update address (latest.json)": "عنوان التحديث (latest.json)",
   "Update existing products with the same SKU": "تحديث المنتجات الموجودة بنفس رمز الصنف",
@@ -2420,6 +2467,7 @@ export const AR: Record<string, string> = {
   Use: "استخدام",
   "Use a clear photo or scan (PNG or JPG). For a PDF invoice, save the page as an image first.":
     "استخدم صورة أو مسحاً واضحاً (PNG أو JPG). لفاتورة PDF احفظ الصفحة كصورة أولاً.",
+  "Use an API key, not a chat subscription": "استخدم مفتاح API وليس اشتراك دردشة",
   "Use either a fixed or a percentage cart discount, not both.": "استخدم خصم سلة ثابتاً أو بنسبة مئوية، لا كليهما.",
   "Use shared": "استخدام المشترك",
   "Use the AI assistant (read-only)": "استخدام المساعد الذكي (للقراءة فقط)",
@@ -2606,6 +2654,8 @@ export const AR: Record<string, string> = {
   "{0} lines · {1} items": "{0} أسطر · {1} صنف",
   "{0} lines · {1} items ·": "{0} سطر · {1} صنف ·",
   "{0} min ago": "قبل {0} دقيقة",
+  "{0} models available.": "{0} نموذج متاح.",
+  "{0} models loaded": "حُمّل {0} نموذج",
   "{0} must be 1–8 letters or digits.": "يجب أن يتكوّن {0} من 1 إلى 8 أحرف أو أرقام.",
   "{0} must be a whole number for this product.": "يجب أن يكون {0} عدداً صحيحاً لهذا المنتج.",
   "{0} must be at most {1} characters.": "يجب ألا يتجاوز {0} {1} حرفاً.",

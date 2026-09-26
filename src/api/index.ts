@@ -414,10 +414,13 @@ export const api = {
   },
   ai: {
     status: () => call<T.AiStatus>("ai.status"),
-    configure: (settings: T.AiSettings, api_key?: string | null) =>
-      call<T.AiStatus>("ai.configure", { settings, api_key }),
-    ask: (message: string, conversation_id?: string | null) =>
-      call<T.AiConversation>("ai.ask", { message, conversation_id }),
+    /** Owner only. Keys go to Windows Credential Manager; null keeps, "" removes. */
+    configure: (settings: T.AiSettings, api_key?: string | null, extra_header_value?: string | null) =>
+      call<T.AiStatus>("ai.configure", { settings, api_key, extra_header_value }),
+    test: () => call<T.AiTestResult>("ai.test"),
+    models: () => call<{ models: string[] }>("ai.models"),
+    ask: (message: string, conversation_id?: string | null, locale?: string) =>
+      call<T.AiConversation>("ai.ask", { message, conversation_id, locale }),
     conversations: () =>
       call<{ conversation_id: string; title: string; updated_at: string; open_proposals: number }[]>(
         "ai.conversations",

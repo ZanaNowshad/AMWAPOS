@@ -54,6 +54,21 @@ pub enum ErrorCode {
     InsufficientDisk,
     /// The bundled OCR models are missing or damaged; OCR stays off.
     OcrModelMissing,
+    /// The AI assistant is switched off (flag `ai.enabled`).
+    #[serde(rename = "AI_NOT_ENABLED")]
+    AiNotEnabled,
+    /// A real AI provider is selected but no API key is stored for it.
+    #[serde(rename = "AI_NO_KEY")]
+    AiNoKey,
+    /// The AI provider answered with an error (status only, never a secret).
+    #[serde(rename = "AI_PROVIDER_ERROR")]
+    AiProviderError,
+    /// The AI provider did not answer within the configured timeout.
+    #[serde(rename = "AI_TIMEOUT")]
+    AiTimeout,
+    /// The configured model does not exist at the provider (or none is set).
+    #[serde(rename = "AI_MODEL_NOT_FOUND")]
+    AiModelNotFound,
     /// Unexpected internal failure.
     Internal,
 }

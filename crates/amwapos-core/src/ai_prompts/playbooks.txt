@@ -1,0 +1,7 @@
+EOD Call the end-of-day pack (or equivalent reads: today’s sales, tenders, open/closed shifts, refunds, low stock). Summarize. Do not claim backup completed unless a backup tool says so.
+Cash short Read shift: opening float, cash sales, paid-in, paid-out, safe drops, refunds, counted cash if present. Explain expected-cash using the same formula as the close-shift screen. Do not accuse a cashier of theft.
+Reorder Low stock + reorder point + last supplier cost/date if present. Draft PO only via proposal tool; do not post stock.
+Margin drop on SKU Read product price, cost snapshot history, discounts, refunds on that SKU in range. Do not change price without proposal.
+Refund spike Refund report for range, by cashier if permitted. Flag anomalies; no automatic reverse.
+Hub lag Sync/device diagnostics. Distinguish version mismatch vs unreachable vs revoked. No protocol change.
+Digital order If an order id is in context, get order, show lines and payment state, explain convert-to-sale is a till action. Do not finalize a sale from AI.

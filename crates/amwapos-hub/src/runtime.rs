@@ -383,7 +383,20 @@ impl Runtime {
             "ai.ask" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let conv = args.get("conversation_id").and_then(|v| v.as_str()).map(|s| s.to_string());
-                crate::ai_client::ask(self.core.clone(), t, conv, arg(&args, "message")?).await
+                let locale = args.get("locale").and_then(|v| v.as_str()).filter(|l| *l == "ar").unwrap_or("en").to_string();
+                crate::ai_client::ask(self.core.clone(), t, conv, arg(&args, "message")?, locale).await
+            }
+            "ai.test" | "ai.models" => {
+                let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
+                let (c, t2) = (self.core.clone(), t.clone());
+                let conn = blocking(move || c.ai_connection(&t2)).await?;
+                if cmd == "ai.test" {
+                    Ok(crate::ai_client::test_connection(&conn).await)
+                } else {
+                    let ids = crate::ai_client::list_models(&conn).await?;
+                    let c = self.core.clone();
+                    blocking(move || c.ai_store_models(&t, ids)).await
+                }
             }
             "sync.set_bind_address" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;

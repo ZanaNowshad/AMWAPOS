@@ -24,6 +24,11 @@ export type ErrorCode =
   | "duplicate"
   | "insufficient_disk"
   | "ocr_model_missing"
+  | "AI_NOT_ENABLED"
+  | "AI_NO_KEY"
+  | "AI_PROVIDER_ERROR"
+  | "AI_TIMEOUT"
+  | "AI_MODEL_NOT_FOUND"
   | "internal"
   | "transport";
 
@@ -1064,11 +1069,17 @@ export interface InvoiceScanDetail {
 
 // ---- AI assistant ----
 
+/** Bring your own API key: consumer subscriptions cannot be signed into. */
+export type AiProvider = "fake" | "openai" | "anthropic" | "google" | "openrouter" | "custom";
+
 export interface AiSettings {
-  provider: "fake" | "anthropic" | "openai_compatible";
-  model: string;
+  provider: AiProvider;
+  model_id: string;
   base_url: string;
-  max_tokens: number;
+  extra_header_name: string;
+  max_output_tokens: number;
+  timeout_ms: number;
+  list_models_cache: string[];
   fallbacks: boolean;
   consent: boolean;
   consent_by?: string | null;
@@ -1076,12 +1087,27 @@ export interface AiSettings {
 }
 
 export interface AiStatus {
-  settings: AiSettings;
+  /** Full settings for the owner; provider and model only for others. */
+  settings: Partial<AiSettings> & { provider: AiProvider; model_id: string };
   key_configured: boolean;
+  extra_header_configured: boolean;
+  /** "fake" whenever no key is stored for the selected provider. */
+  active_provider: AiProvider;
+  model_id: string;
   enabled: boolean;
   mutations: boolean;
   can_mutate: boolean;
+  is_owner: boolean;
   ready: boolean;
+}
+
+export interface AiTestResult {
+  ok: boolean;
+  status: number | null;
+  models?: number;
+  model_listed?: boolean;
+  code?: string;
+  error?: string;
 }
 
 export interface AiProposal {
