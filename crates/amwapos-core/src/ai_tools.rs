@@ -451,6 +451,8 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("roles.permissions", "covered by role_permissions"),
     ("settings.get", "covered by settings_public (secrets excluded)"),
     ("customers.add_note", "covered by propose_customer_note"),
+    ("ai.digest", "the AI page's action inbox (pending_proposals is the read)"),
+    ("ai.playbook", "the AI page's playbook buttons (each step is a read tool)"),
 ];
 
 pub fn find(name: &str) -> Option<&'static ToolSpec> {

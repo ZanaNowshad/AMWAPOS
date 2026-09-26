@@ -296,6 +296,41 @@ async fn every_tool_names_a_real_command() {
     }
 }
 
+/// Command names routed by a `match` arm (`"a.b" | "c.d" =>`) in `src`.
+fn match_arms(src: &str) -> Vec<String> {
+    let mut out = vec![];
+    for line in src.lines() {
+        let l = line.trim_start();
+        let Some((head, _)) = l.split_once("=>") else { continue };
+        if !head.starts_with('"') {
+            continue;
+        }
+        for part in head.split('|') {
+            let p = part.trim().trim_matches('"');
+            if p.contains('.') && p.chars().all(|c| c.is_ascii_lowercase() || c == '.' || c == '_') {
+                out.push(p.to_string());
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn every_command_has_a_tool_or_a_stated_reason() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let core = std::fs::read_to_string(root.join("amwapos-core/src/commands.rs")).unwrap();
+    let rt = std::fs::read_to_string(root.join("amwapos-hub/src/runtime.rs")).unwrap();
+    let rt = &rt[rt.find("pub async fn dispatch").unwrap()..];
+    let mut cmds = match_arms(&core);
+    cmds.extend(match_arms(rt));
+    assert!(cmds.len() > 150, "found only {} commands", cmds.len());
+    let missing: Vec<&String> = cmds
+        .iter()
+        .filter(|c| ai_tools::TOOLS.iter().all(|t| t.cmd != c.as_str()) && ai_tools::NO_TOOL.iter().all(|(n, _)| n != c))
+        .collect();
+    assert!(missing.is_empty(), "commands with no tool and no reason: {missing:?}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rate_limit_bulk_cap_and_pins_never_stored() {
     let e = env().await;

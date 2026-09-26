@@ -64,7 +64,10 @@ export const AR: Record<string, string> = {
   "AI assistant (read-only questions)": "المساعد الذكي (أسئلة للقراءة فقط)",
   "AI commentary (optional)": "تعليق الذكاء الاصطناعي (اختياري)",
   "AI model not found": "لم يُعثر على نموذج الذكاء الاصطناعي",
+  "AI parsing needs the 'AI reads invoices' switch, a real AI provider with consent, and a scan waiting for review.":
+    "تحتاج القراءة بالذكاء الاصطناعي إلى تفعيل خيار قراءة الفواتير بالذكاء الاصطناعي، ومزوّد حقيقي مع الموافقة، ومسح بانتظار المراجعة.",
   "AI proposed changes (preview and confirm)": "تغييرات يقترحها المساعد الذكي (معاينة وتأكيد)",
+  "AI proposed changes are switched off.": "التغييرات المقترحة من الذكاء الاصطناعي متوقفة.",
   AMWAPOS: "AMWAPOS",
   "AMWAPOS Setup": "إعداد AMWAPOS",
   "AMWAPOS Terminal": "نقطة بيع AMWAPOS",
@@ -72,6 +75,8 @@ export const AR: Record<string, string> = {
   "AMWAPOS is up to date": "AMWAPOS محدّث",
   "AMWAPOS links to a WhatsApp number like WhatsApp Web does, using an unofficial client built into AMWAPOS. This is not the WhatsApp Business API.":
     "يرتبط AMWAPOS برقم واتساب كما يفعل واتساب ويب، باستخدام عميل غير رسمي مدمج في AMWAPOS. هذا ليس واجهة واتساب للأعمال (Business API).",
+  "AMWAPOS runs the same command as the admin page, with your permissions. Manager approval or Windows Hello is asked for if that command needs it. A wrong PIN changes nothing.":
+    "ينفّذ AMWAPOS الأمر نفسه الذي تنفّذه صفحة الإدارة وبصلاحياتك. تُطلب موافقة المدير أو Windows Hello إذا احتاجها الأمر. رمز PIN الخاطئ لا يغيّر شيئًا.",
   "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.":
     "ينفّذ AMWAPOS هذا عبر الأمر العادي وبصلاحياتك. يمكن التراجع عنه لاحقاً بسجل تصحيحي، ولا يُحذف شيء.",
   "AMWAPOS verifies the installer again, takes a safety backup, then closes and runs the installer. Finish open sales first. Business data is kept.":
@@ -92,6 +97,7 @@ export const AR: Record<string, string> = {
   "Acknowledge large cash variances": "اعتماد فروقات النقد الكبيرة",
   Action: "الإجراء",
   "Action (e.g. price)": "الإجراء (مثل السعر)",
+  "Action inbox": "صندوق الإجراءات",
   "Action not possible": "لا يمكن تنفيذ الإجراء",
   Activate: "تفعيل",
   Active: "نشط",
@@ -139,9 +145,12 @@ export const AR: Record<string, string> = {
   "Adjustment type must be increase, decrease or set.": "يجب أن يكون نوع التعديل زيادة أو نقصاً أو تعيين.",
   Admin: "الإدارة",
   "Admin /": "الإدارة /",
+  "Admin change": "تغيير إداري",
   "Admin navigation": "قائمة الإدارة",
   After: "بعد",
+  "After confirm": "بعد التأكيد",
   "After this drop": "بعد هذا الإيداع",
+  "Agree again for the new provider": "وافق مرة أخرى للمزوّد الجديد",
   "Agreed on {0}.": "تمت الموافقة في {0}.",
   Alerts: "تنبيهات",
   All: "الكل",
@@ -225,6 +234,7 @@ export const AR: Record<string, string> = {
   "Ask a question": "اطرح سؤالاً",
   "Ask about sales, stock, margins and purchasing. The assistant reads data with your permissions.":
     "اسأل عن المبيعات والمخزون والهوامش والمشتريات. يقرأ المساعد البيانات بصلاحياتك.",
+  "Ask the assistant": "اسأل المساعد",
   "Ask the assistant about this day": "اسأل المساعد عن هذا اليوم",
   "Ask the owner to enable it in Settings → Features.": "اطلب من المالك تفعيلها من الإعدادات ← الميزات.",
   "Ask the owner to finish the setup in Settings → AI.": "اطلب من المالك إكمال الإعداد من الإعدادات ← المساعد الذكي.",
@@ -386,6 +396,7 @@ export const AR: Record<string, string> = {
   "Cash reconciliation per cashier shift.": "تسوية النقد لكل وردية كاشير.",
   "Cash refunds": "استرجاعات نقدية",
   "Cash sales": "مبيعات نقدية",
+  "Cash short": "عجز في النقد",
   Cashier: "الكاشير",
   "Cashier discount limit must be between 0% and 100%.": "يجب أن يكون حد خصم الكاشير بين 0% و100%.",
   "Cashier font size": "حجم خط الكاشير",
@@ -414,6 +425,7 @@ export const AR: Record<string, string> = {
   "Changed by": "غيّره",
   "Changes apply to the next question; no restart is needed.":
     "تُطبَّق التغييرات على السؤال التالي؛ لا حاجة لإعادة التشغيل.",
+  "Changes store records; review the before/after": "يغيّر سجلات المتجر؛ راجع القيم قبل وبعد",
   "Changes that could not be applied": "تغييرات تعذّر تطبيقها",
   "Changing a role signs out its users so the new permissions apply immediately.":
     "تغيير الدور يسجّل خروج مستخدميه حتى تُطبّق الصلاحيات الجديدة فوراً.",
@@ -515,6 +527,8 @@ export const AR: Record<string, string> = {
   "Continue with current prices": "المتابعة بالأسعار الحالية",
   Conversations: "المحادثات",
   "Copy link": "نسخ الرابط",
+  "Copy this now. It is not stored with the proposal and is never sent to the assistant.":
+    "انسخه الآن. لا يُحفظ مع الاقتراح ولا يُرسل إلى المساعد أبدًا.",
   Cost: "التكلفة",
   "Cost (snapshot)": "التكلفة (لقطة)",
   "Cost for {0}": "التكلفة لـ {0}",
@@ -594,6 +608,7 @@ export const AR: Record<string, string> = {
   "Customers earn whole points on what they pay and redeem them as a discount on a later sale. Points are reversed in proportion when a sale is refunded.":
     "يكسب العملاء نقاطاً صحيحة على ما يدفعونه ويستبدلونها كخصم في بيع لاحق. تُعكس النقاط بالتناسب عند استرجاع البيع.",
   "Cut paper after each receipt": "قص الورق بعد كل إيصال",
+  "Daily token limit": "الحد اليومي للرموز",
   Damaged: "تالف",
   "Damaged / defective": "تالف / معيب",
   Dark: "داكن",
@@ -779,6 +794,7 @@ export const AR: Record<string, string> = {
   Expired: "منتهي الصلاحية",
   "Expires {0}": "ينتهي {0}",
   "Explain the adjustment.": "وضّح سبب التعديل.",
+  "Explain the {0} playbook results for {1}": "اشرح نتائج دليل {0} ليوم {1}",
   Export: "تصدير",
   "Export CSV": "تصدير CSV",
   "Export Diagnostics": "تصدير التشخيص",
@@ -850,6 +866,8 @@ export const AR: Record<string, string> = {
   "High risk": "مخاطرة عالية",
   "High — based on current stock and 30-day sales.": "مرتفعة — مبنية على المخزون الحالي ومبيعات 30 يوماً.",
   "High — based on recorded sales and stock levels.": "مرتفعة — مبنية على المبيعات المسجّلة ومستويات المخزون.",
+  "High-risk change: the command's own manager approval / Windows Hello checks run on Confirm":
+    "تغيير عالي الخطورة: تُنفَّذ فحوص موافقة المدير / Windows Hello الخاصة بالأمر عند التأكيد",
   History: "السجل",
   Hold: "تعليق",
   "Hold Sale": "تعليق البيع",
@@ -876,6 +894,7 @@ export const AR: Record<string, string> = {
   "Hub · {0} unresolved change(s)": "الخادم · {0} تغيير(ات) غير محلولة",
   "I agree to send store data to this AI provider": "أوافق على إرسال بيانات المتجر إلى مزوّد الذكاء الاصطناعي هذا",
   "I have checked the hub — resume": "تحققت من الخادم — استئناف",
+  "I have saved it": "لقد حفظته",
   "I understand the risk": "أفهم المخاطر",
   "I understand this backup belongs to a different business ({0}).":
     "أدرك أن هذه النسخة الاحتياطية تخص نشاطاً تجارياً آخر ({0}).",
@@ -896,6 +915,7 @@ export const AR: Record<string, string> = {
   "Import products": "استيراد المنتجات",
   "Import senders as customers": "استيراد المرسلين كعملاء",
   "Import your existing catalogue or create your first product.": "استورد الكتالوج الحالي أو أنشئ منتجك الأول.",
+  "Improve parse": "تحسين القراءة",
   "In Stock": "متوفر",
   "In stock": "متوفر",
   "In transit": "قيد النقل",
@@ -909,6 +929,8 @@ export const AR: Record<string, string> = {
   "Incorrect PINs before an account is locked.": "عدد الرموز السرية الخاطئة قبل قفل الحساب.",
   Increase: "زيادة",
   "Increase {0}": "زيادة {0}",
+  "Input and output tokens per business day for all users. 0 = no limit. Used today: {0}.":
+    "رموز الإدخال والإخراج لكل يوم عمل لجميع المستخدمين. 0 = بلا حد. المستخدم اليوم: {0}.",
   Inspect: "فحص",
   "Install {0}": "تثبيت {0}",
   "Installing updates is supported on Windows only.": "تثبيت التحديثات مدعوم على ويندوز فقط.",
@@ -1004,6 +1026,7 @@ export const AR: Record<string, string> = {
   "Line total": "إجمالي السطر",
   "Line {0} needs a product, a quantity and a unit cost (or exclude it).":
     "السطر {0} يحتاج منتجاً وكمية وتكلفة وحدة (أو استبعده).",
+  "Lines re-read by the AI provider. Check them again.": "أعاد مزوّد الذكاء الاصطناعي قراءة البنود. راجعها مرة أخرى.",
   "Lines with variance": "أسطر بها فروقات",
   "Link and show QR code": "ربط وعرض رمز QR",
   Linked: "مربوط",
@@ -1132,6 +1155,7 @@ export const AR: Record<string, string> = {
   "Never seen": "لم يظهر بعد",
   "New Customer": "عميل جديد",
   "New PIN": "الرمز السري الجديد",
+  "New PIN for this user": "رمز PIN الجديد لهذا المستخدم",
   "New Price": "السعر الجديد",
   "New Sale": "بيع جديد",
   "New Stocktake": "جرد جديد",
@@ -1220,12 +1244,14 @@ export const AR: Record<string, string> = {
   "No payment screenshots to review.": "لا توجد لقطات دفع للمراجعة.",
   "No phone": "لا يوجد هاتف",
   "No points on lines that already have a discount": "لا نقاط على البنود التي عليها خصم مسبقاً",
+  "No preview is available for this change.": "لا تتوفر معاينة لهذا التغيير.",
   "No price": "بلا سعر",
   "No printer": "لا توجد طابعة",
   "No problems found.": "لم يُعثر على مشكلات.",
   "No products found": "لم يُعثر على منتجات",
   "No products received from this supplier yet.": "لم تُستلم منتجات من هذا المورّد بعد.",
   "No products yet": "لا توجد منتجات بعد",
+  "No proposals today.": "لا توجد اقتراحات اليوم.",
   "No purchase orders": "لا توجد أوامر شراء",
   "No purchases yet.": "لا توجد مشتريات بعد.",
   "No receipt printer configured": "لم تُهيّأ طابعة إيصالات",
@@ -1286,6 +1312,7 @@ export const AR: Record<string, string> = {
   "Note added": "تمت إضافة الملاحظة",
   Notes: "الملاحظات",
   "Nothing below its reorder point.": "لا يوجد منتج تحت حد إعادة الطلب.",
+  "Nothing is waiting for a decision.": "لا شيء بانتظار قرار.",
   "Nothing moves until the transfer is shipped. Shipped stock is in transit until it is received.":
     "لا يتحرك شيء حتى يُشحن التحويل. المخزون المشحون يبقى قيد النقل حتى يُستلم.",
   "Nothing needs attention right now.": "لا شيء يحتاج انتباهاً الآن.",
@@ -1294,6 +1321,7 @@ export const AR: Record<string, string> = {
   "Nothing sent yet.": "لم يُرسل شيء بعد.",
   "Nothing to show.": "لا يوجد ما يُعرض.",
   "Nothing waiting to print": "لا شيء بانتظار الطباعة",
+  Now: "الآن",
   "Number of automatic backups to keep.": "عدد النسخ الاحتياطية التلقائية المحتفظ بها.",
   "Number {0}": "الرقم {0}",
   "OCR confidence": "ثقة التعرف الضوئي",
@@ -1339,6 +1367,7 @@ export const AR: Record<string, string> = {
   "Only scans waiting for review can be edited.": "لا يمكن تعديل إلا المسوحات التي تنتظر المراجعة.",
   "Only terminals synchronize with a hub.": "تتزامن نقاط البيع فقط مع الخادم.",
   "Only the owner can change the AI provider and keys.": "المالك وحده يمكنه تغيير مزود الذكاء الاصطناعي والمفاتيح.",
+  "Only the owner can confirm this": "المالك وحده يمكنه تأكيد هذا",
   "Only weighted-average costing is supported in this version.":
     "يدعم هذا الإصدار احتساب التكلفة بالمتوسط المرجّح فقط.",
   Open: "مفتوح",
@@ -1355,8 +1384,10 @@ export const AR: Record<string, string> = {
   "Open draft order {0}": "فتح مسودة الأمر {0}",
   "Open drawer (no sale)": "فتح الدرج (بلا بيع)",
   "Open order": "فتح الأمر",
+  "Open proposals expire after 60 minutes.": "تنتهي صلاحية الاقتراحات المفتوحة بعد 60 دقيقة.",
   "Open purchase orders": "أوامر الشراء المفتوحة",
   "Open the cash drawer without a sale": "فتح درج النقد بلا بيع",
+  "Open the conversation": "افتح المحادثة",
   "Open this on the phone (same Wi-Fi as the hub)": "افتح هذا على الهاتف (نفس شبكة Wi-Fi الخاصة بالخادم)",
   "Open {0}": "فتح {0}",
   "OpenAI-compatible": "متوافق مع OpenAI",
@@ -1488,6 +1519,7 @@ export const AR: Record<string, string> = {
   "Place order": "تقديم الطلب",
   Placeholders: "المتغيرات",
   "Play a short tone on scans and errors.": "تشغيل نغمة قصيرة عند المسح والأخطاء.",
+  Playbooks: "أدلة التشغيل",
   "Please check the details": "يرجى مراجعة البيانات",
   "Please log in.": "يرجى تسجيل الدخول.",
   "Points (+ to add, − to remove)": "النقاط (+ للإضافة، − للخصم)",
@@ -1658,6 +1690,8 @@ export const AR: Record<string, string> = {
   "Record paid-out cash": "تسجيل سحب نقدي",
   "Record payment": "تسجيل الدفعة",
   "Record safe drops": "تسجيل التحويلات إلى الخزنة",
+  "Recorded as a proposal. Nothing has changed. A person must review and confirm it in AMWAPOS.":
+    "سُجّل كاقتراح. لم يتغير شيء. يجب أن يراجعه شخص ويؤكده في AMWAPOS.",
   "Recorded in the audit log. A balance can never go below zero.":
     "يُسجَّل في سجل التدقيق. لا يمكن أن يقل الرصيد عن صفر.",
   "Recorded tender — not verified with the bank. Check the customer's BenefitPay confirmation.":
@@ -1689,6 +1723,7 @@ export const AR: Record<string, string> = {
   "Refund quantity exceeds the refundable quantity.": "كمية الاسترجاع تتجاوز الكمية القابلة للاسترجاع.",
   "Refund quantity for {0}": "كمية الاسترجاع لـ {0}",
   "Refund quantity must be greater than zero.": "يجب أن تكون كمية الاسترجاع أكبر من صفر.",
+  "Refund spike": "ارتفاع المرتجعات",
   "Refund to": "استرجاع إلى",
   "Refund — receipt {0}": "استرجاع — الإيصال {0}",
   Refunded: "مسترجع",
@@ -1988,6 +2023,7 @@ export const AR: Record<string, string> = {
   "Show in POS favorites": "إظهار في مفضلة نقطة البيع",
   "Show inactive": "إظهار غير النشط",
   "Show messages as read on the phone when opened here": "إظهار الرسائل كمقروءة على الهاتف عند فتحها هنا",
+  "Shown once": "يُعرض مرة واحدة",
   "Shown once. Expires {0}.": "يُعرض مرة واحدة. ينتهي {0}.",
   "Sidecar process": "عملية الخدمة المساعدة",
   "Sidecar restarted": "أُعيد تشغيل الخدمة المساعدة",
@@ -1999,6 +2035,7 @@ export const AR: Record<string, string> = {
   "Skip the {0} row(s) with errors": "تخطي {0} صف(وف) بها أخطاء",
   "Skip {0}": "تخطي {0}",
   Skipped: "تم التخطي",
+  "Small change": "تغيير بسيط",
   "Snapshot {0}: {1}": "اللقطة {0}: {1}",
   Sold: "مباع",
   "Sold below cost": "بيع بأقل من التكلفة",
@@ -2140,11 +2177,14 @@ export const AR: Record<string, string> = {
   "The AI assistant is switched off. An owner can turn it on in Settings → Features.":
     "المساعد الذكي متوقف. يمكن للمالك تشغيله من الإعدادات ← الميزات.",
   "The AI assistant module is switched off.": "وحدة المساعد الذكي متوقفة.",
+  "The AI found no better lines.": "لم يجد الذكاء الاصطناعي بنودًا أفضل.",
   "The AI provider did not answer in time": "لم يرد مزود الذكاء الاصطناعي في الوقت المحدد",
   "The AI provider did not answer in time. Try again, or raise the timeout in Settings → AI.":
     "لم يرد مزود الذكاء الاصطناعي في الوقت المحدد. حاول مجدداً أو ارفع مهلة الانتظار من الإعدادات ← الذكاء الاصطناعي.",
   "The AI provider returned an error": "أعاد مزود الذكاء الاصطناعي خطأ",
   "The AMWAPOS WhatsApp sidecar (bundled in a later release)": "ملحق واتساب الخاص بـ AMWAPOS (يُضمَّن في إصدار لاحق)",
+  "The Confirm card asks for the value AMWAPOS never sends to the assistant":
+    "تطلب بطاقة التأكيد القيمة التي لا يرسلها AMWAPOS إلى المساعد أبدًا",
   "The English OCR model is missing or damaged. Reinstall AMWAPOS to restore it.":
     "نموذج التعرف الضوئي الإنجليزي مفقود أو تالف. أعد تثبيت AMWAPOS لاستعادته.",
   "The Hub module is switched off": "وحدة الخادم المحلي متوقفة",
@@ -2162,6 +2202,8 @@ export const AR: Record<string, string> = {
   "The application backend did not respond ({0}). No change was confirmed.":
     "لم تستجب الواجهة الخلفية للتطبيق ({0}). لم يُؤكَّد أي تغيير.",
   "The assistant is not set up yet": "لم يُعدّ المساعد بعد",
+  "The assistant may propose any admin change you are allowed to make. Nothing changes until a person confirms.":
+    "يمكن للمساعد اقتراح أي تغيير إداري مسموح لك به. لا يتغير شيء حتى يؤكده شخص.",
   "The assistant may propose price, stock and purchase-order changes. Nothing changes until a person confirms.":
     "يمكن للمساعد اقتراح تغييرات على الأسعار والمخزون وأوامر الشراء. لا يتغير شيء حتى يؤكد شخص.",
   "The audit chain is broken at entry {0}.": "سلسلة التدقيق مكسورة عند الإدخال {0}.",
@@ -2179,6 +2221,8 @@ export const AR: Record<string, string> = {
   "The currency cannot be changed after sales have been recorded.": "لا يمكن تغيير العملة بعد تسجيل مبيعات.",
   "The currency is locked after the first sale.": "تُقفل العملة بعد أول عملية بيع.",
   "The current PIN is incorrect.": "الرمز السري الحالي غير صحيح.",
+  "The daily token cap must be between 0 (no cap) and 100000000.":
+    "يجب أن يكون الحد اليومي للرموز بين 0 (بلا حد) و100000000.",
   "The database failed its integrity check. No data has been modified. Restore a backup or export diagnostics.":
     "فشلت قاعدة البيانات في فحص السلامة. لم تُعدَّل أي بيانات. استعد نسخة احتياطية أو صدّر التشخيص.",
   "The database file appears to be damaged. Open Diagnostics or restore a backup.":
@@ -2293,6 +2337,10 @@ export const AR: Record<string, string> = {
     "لا يحتوي هذا الإصدار على مفتاح توقيع التحديثات، لذلك لا يُنزّل أو يثبّت التحديثات بنفسه أبداً. ثبّت الإصدارات الجديدة ببرنامج تثبيت AMWAPOS؛ تُحفظ بياناتك وتؤخذ نسخة احتياطية آمنة قبل أي ترقية لقاعدة البيانات.",
   "This cash event is recorded against your shift and cannot be edited later.":
     "تُسجَّل حركة النقد هذه على ورديتك ولا يمكن تعديلها لاحقاً.",
+  "This change cannot be undone from here. Correct it on the matching admin page.":
+    "لا يمكن التراجع عن هذا التغيير من هنا. صحّحه من صفحة الإدارة المناسبة.",
+  "This change is irreversible from the AI page. Use the matching admin page to correct it (for example a new adjustment or refund).":
+    "لا يمكن التراجع عن هذا التغيير من صفحة الذكاء الاصطناعي. استخدم صفحة الإدارة المناسبة لتصحيحه (مثل تعديل جديد أو مرتجع).",
   "This computer": "هذا الجهاز",
   "This computer holds the master data; other tills connect over the store network.":
     "يحتفظ هذا الجهاز بالبيانات الرئيسية؛ وتتصل نقاط البيع الأخرى عبر شبكة المتجر.",
@@ -2307,6 +2355,8 @@ export const AR: Record<string, string> = {
     "قرأت هذه المحادثة نص واتساب أو تعرف ضوئي؛ تحقق من أن الطلب صادر منك",
   "This conversation read customer messages or scanned text. Check any proposal carefully.":
     "قرأت هذه المحادثة رسائل عملاء أو نصاً ممسوحاً. راجع أي اقتراح بعناية.",
+  "This conversation read outside text (DATA); check that the request came from you":
+    "قرأت هذه المحادثة نصًا خارجيًا (بيانات)؛ تأكد أن الطلب صادر منك",
   "This customer cannot buy on account until the account is enabled.":
     "لا يمكن لهذا العميل الشراء على الحساب حتى يُفعّل الحساب.",
   "This customer does not have an account. Enable it on the customer's page first.":
@@ -2339,6 +2389,7 @@ export const AR: Record<string, string> = {
   "This product is not part of this stocktake.": "هذا المنتج ليس ضمن هذا الجرد.",
   "This product was changed by someone else. Reload it and apply your changes again.":
     "عدّل شخص آخر هذا المنتج. أعد تحميله وطبّق تغييراتك مجدداً.",
+  "This proposal must be confirmed on the hub.": "يجب تأكيد هذا الاقتراح على الخادم الرئيسي.",
   "This replaces all current data on this computer": "سيستبدل هذا كل البيانات الحالية على هذا الجهاز",
   "This review is already decided.": "تم البت في هذه المراجعة بالفعل.",
   "This sale belongs to another cashier or terminal.": "هذا البيع يخص كاشيراً أو نقطة بيع أخرى.",
@@ -2373,7 +2424,11 @@ export const AR: Record<string, string> = {
     "للاستعادة، افتح مجلد البيانات المذكور أدناه وانسخ نسخة احتياطية مُتحقَّقاً منها إلى مكانها، أو أعد التثبيت واستعد من الإدارة ← النسخ الاحتياطية.",
   Today: "اليوم",
   "Today Sales (net)": "مبيعات اليوم (الصافي)",
+  "Today's AI changes": "تغييرات الذكاء الاصطناعي اليوم",
+  "Today's AI token limit is used up. An owner can raise it in Settings → AI.":
+    "استُنفد حد رموز الذكاء الاصطناعي لليوم. يمكن للمالك رفعه من الإعدادات ← الذكاء الاصطناعي.",
   "Toggle navigation": "إظهار/إخفاء القائمة",
+  "Tokens today: {0} of {1}": "الرموز اليوم: {0} من {1}",
   "Too many incorrect PINs. This account is locked for {0} minutes.":
     "عدد كبير من الرموز السرية الخاطئة. هذا الحساب مقفل لمدة {0} دقيقة.",
   "Too many incorrect PINs. This account is locked for {0} more minute(s).":
@@ -2408,6 +2463,8 @@ export const AR: Record<string, string> = {
   'Type "RESTORE" to confirm': 'اكتب "RESTORE" للتأكيد',
   "Type a page name": "اكتب اسم صفحة",
   "Type a reply": "اكتب رداً",
+  "Typed here only. It is never sent to the assistant or stored with the proposal.":
+    "يُكتب هنا فقط. لا يُرسل إلى المساعد ولا يُحفظ مع الاقتراح.",
   Unassigned: "غير معيّن",
   Unavailable: "غير متاح",
   Uncategorised: "بلا فئة",
@@ -2450,6 +2507,7 @@ export const AR: Record<string, string> = {
   "Unresolved changes": "تغييرات غير محلولة",
   "Unsupported message type": "نوع رسالة غير مدعوم",
   Until: "حتى",
+  "Unverified: no tool result backs these figures": "غير مُتحقق: لا توجد نتيجة أداة تدعم هذه الأرقام",
   "Up to 120000.": "حتى 120000.",
   "Up to 3 decimals ({0}).": "حتى 3 منازل عشرية ({0}).",
   "Update address (latest.json)": "عنوان التحديث (latest.json)",
@@ -2588,6 +2646,8 @@ export const AR: Record<string, string> = {
     "يمكنك تهيئة الطابعة أو اختبارها لاحقاً من الإعدادات ← الطابعات. مشكلة الطابعة لا تلغي البيع أبداً.",
   "You cannot deactivate the computer you are using.": "لا يمكنك إيقاف الجهاز الذي تستخدمه.",
   "You cannot deactivate your own account.": "لا يمكنك إيقاف حسابك الخاص.",
+  "You changed to a different AI provider, so the earlier agreement no longer applies. Tick the box below and save.":
+    "لقد غيّرت إلى مزوّد ذكاء اصطناعي آخر، لذا لم تعد الموافقة السابقة سارية. حدّد المربع أدناه واحفظ.",
   "You do not have permission to perform this action.": "ليست لديك صلاحية لتنفيذ هذا الإجراء.",
   "You have unsaved changes to this product.": "لديك تغييرات غير محفوظة على هذا المنتج.",
   "Your account does not have permission to access this area.": "ليست لحسابك صلاحية الوصول إلى هذا القسم.",
@@ -2616,6 +2676,7 @@ export const AR: Record<string, string> = {
   "redeeming {0} (−{1})": "استبدال {0} (−{1})",
   "reorder at {0}": "إعادة الطلب عند {0}",
   "to {0}": "إلى {0}",
+  unchanged: "بدون تغيير",
   "{0} '{1}' is not a valid amount (max {2} decimals).": "{0} '{1}' ليس مبلغاً صحيحاً (بحد أقصى {2} منازل عشرية).",
   "{0} '{1}' is not a valid quantity.": "{0} '{1}' ليست كمية صحيحة.",
   "{0} (in stock: {1})": "{0} (المتوفر: {1})",

@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Bot, Plus, Send } from "lucide-react";
+import { Bot, Inbox, Plus, Send } from "lucide-react";
 import { api } from "../../api";
-import type { AiConversation, AiProposal, AiProvider, AiSettings, AiTestResult } from "../../api/types";
+import type {
+  AiConversation,
+  AiPlaybookResult,
+  AiProposal,
+  AiProvider,
+  AiSettings,
+  AiTestResult,
+} from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
+import { ApprovalCancelled, useApproval } from "../../components/approval";
 import { FeatureGate } from "../../components/FeatureGate";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, useAction, useLoad } from "./common";
@@ -87,6 +95,102 @@ function ProposalPreview({ p }: { p: AiProposal }) {
   );
 }
 
+/** One value in a diff: fils as money, milli-units as quantities, the rest as text. */
+function DiffValue({ k, v }: { k: string; v: unknown }) {
+  if (v === null || v === undefined || v === "") return <span className="muted">—</span>;
+  if (typeof v === "number" && k.endsWith("_minor")) return <>{formatMoney(v)}</>;
+  if (typeof v === "number" && k.endsWith("_milli")) return <>{formatQty(v)}</>;
+  if (typeof v === "boolean") return <>{v ? t("Yes") : t("No")}</>;
+  if (typeof v === "object") {
+    const text = JSON.stringify(v);
+    return (
+      <code dir="ltr" className="tiny" style={{ wordBreak: "break-all" }}>
+        {text.length > 240 ? `${text.slice(0, 240)}…` : text}
+      </code>
+    );
+  }
+  return <>{String(v)}</>;
+}
+
+/** Flatten one level of nested objects ("product.name") so a diff lines up field by field. */
+function flat(v: unknown, prefix = ""): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!v || typeof v !== "object" || Array.isArray(v)) return prefix ? { [prefix]: v } : {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (x && typeof x === "object" && !Array.isArray(x) && !prefix) Object.assign(out, flat(x, key));
+    else out[key] = x;
+  }
+  return out;
+}
+
+/** F3: before → after for a command proposal; changed rows are highlighted. */
+export function DiffView({ preview }: { preview: Record<string, unknown> }) {
+  const before = flat(preview.before);
+  const after = flat(preview.after ?? preview.changes);
+  const keys = Array.from(new Set([...Object.keys(after), ...Object.keys(before)])).filter(
+    (k) => !["approval_token", "operation_id", "pin"].includes(k.split(".").pop() ?? ""),
+  );
+  if (!keys.length) return <div className="small muted">{t("No preview is available for this change.")}</div>;
+  return (
+    <table className="table" data-testid="ai-diff">
+      <thead>
+        <tr>
+          <th>{t("Field")}</th>
+          <th>{t("Now")}</th>
+          <th>{t("After confirm")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {keys.slice(0, 40).map((k) => {
+          const changed = k in after && JSON.stringify(before[k]) !== JSON.stringify(after[k]);
+          return (
+            <tr key={k} style={changed ? { background: "var(--warning-soft, rgba(255,200,0,0.12))" } : undefined}>
+              <td>
+                <code dir="ltr" className="tiny">
+                  {k}
+                </code>
+              </td>
+              <td>{k in before ? <DiffValue k={k} v={before[k]} /> : <span className="muted">—</span>}</td>
+              <td>
+                {k in after ? (
+                  <strong>
+                    <DiffValue k={k} v={after[k]} />
+                  </strong>
+                ) : (
+                  <span className="muted">{t("unchanged")}</span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+const isCommand = (p: AiProposal) => p.kind.startsWith("command:");
+
+const LINK_RE = /\/admin\/(?:products|customers|suppliers|purchase-orders|stocktake)\/[A-Za-z0-9]{6,40}|\/admin\/ai\b/g;
+
+/** F2: record paths in an answer become links. */
+export function Linkified({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(LINK_RE)) {
+    const at = m.index ?? 0;
+    if (at > last) parts.push(text.slice(last, at));
+    parts.push(
+      <Link key={at} to={m[0]} dir="ltr">
+        {m[0]}
+      </Link>,
+    );
+    last = at + m[0].length;
+  }
+  parts.push(text.slice(last));
+  return <div style={{ whiteSpace: "pre-wrap" }}>{parts}</div>;
+}
+
 const STATUS_LABEL: Record<string, () => string> = {
   proposed: () => t("Waiting for your decision"),
   executing: () => t("Running"),
@@ -104,22 +208,56 @@ const KIND_LABEL: Record<string, () => string> = {
 };
 
 function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }) {
-  const { has } = useSession();
+  const { has, session } = useSession();
   const toast = useToast();
+  const approve = useApproval();
   const act = useAction();
   const [confirm, setConfirm] = useState(false);
+  const [pin, setPin] = useState("");
+  const [once, setOnce] = useState<Record<string, unknown> | null>(null);
+  const command = isCommand(p);
+  const inputs = (p.params.confirm_inputs as string[] | undefined) ?? [];
+  const needsPin = inputs.includes("user.pin");
+  // Accountants stay read-only; everyone else with admin access may decide (the command re-checks).
+  const canDecide = (has("ai.mutate") || has("admin.access")) && session?.role_id !== "role_accountant";
   const riskTone = p.risk === "high" ? "danger" : p.risk === "medium" ? "warning" : "success";
   const riskLabel = p.risk === "high" ? t("High risk") : p.risk === "medium" ? t("Medium risk") : t("Low risk");
+  const kindLabel = command ? t("Admin change") : KIND_LABEL[p.kind]?.();
+  const doConfirm = async () => {
+    const r = await act.run(async () => {
+      try {
+        return await approve((tok) => api.ai.confirm(p.proposal_id, tok, needsPin ? { pin } : undefined));
+      } catch (e) {
+        if (e instanceof ApprovalCancelled) return null;
+        throw e;
+      }
+    });
+    if (r) {
+      setConfirm(false);
+      setPin("");
+      toast("success", t("Change made and recorded in the audit trail"));
+      if (r.once) setOnce(r.once);
+      else onChanged();
+    }
+  };
   return (
     <div className="card card-pad col gap-8" data-testid="ai-proposal">
-      <div className="row">
+      <div className="row wrap">
         <strong className="grow">
-          {p.proposal_number} · {KIND_LABEL[p.kind]?.()}
+          {p.proposal_number} · {kindLabel}
+          {command ? (
+            <>
+              {" "}
+              <code dir="ltr" className="tiny">
+                {p.kind.slice("command:".length)}
+              </code>
+            </>
+          ) : null}
         </strong>
         <Chip tone={riskTone}>{riskLabel}</Chip>
         <Chip>{STATUS_LABEL[p.status]?.() ?? p.status}</Chip>
       </div>
-      <ProposalPreview p={p} />
+      {command ? <DiffView preview={p.preview} /> : <ProposalPreview p={p} />}
       {p.risk_reasons.length ? (
         <ul className="small" style={{ margin: 0, paddingInlineStart: 18 }}>
           {p.risk_reasons.map((r) => (
@@ -128,9 +266,9 @@ function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }
         </ul>
       ) : null}
       {p.error ? <Banner tone="danger">{tb(p.error)}</Banner> : null}
-      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-      {has("ai.mutate") ? (
-        <div className="row">
+      {act.error && !confirm ? <Banner tone="danger">{act.error}</Banner> : null}
+      {canDecide ? (
+        <div className="row wrap">
           {p.status === "proposed" ? (
             <>
               <Button variant="primary" onClick={() => setConfirm(true)}>
@@ -147,7 +285,7 @@ function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }
               </Button>
             </>
           ) : null}
-          {p.status === "executed" ? (
+          {p.status === "executed" && !command ? (
             <Button
               loading={act.busy}
               onClick={async () => {
@@ -159,6 +297,11 @@ function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }
             >
               {t("Undo")}
             </Button>
+          ) : null}
+          {p.status === "executed" && command ? (
+            <span className="tiny">
+              {t("This change cannot be undone from here. Correct it on the matching admin page.")}
+            </span>
           ) : null}
           {p.status === "executed" && p.kind === "purchase_order" && p.result?.po_id ? (
             <Link to={`/admin/purchase-orders/${String(p.result.po_id)}`}>{t("Open order")}</Link>
@@ -174,25 +317,169 @@ function ProposalCard({ p, onChanged }: { p: AiProposal; onChanged: () => void }
           danger={p.risk === "high"}
           busy={act.busy}
           error={act.error}
-          onCancel={() => setConfirm(false)}
-          onConfirm={async () => {
-            if (await act.run(() => api.ai.confirm(p.proposal_id))) {
-              setConfirm(false);
-              toast("success", t("Change made and recorded in the audit trail"));
-              onChanged();
-            }
-          }}
+          onCancel={() => (setConfirm(false), setPin(""))}
+          onConfirm={() => void doConfirm()}
         >
           <div className="col gap-16">
-            <ProposalPreview p={p} />
+            {command ? <DiffView preview={p.preview} /> : <ProposalPreview p={p} />}
+            {needsPin ? (
+              <TextInput
+                label={t("New PIN for this user")}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                value={pin}
+                data-testid="ai-confirm-pin"
+                hint={t("Typed here only. It is never sent to the assistant or stored with the proposal.")}
+                onChange={(e) => setPin(e.target.value.replace(/[^\d]/g, "").slice(0, 8))}
+              />
+            ) : null}
             <div className="small">
-              {t(
-                "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.",
-              )}
+              {command
+                ? t(
+                    "AMWAPOS runs the same command as the admin page, with your permissions. Manager approval or Windows Hello is asked for if that command needs it. A wrong PIN changes nothing.",
+                  )
+                : t(
+                    "AMWAPOS runs this through the normal command with your permissions. It can be undone later with a correcting record; nothing is deleted.",
+                  )}
             </div>
           </div>
         </Confirm>
       ) : null}
+      {once ? (
+        <Confirm
+          title={t("Shown once")}
+          confirmLabel={t("I have saved it")}
+          onCancel={() => (setOnce(null), onChanged())}
+          onConfirm={() => (setOnce(null), onChanged())}
+        >
+          <div className="col gap-8" data-testid="ai-once">
+            <Banner tone="warning">
+              {t("Copy this now. It is not stored with the proposal and is never sent to the assistant.")}
+            </Banner>
+            <dl className="kv">
+              {Object.entries(once)
+                .filter(([, v]) => typeof v === "string" || typeof v === "number")
+                .map(([k, v]) => (
+                  <div key={k} style={{ display: "contents" }}>
+                    <dt>
+                      <code dir="ltr">{k}</code>
+                    </dt>
+                    <dd>
+                      <code dir="ltr" style={{ wordBreak: "break-all", userSelect: "all" }}>
+                        {String(v)}
+                      </code>
+                    </dd>
+                  </div>
+                ))}
+            </dl>
+          </div>
+        </Confirm>
+      ) : null}
+    </div>
+  );
+}
+
+const PLAYBOOKS: { name: "eod" | "cash_short" | "reorder" | "refund_spike"; label: () => string }[] = [
+  { name: "eod", label: () => t("End of day") },
+  { name: "cash_short", label: () => t("Cash short") },
+  { name: "reorder", label: () => t("Reorder") },
+  { name: "refund_spike", label: () => t("Refund spike") },
+];
+
+function rowsIn(v: unknown): number | null {
+  if (Array.isArray(v)) return v.length;
+  if (v && typeof v === "object") {
+    for (const k of ["rows", "items", "products", "data"]) {
+      const x = (v as Record<string, unknown>)[k];
+      if (Array.isArray(x)) return x.length;
+    }
+  }
+  return null;
+}
+
+/** B2: a playbook is a fixed set of reads; no model is involved. */
+function PlaybookResult({ r, onAsk }: { r: AiPlaybookResult; onAsk: (q: string) => void }) {
+  const label = PLAYBOOKS.find((p) => p.name === r.playbook)?.label() ?? r.playbook;
+  return (
+    <div className="card card-pad col gap-8" data-testid="ai-playbook">
+      <div className="row">
+        <strong className="grow">
+          {label} · {r.date}
+        </strong>
+        <Button variant="ghost" onClick={() => onAsk(t("Explain the {0} playbook results for {1}", label, r.date))}>
+          {t("Ask the assistant")}
+        </Button>
+      </div>
+      {r.steps.map((st, i) => {
+        const n = rowsIn(st.result);
+        return (
+          <details key={i}>
+            <summary className="row">
+              <Chip tone={st.ok ? "success" : "danger"}>{TOOL_LABEL[st.tool]?.() ?? st.tool}</Chip>
+              <span className="tiny">{st.ok ? (n !== null ? t("{0} rows", n) : t("Done")) : tb(st.error ?? "")}</span>
+            </summary>
+            {st.ok ? (
+              <pre className="tiny" dir="ltr" style={{ maxHeight: 240, overflow: "auto", whiteSpace: "pre-wrap" }}>
+                {JSON.stringify(st.result, null, 1).slice(0, 6000)}
+              </pre>
+            ) : null}
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+/** A7 + D2: every open proposal in one place, with today's digest. */
+function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
+  const open = useLoad(() => api.ai.proposals("proposed"), []);
+  const digest = useLoad(() => api.ai.digest(), []);
+  const reload = () => (void open.reload(), void digest.reload());
+  return (
+    <div className="col gap-16" data-testid="ai-inbox">
+      <div className="card card-pad col gap-8">
+        <strong>{t("Today's AI changes")}</strong>
+        {digest.data ? (
+          <div className="row wrap">
+            {digest.data.counts.length ? (
+              digest.data.counts.map((c) => (
+                <Chip
+                  key={`${c.status}-${c.risk}`}
+                  tone={c.risk === "high" ? "danger" : c.risk === "medium" ? "warning" : "default"}
+                >
+                  {STATUS_LABEL[c.status]?.() ?? c.status} ·{" "}
+                  {c.risk === "high" ? t("High risk") : c.risk === "medium" ? t("Medium risk") : t("Low risk")}:{" "}
+                  {c.count}
+                </Chip>
+              ))
+            ) : (
+              <span className="small muted">{t("No proposals today.")}</span>
+            )}
+          </div>
+        ) : (
+          <Skeleton />
+        )}
+        <div className="tiny">{t("Open proposals expire after 60 minutes.")}</div>
+      </div>
+      {open.error ? <Banner tone="danger">{open.error}</Banner> : null}
+      {!open.data ? (
+        <Skeleton />
+      ) : open.data.length ? (
+        open.data.map((p) => (
+          <div key={p.proposal_id} className="col gap-4">
+            <ProposalCard p={p} onChanged={reload} />
+            <button className="link tiny" style={{ alignSelf: "flex-start" }} onClick={() => onOpen(p.conversation_id)}>
+              {t("Open the conversation")}
+            </button>
+          </div>
+        ))
+      ) : (
+        <div className="empty">
+          <Inbox size={28} />
+          <div>{t("Nothing is waiting for a decision.")}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -207,6 +494,9 @@ export function AiAssistantPage() {
   const [search] = useSearchParams();
   const [text, setText] = useState(() => search.get("q") ?? "");
   const act = useAction();
+  const pb = useAction();
+  const [view, setView] = useState<"chat" | "inbox">("chat");
+  const [playbook, setPlaybook] = useState<AiPlaybookResult | null>(null);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!cid) return setConv(null);
@@ -253,9 +543,19 @@ export function AiAssistantPage() {
           <div className="grid-2" style={{ gridTemplateColumns: "280px 1fr", gap: 16, alignItems: "start" }}>
             <div className="card" style={{ maxHeight: 640, overflow: "auto" }}>
               <div style={{ padding: 12 }}>
-                <Button icon={<Plus size={16} />} onClick={() => (setCid(null), setConv(null))}>
-                  {t("New conversation")}
-                </Button>
+                <div className="col gap-8">
+                  <Button icon={<Plus size={16} />} onClick={() => (setCid(null), setConv(null), setView("chat"))}>
+                    {t("New conversation")}
+                  </Button>
+                  <Button
+                    variant={view === "inbox" ? "primary" : "ghost"}
+                    icon={<Inbox size={16} />}
+                    data-testid="ai-inbox-button"
+                    onClick={() => setView(view === "inbox" ? "chat" : "inbox")}
+                  >
+                    {t("Action inbox")}
+                  </Button>
+                </div>
               </div>
               {(list.data ?? []).map((c) => (
                 <button
@@ -268,7 +568,7 @@ export function AiAssistantPage() {
                     padding: 12,
                     borderTop: "1px solid var(--border)",
                   }}
-                  onClick={() => setCid(c.conversation_id)}
+                  onClick={() => (setCid(c.conversation_id), setView("chat"))}
                 >
                   <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</div>
                   <div className="tiny">
@@ -278,89 +578,132 @@ export function AiAssistantPage() {
                 </button>
               ))}
             </div>
-            <div className="col gap-16">
-              <div className="small muted">
-                {st.mutations
-                  ? t(
-                      "The assistant may propose price, stock and purchase-order changes. Nothing changes until a person confirms.",
-                    )
-                  : t("Read-only: the assistant cannot change anything.")}{" "}
-                {t("Provider")}: {providerLabel(st.active_provider)} · {st.model_id}
-              </div>
-              {conv?.untrusted_seen ? (
-                <Banner tone="warning">
-                  {t("This conversation read customer messages or scanned text. Check any proposal carefully.")}
-                </Banner>
-              ) : null}
-              <div className="card card-pad col gap-16" style={{ minHeight: 320 }}>
-                {!conv ? (
-                  <div className="empty">
-                    <Bot size={28} />
-                    <div>{t("Try: “Which products are running low?” or “What were last week's top sellers?”")}</div>
-                  </div>
-                ) : (
-                  conv.messages.map((m, i) => (
-                    <div
-                      key={i}
-                      className={`bubble ${m.role === "user" ? "out" : "in"}`}
-                      style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%" }}
+            {view === "inbox" ? (
+              <ActionInbox onOpen={(id) => (setCid(id), setView("chat"))} />
+            ) : (
+              <div className="col gap-16">
+                <div className="small muted">
+                  {st.mutations && st.can_mutate
+                    ? t(
+                        "The assistant may propose any admin change you are allowed to make. Nothing changes until a person confirms.",
+                      )
+                    : t("Read-only: the assistant cannot change anything.")}{" "}
+                  {t("Provider")}: {providerLabel(st.active_provider)} · {st.model_id}
+                  {st.daily_token_cap
+                    ? ` · ${t("Tokens today: {0} of {1}", st.tokens_today ?? 0, st.daily_token_cap)}`
+                    : ""}
+                </div>
+                <div className="row wrap" data-testid="ai-playbooks">
+                  <span className="small muted">{t("Playbooks")}:</span>
+                  {PLAYBOOKS.map((b) => (
+                    <Button
+                      key={b.name}
+                      variant="ghost"
+                      loading={pb.busy}
+                      onClick={async () => {
+                        const r = await pb.run(() => api.ai.playbook(b.name));
+                        if (r) setPlaybook(r);
+                      }}
                     >
-                      {m.tools.length ? (
-                        <div className="tiny">{m.tools.map((x) => TOOL_LABEL[x]?.() ?? x).join(" · ")}</div>
-                      ) : null}
-                      {m.text ? <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div> : null}
-                      {m.stop_reason === "refusal" ? (
-                        <div className="tiny">{t("The provider declined to answer this request.")}</div>
-                      ) : null}
-                      {m.stop_reason === "max_tokens" ? (
-                        <div className="tiny">{t("The answer was cut short.")}</div>
-                      ) : null}
-                      <div className="tiny">{formatDateTime(m.at)}</div>
+                      {b.label()}
+                    </Button>
+                  ))}
+                </div>
+                {pb.error ? <Banner tone="danger">{pb.error}</Banner> : null}
+                {playbook ? <PlaybookResult r={playbook} onAsk={(q) => (setText(q), setPlaybook(null))} /> : null}
+                {conv?.untrusted_seen ? (
+                  <Banner tone="warning">
+                    {t("This conversation read customer messages or scanned text. Check any proposal carefully.")}
+                  </Banner>
+                ) : null}
+                <div className="card card-pad col gap-16" style={{ minHeight: 320 }}>
+                  {!conv ? (
+                    <div className="empty">
+                      <Bot size={28} />
+                      <div>{t("Try: “Which products are running low?” or “What were last week's top sellers?”")}</div>
                     </div>
-                  ))
-                )}
-                {conv?.proposals.map((p) => (
-                  <ProposalCard key={p.proposal_id} p={p} onChanged={() => void reloadConv()} />
-                ))}
-                <div ref={end} />
+                  ) : (
+                    conv.messages.map((m, i) => (
+                      <div
+                        key={i}
+                        className={`bubble ${m.role === "user" ? "out" : "in"}`}
+                        style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%" }}
+                      >
+                        {m.tools.length ? (
+                          <div className="tiny">{m.tools.map((x) => TOOL_LABEL[x]?.() ?? x).join(" · ")}</div>
+                        ) : null}
+                        {m.text ? <Linkified text={m.text} /> : null}
+                        {m.role === "assistant" && m.text && m.evidence?.length ? (
+                          <div className="row wrap" style={{ gap: 4 }} data-testid="ai-evidence">
+                            <span className="tiny">{t("Evidence")}:</span>
+                            {m.evidence.slice(0, 8).map((ev, j) => (
+                              <Chip key={j}>
+                                <span dir="ltr">
+                                  {ev.tool}
+                                  {ev.ids.length ? ` · ${ev.ids.join(", ")}` : ""}
+                                </span>
+                              </Chip>
+                            ))}
+                          </div>
+                        ) : null}
+                        {m.unverified ? (
+                          <div data-testid="ai-unverified">
+                            <Chip tone="warning">{t("Unverified: no tool result backs these figures")}</Chip>
+                          </div>
+                        ) : null}
+                        {m.stop_reason === "refusal" ? (
+                          <div className="tiny">{t("The provider declined to answer this request.")}</div>
+                        ) : null}
+                        {m.stop_reason === "max_tokens" ? (
+                          <div className="tiny">{t("The answer was cut short.")}</div>
+                        ) : null}
+                        <div className="tiny">{formatDateTime(m.at)}</div>
+                      </div>
+                    ))
+                  )}
+                  {conv?.proposals.map((p) => (
+                    <ProposalCard key={p.proposal_id} p={p} onChanged={() => void reloadConv()} />
+                  ))}
+                  <div ref={end} />
+                </div>
+                {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+                <div className="row">
+                  <textarea
+                    className="input grow"
+                    rows={2}
+                    maxLength={4000}
+                    value={text}
+                    aria-label={t("Question")}
+                    placeholder={t("Ask a question")}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        (document.getElementById("ai-send") as HTMLButtonElement | null)?.click();
+                      }
+                    }}
+                  />
+                  <Button
+                    id="ai-send"
+                    variant="primary"
+                    icon={<Send size={16} />}
+                    loading={act.busy}
+                    disabled={!text.trim()}
+                    onClick={async () => {
+                      const r = await act.run(() => api.ai.ask(text, conv?.conversation_id ?? null, getLang()));
+                      if (r) {
+                        setText("");
+                        setConv(r);
+                        setCid(r.conversation_id);
+                        void list.reload();
+                      }
+                    }}
+                  >
+                    {t("Ask")}
+                  </Button>
+                </div>
               </div>
-              {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-              <div className="row">
-                <textarea
-                  className="input grow"
-                  rows={2}
-                  maxLength={4000}
-                  value={text}
-                  aria-label={t("Question")}
-                  placeholder={t("Ask a question")}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      (document.getElementById("ai-send") as HTMLButtonElement | null)?.click();
-                    }
-                  }}
-                />
-                <Button
-                  id="ai-send"
-                  variant="primary"
-                  icon={<Send size={16} />}
-                  loading={act.busy}
-                  disabled={!text.trim()}
-                  onClick={async () => {
-                    const r = await act.run(() => api.ai.ask(text, conv?.conversation_id ?? null, getLang()));
-                    if (r) {
-                      setText("");
-                      setConv(r);
-                      setCid(r.conversation_id);
-                      void list.reload();
-                    }
-                  }}
-                >
-                  {t("Ask")}
-                </Button>
-              </div>
-            </div>
+            )}
           </div>
         )}
       </FeatureGate>
@@ -403,6 +746,7 @@ export function AiSettingsSection() {
   const [key, setKey] = useState("");
   const [header, setHeader] = useState("");
   const [test, setTest] = useState<AiTestResult | null>(null);
+  const [consentReset, setConsentReset] = useState(false);
   const act = useAction();
   useEffect(() => {
     if (data && !s && data.is_owner) setS(data.settings as AiSettings);
@@ -419,6 +763,7 @@ export function AiSettingsSection() {
       setS(r.settings as AiSettings);
       setKey("");
       setHeader("");
+      setConsentReset(!!r.consent_reset);
       toast("success", t("Settings saved"));
     }
   };
@@ -523,6 +868,17 @@ export function AiSettingsSection() {
             onChange={(e) => setS({ ...s, max_output_tokens: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
           />
         ) : null}
+        <TextInput
+          label={t("Daily token limit")}
+          className="num"
+          value={String(s.daily_token_cap ?? 0)}
+          data-testid="ai-daily-cap"
+          hint={t(
+            "Input and output tokens per business day for all users. 0 = no limit. Used today: {0}.",
+            data.tokens_today ?? 0,
+          )}
+          onChange={(e) => setS({ ...s, daily_token_cap: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })}
+        />
         {real ? (
           <TextInput
             label={t("Timeout (ms)")}
@@ -571,6 +927,13 @@ export function AiSettingsSection() {
               checked={s.fallbacks}
               onChange={(x) => setS({ ...s, fallbacks: x })}
             />
+          ) : null}
+          {consentReset ? (
+            <Banner tone="warning" title={t("Agree again for the new provider")}>
+              {t(
+                "You changed to a different AI provider, so the earlier agreement no longer applies. Tick the box below and save.",
+              )}
+            </Banner>
           ) : null}
           <div className="col gap-8">
             <Checkbox

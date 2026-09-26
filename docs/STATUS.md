@@ -154,3 +154,38 @@ and `crates/amwapos-hub/tests/companion.rs` (flag, token, revoke, LAN routes).
 - Errors: `AI_NOT_ENABLED`, `AI_NO_KEY`, `AI_PROVIDER_ERROR`, `AI_TIMEOUT`,
   `AI_MODEL_NOT_FOUND`. Diagnostics export replaces any stored AI secret value.
 - Tests: `crates/amwapos-hub/tests/ai_byok.rs` (loopback stubs only).
+
+## AI: full admin tool map, 2026-09-26
+
+Status: **Partially complete.** Tested here with the offline test model only;
+never run against a live provider, the live WhatsApp phone or Windows Hello.
+
+- `crates/amwapos-core/src/ai_tools.rs`: 71 read tools and 93 `propose_*` tools,
+  each an existing command. A tool is offered only with `admin.access`, one of its
+  permissions, the owner role when owner-only, and its feature flag. The
+  accountant role never gets proposal tools. With `ai.mutations` off, every
+  `propose_*` tool is hidden and refused. Lists are capped at 50 rows.
+- Every other command is listed in `NO_TOOL` with its reason (forbidden, till or
+  setup only, file/binary, or covered by another tool). A test fails when a new
+  command has neither a tool nor a reason.
+- Writes only record a proposal (`command:<cmd>`, migration 0011). Confirm runs
+  the same command through `Runtime::dispatch` with the confirmer's session, so
+  permissions, owner-only rules, manager approval and Windows Hello step-up all
+  apply. A failed human check (wrong PIN, cancelled Hello) leaves the proposal
+  open. Command proposals are irreversible from the AI page (no fake undo).
+- PINs and approval tokens come only from the Confirm card and are never stored
+  or sent to the model. One-time secrets (phone-view link) are returned once to
+  the card and stripped from the stored result. QR, pairing codes, PIN hashes,
+  keys and session data are stripped from every read.
+- Limits: 30 proposals per hour per user, 200 items per bulk proposal, proposals
+  expire after 60 minutes, optional daily token cap (Settings → AI). After DATA is
+  read in a conversation, every proposal is high risk.
+- A reply with figures and no tool call gets one "[AMWAPOS check]" nudge; if it
+  still has no tool call it is shown as **Unverified**. Answers carry evidence
+  chips; record paths become links; a barcode in the question names its product.
+- AI page: action inbox with today's digest, playbook buttons (eod, cash_short,
+  reorder, refund_spike; reads only, no model), before/after diff on each card.
+  Invoice scan: **Improve parse** (`invoicescan.ai_parse`).
+- Consent is per provider: moving between two real providers asks the owner to
+  agree again.
+- Tests: `crates/amwapos-hub/tests/ai_admin.rs` (15), `ai_byok.rs` unchanged.

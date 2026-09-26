@@ -392,6 +392,8 @@ export const api = {
     confirm: (scan_id: string, supplier_id: string, receive = false) =>
       call<T.InvoiceScanDetail>("invoicescan.confirm", { scan_id, supplier_id, receive }),
     reject: (scan_id: string, reason: string) => call<T.InvoiceScan>("invoicescan.reject", { scan_id, reason }),
+    /** Ask the AI provider to re-read the lines ("Improve parse"); the review still applies. */
+    aiParse: (scan_id: string) => call<{ scan_id: string; replaced: boolean }>("invoicescan.ai_parse", { scan_id }),
   },
   updates: {
     status: () => call<T.UpdateStatus>("updates.status"),
@@ -427,7 +429,12 @@ export const api = {
       ),
     conversation: (conversation_id: string) => call<T.AiConversation>("ai.conversation", { conversation_id }),
     proposals: (status?: string) => call<T.AiProposal[]>("ai.proposals", { status }),
-    confirm: (proposal_id: string) => call<T.AiProposal>("ai.proposal_confirm", { proposal_id }),
+    /** Runs the proposal's command with your session; the card supplies approval_token and PIN inputs. */
+    confirm: (proposal_id: string, approval_token?: string | null, inputs?: Record<string, string>) =>
+      call<T.AiConfirmResult>("ai.proposal_confirm", { proposal_id, approval_token, inputs }),
+    digest: (date?: string) => call<T.AiDigest>("ai.digest", { date }),
+    playbook: (name: "eod" | "cash_short" | "reorder" | "refund_spike") =>
+      call<T.AiPlaybookResult>("ai.playbook", { name }),
     reject: (proposal_id: string) => call<T.AiProposal>("ai.proposal_reject", { proposal_id }),
     undo: (proposal_id: string) => call<T.AiProposal>("ai.proposal_undo", { proposal_id }),
   },

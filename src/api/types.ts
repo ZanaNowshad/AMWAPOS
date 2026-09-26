@@ -1084,6 +1084,8 @@ export interface AiSettings {
   consent: boolean;
   consent_by?: string | null;
   consent_at?: string | null;
+  /** Input + output tokens per business day; 0 = no cap. */
+  daily_token_cap: number;
 }
 
 export interface AiStatus {
@@ -1099,6 +1101,10 @@ export interface AiStatus {
   can_mutate: boolean;
   is_owner: boolean;
   ready: boolean;
+  tokens_today?: number;
+  daily_token_cap?: number;
+  /** Set after a save that moved between two real providers: consent must be given again. */
+  consent_reset?: boolean;
 }
 
 export interface AiTestResult {
@@ -1114,7 +1120,8 @@ export interface AiProposal {
   proposal_id: string;
   proposal_number: string;
   conversation_id: string;
-  kind: "price_change" | "stock_adjustment" | "purchase_order";
+  /** The three original kinds, or "command:<admin command>" for the full tool map. */
+  kind: "price_change" | "stock_adjustment" | "purchase_order" | `command:${string}`;
   params: Record<string, unknown>;
   preview: Record<string, unknown>;
   risk: "low" | "medium" | "high";
@@ -1132,8 +1139,33 @@ export interface AiConversation {
   conversation_id: string;
   title: string;
   untrusted_seen: boolean;
-  messages: { role: "user" | "assistant"; text: string; tools: string[]; at: string; stop_reason: string | null }[];
+  messages: {
+    role: "user" | "assistant";
+    text: string;
+    tools: string[];
+    at: string;
+    stop_reason: string | null;
+    /** Tool calls behind this answer (tool, ids it was called with, when). */
+    evidence?: { tool: string; ids: string[]; at: string }[];
+    /** The answer stated figures without a tool result behind them. */
+    unverified?: boolean;
+  }[];
   proposals: AiProposal[];
+}
+
+/** Confirm result: the proposal, plus a one-time secret (e.g. a phone-view link) never stored. */
+export type AiConfirmResult = AiProposal & { once?: Record<string, unknown> };
+
+export interface AiDigest {
+  date: string;
+  counts: { status: string; risk: string; count: number }[];
+  proposals: AiProposal[];
+}
+
+export interface AiPlaybookResult {
+  playbook: string;
+  date: string;
+  steps: { tool: string; ok: boolean; result?: unknown; error?: string }[];
 }
 
 export interface MigrationTable {

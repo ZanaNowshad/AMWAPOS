@@ -1484,6 +1484,7 @@ function ScanDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
     if (r) setData(r);
   };
   const editable = s?.status === "review";
+  const aiParseOn = useFeature("ocr.ai_parse");
   return (
     <Drawer title={s ? `${t("Invoice scan")} ${s.scan_number}` : t("Invoice scan")} onClose={onClose}>
       {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -1646,6 +1647,26 @@ function ScanDrawer({ id, onClose, onChanged }: { id: string; onClose: () => voi
               >
                 {receiveNow ? t("Create order and receive stock") : t("Create draft purchase order")}
               </Button>
+              {aiParseOn && data.ocr_text ? (
+                <Button
+                  loading={act.busy}
+                  data-testid="scan-ai-parse"
+                  onClick={async () => {
+                    const r = await act.run(() => api.invoiceScan.aiParse(id));
+                    if (r) {
+                      toast(
+                        r.replaced ? "success" : "info",
+                        r.replaced
+                          ? t("Lines re-read by the AI provider. Check them again.")
+                          : t("The AI found no better lines."),
+                      );
+                      void reload();
+                    }
+                  }}
+                >
+                  {t("Improve parse")}
+                </Button>
+              ) : null}
               <Button variant="danger" onClick={() => setReject(true)}>
                 {t("Reject scan")}
               </Button>
