@@ -20,6 +20,7 @@ pub mod companion;
 pub mod credit;
 pub mod customers;
 pub mod db;
+pub mod docintel;
 pub mod eod;
 pub mod error;
 pub mod idempotency;

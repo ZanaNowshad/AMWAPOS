@@ -271,39 +271,6 @@ pub fn name_score(a: &str, b: &str) -> i64 {
     inter * 200 / (x.len() + y.len()) as i64
 }
 
-/// Match an invoice line to a product: barcode, then SKU, then name.
-fn match_product(c: &Connection, line: &InvoiceLine) -> AppResult<(Option<String>, &'static str, i64)> {
-    if let Some(code) = &line.code {
-        if let Some(pid) =
-            c.query_row("SELECT product_id FROM product_barcodes WHERE barcode=?1", [code], |r| r.get::<_, String>(0)).optional()?
-        {
-            return Ok((Some(pid), "barcode", 100));
-        }
-        if let Some(pid) =
-            c.query_row("SELECT product_id FROM products WHERE sku=?1 COLLATE NOCASE", [code], |r| r.get::<_, String>(0)).optional()?
-        {
-            return Ok((Some(pid), "sku", 100));
-        }
-    }
-    let first =
-        line.description.split_whitespace().filter(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 3).max_by_key(|w| w.len());
-    let Some(first) = first else { return Ok((None, "none", 0)) };
-    let mut st = c.prepare("SELECT product_id, name FROM products WHERE active=1 AND name LIKE ?1 LIMIT 50")?;
-    let cands = st.query_map([format!("%{}%", first.replace(['%', '_'], ""))], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-    let mut best: Option<(String, i64)> = None;
-    for cand in cands {
-        let (pid, name) = cand?;
-        let s = name_score(&line.description, &name);
-        if best.as_ref().map(|b| s > b.1).unwrap_or(true) {
-            best = Some((pid, s));
-        }
-    }
-    Ok(match best {
-        Some((pid, s)) if s >= 60 => (Some(pid), "name", s),
-        _ => (None, "none", 0),
-    })
-}
-
 // ---------------------------------------------------------------- records
 
 #[derive(Debug, Clone, Serialize)]
@@ -496,6 +463,10 @@ pub struct InvoiceScanLine {
     pub match_kind: String,
     pub match_score: i64,
     pub include: bool,
+}
+
+pub(crate) fn load_scan_pub(c: &Connection, id: &str) -> AppResult<InvoiceScan> {
+    load_scan(c, id)
 }
 
 fn load_scan(c: &Connection, id: &str) -> AppResult<InvoiceScan> {
@@ -804,29 +775,9 @@ impl AppCore {
 
     // ------------------------------------------------------------ invoice scans
 
+    /// Upload a supplier document (image or PDF) for Document Intelligence.
     pub fn inv_import(&self, token: &str, file_name: &str, data_b64: &str, supplier_id: Option<String>) -> AppResult<InvoiceScan> {
-        let s = self.session(token)?;
-        s.require("ocr.scan")?;
-        self.require_feature("ocr.supplier_invoices")?;
-        let id = new_id();
-        let (dst, sha) = store_image(&self.data_dir.join("invoice-scans"), file_name, data_b64, &id)?;
-        let supplier = supplier_id.filter(|x| !x.is_empty()).map(|x| validate::id(&x, "Supplier")).transpose()?;
-        let actor = self.actor(&s, None);
-        self.db.write(|tx| {
-            if let Some(sid) = &supplier {
-                tx.query_row("SELECT 1 FROM suppliers WHERE supplier_id=?1", [sid], |_| Ok(())).optional()?.ok_or_else(|| AppError::not_found("Supplier"))?;
-            }
-            let number = format!("IS-{:05}", next_seq(tx, "invoice_scan")?);
-            let now = time::now_str();
-            tx.execute(
-                "INSERT INTO invoice_scans(scan_id, scan_number, supplier_id, image_path, image_sha256, file_name, status, created_by, created_at, updated_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,'imported',?7,?8,?8)",
-                params![id, number, supplier, dst.to_string_lossy(), sha, file_name.chars().take(200).collect::<String>(), s.user_id, now],
-            )?;
-            audit::record(tx, &actor, "invoice_scan.imported", "invoice_scan", Some(&id), None, Some(&json!({ "number": number })))?;
-            Ok(())
-        })?;
-        self.db.read(|c| load_scan(c, &id))
+        self.doc_import(token, file_name, data_b64, supplier_id)
     }
 
     pub fn inv_list(&self, token: &str, status: Option<String>) -> AppResult<Vec<InvoiceScan>> {
@@ -1079,22 +1030,24 @@ impl AppCore {
 
     /// Runtime: store OCR output (or the failure) for a job.
     pub fn ocr_result(&self, kind: &str, id: &str, result: Result<(String, i64), String>) -> AppResult<()> {
+        if kind == "invoice" {
+            // Text without positions (older worker / tests): same analysis.
+            return match result {
+                Ok((text, conf)) => self.doc_ocr_done(
+                    id,
+                    crate::docintel::service::DocOcr {
+                        layout: crate::docintel::layout::Layout::from_text(&text, conf),
+                        page_count: 1,
+                        ..Default::default()
+                    },
+                ),
+                Err(e) => self.doc_failed(id, &e),
+            };
+        }
         let now = time::now_str();
         let digits = self.db.read(|c| self.currency(c))?.1;
         self.db.write(|tx| {
             match (kind, result) {
-                ("invoice", Ok((text, conf))) => {
-                    let ex = parse_invoice(&text, digits);
-                    store_invoice_lines(tx, id, &ex)?;
-                    tx.execute(
-                        "UPDATE invoice_scans SET status='review', ocr_text=?2, ocr_confidence=?3, invoice_number=?4, invoice_date=?5, total_minor=?6, error=NULL, updated_at=?7
-                         WHERE scan_id=?1 AND status='imported'",
-                        params![id, text.chars().take(50_000).collect::<String>(), conf, ex.invoice_number, ex.invoice_date, ex.total_minor, now],
-                    )?;
-                }
-                ("invoice", Err(e)) => {
-                    tx.execute("UPDATE invoice_scans SET status='failed', error=?2, updated_at=?3 WHERE scan_id=?1", params![id, e, now])?;
-                }
                 ("payment", Ok((text, conf))) => {
                     let ex = parse_payment(&text, digits);
                     let (expected, dup): (Option<i64>, Option<String>) = tx.query_row(
@@ -1134,95 +1087,12 @@ impl AppCore {
     }
 }
 
-/// Replace a scan's lines and match each to a product (barcode, SKU, name).
-fn store_invoice_lines(tx: &Connection, id: &str, ex: &InvoiceExtract) -> AppResult<()> {
-    tx.execute("DELETE FROM invoice_scan_lines WHERE scan_id=?1", [id])?;
-    for (i, l) in ex.lines.iter().enumerate() {
-        let (pid, kind, score) = match_product(tx, l)?;
-        tx.execute(
-            "INSERT INTO invoice_scan_lines(scan_id, line_no, raw_text, description, code, qty_milli, unit_cost_minor, line_total_minor, product_id, match_kind, match_score, include)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,1)",
-            params![id, i as i64 + 1, l.raw_text, l.description, l.code, l.qty_milli, l.unit_cost_minor, l.line_total_minor, pid, kind, score],
-        )?;
-    }
-    Ok(())
-}
-
-/// Validate an AI extraction (untrusted JSON) into the same shape the rules
-/// parser produces. Anything malformed is dropped, never guessed.
-pub fn ai_extract_to_invoice(v: &Value, digits: u32) -> Option<InvoiceExtract> {
-    let dec = |x: &Value| -> Option<i64> {
-        let s = match x {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            _ => return None,
-        };
-        crate::money::parse_decimal(s.trim(), digits).ok().filter(|m| *m >= 0)
-    };
-    let qty = |x: &Value| -> Option<i64> {
-        let s = match x {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            _ => return None,
-        };
-        crate::money::parse_decimal(s.trim(), 3).ok().filter(|m| *m > 0)
-    };
-    let text = |x: &Value, max: usize| x.as_str().map(|s| s.trim().chars().take(max).collect::<String>()).filter(|s| !s.is_empty());
-    let lines: Vec<InvoiceLine> = v
-        .get("lines")?
-        .as_array()?
-        .iter()
-        .take(300)
-        .filter_map(|l| {
-            let description = text(&l["description"], 200)?;
-            Some(InvoiceLine {
-                raw_text: description.clone(),
-                code: text(&l["code"], 40),
-                qty_milli: qty(&l["qty"]),
-                unit_cost_minor: dec(&l["unit_cost"]),
-                line_total_minor: dec(&l["line_total"]),
-                description,
-            })
-        })
-        .collect();
-    if lines.is_empty() {
-        return None;
-    }
-    let date = text(&v["invoice_date"], 10).filter(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").is_ok());
-    Some(InvoiceExtract { invoice_number: text(&v["invoice_number"], 60), invoice_date: date, total_minor: dec(&v["total"]), lines })
-}
-
 impl AppCore {
-    /// Runtime: apply an AI extraction to a scan still waiting for review.
-    /// The lines are matched to products like any other parse and a person
-    /// still confirms them. Returns false when nothing was applied.
+    /// Runtime: apply an AI reading to a scan still waiting for review (see
+    /// `docintel::service::doc_apply_ai`). Returns false when nothing was applied.
     pub fn inv_apply_ai_parse(&self, scan_id: &str, v: &Value) -> AppResult<bool> {
-        let digits = self.db.read(|c| self.currency(c))?.1;
-        let Some(ex) = ai_extract_to_invoice(v, digits) else { return Ok(false) };
-        let system = audit::Actor { user_id: None, device_id: None, branch_id: None, approved_by: None };
-        self.db.write(|tx| {
-            let status: Option<String> =
-                tx.query_row("SELECT status FROM invoice_scans WHERE scan_id=?1", [scan_id], |r| r.get(0)).optional()?;
-            if status.as_deref() != Some("review") {
-                return Ok(false);
-            }
-            store_invoice_lines(tx, scan_id, &ex)?;
-            tx.execute(
-                "UPDATE invoice_scans SET parser='ai', invoice_number=COALESCE(?2, invoice_number), invoice_date=COALESCE(?3, invoice_date),
-                    total_minor=COALESCE(?4, total_minor), updated_at=?5 WHERE scan_id=?1",
-                params![scan_id, ex.invoice_number, ex.invoice_date, ex.total_minor, time::now_str()],
-            )?;
-            audit::record(
-                tx,
-                &system,
-                "invoice_scan.ai_parsed",
-                "invoice_scan",
-                Some(scan_id),
-                None,
-                Some(&json!({ "lines": ex.lines.len() })),
-            )?;
-            Ok(true)
-        })
+        let model = self.ai_settings_pub().map(|s| format!("{}:{}", s.provider, s.model_id)).unwrap_or_default();
+        self.doc_apply_ai(scan_id, v, &model)
     }
 }
 

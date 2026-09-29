@@ -168,10 +168,18 @@ pub struct InventorySettings {
     pub costing_method: String,
     pub require_adjust_reason: bool,
     pub stocktake_blind_default: bool,
+    /// Supplier documents: flag a unit cost that differs from the PO cost by
+    /// at least this much (basis points; 500 = 5%).
+    pub invoice_cost_variance_bp: i64,
 }
 impl Default for InventorySettings {
     fn default() -> Self {
-        Self { costing_method: "weighted_average".into(), require_adjust_reason: true, stocktake_blind_default: true }
+        Self {
+            costing_method: "weighted_average".into(),
+            require_adjust_reason: true,
+            stocktake_blind_default: true,
+            invoice_cost_variance_bp: 500,
+        }
     }
 }
 
