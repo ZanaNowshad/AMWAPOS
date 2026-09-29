@@ -1434,8 +1434,9 @@ impl AppCore {
         s.require("inventory.receive")?;
         let id = validate::id(draft_id, "Receiving draft")?;
         let op = operation_id.trim();
-        if op.is_empty() || op.len() > 100 {
-            return Err(AppError::validation("An operation id is required."));
+        // Two receipts may come from one post: "<op>-po" and "<op>-direct".
+        if op.len() < 16 || op.len() > 56 {
+            return Err(AppError::validation("A valid operation id (16–56 characters) is required."));
         }
         let head = self.receiving_draft_get(token, &id)?;
         if head["status"] == "posted" {
