@@ -74,9 +74,17 @@ fn eval_documents() -> (Score, Value) {
         e.core.supplier_save(t, None, serde_json::from_value(s.clone()).unwrap()).unwrap();
     }
     for p in data["products"].as_array().unwrap() {
-        e.product(p["name"].as_str().unwrap(), p["barcode"].as_str().unwrap(), p["price_minor"].as_i64().unwrap(), p["cost_minor"].as_i64().unwrap(), 0);
+        e.product(
+            p["name"].as_str().unwrap(),
+            p["barcode"].as_str().unwrap(),
+            p["price_minor"].as_i64().unwrap(),
+            p["cost_minor"].as_i64().unwrap(),
+            0,
+        );
     }
-    let stock = |e: &Env| -> i64 { e.core.db.read(|c| Ok(c.query_row("SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels", [], |r| r.get(0))?)).unwrap() };
+    let stock = |e: &Env| -> i64 {
+        e.core.db.read(|c| Ok(c.query_row("SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels", [], |r| r.get(0))?)).unwrap()
+    };
     let stock_before = stock(&e);
     let mut sc = Score::default();
     for (i, case) in data["cases"].as_array().unwrap().iter().enumerate() {
@@ -240,7 +248,8 @@ fn evaluation_dataset() {
     // Safety first: never a wrong product or supplier.
     assert!(d.unsafe_.is_empty() && w.unsafe_.is_empty(), "unsafe results: {:?} {:?}", d.unsafe_, w.unsafe_);
     // Quality floors (the synthetic set is small: these guard regressions).
-    for f in ["doc_type", "supplier", "invoice_number", "invoice_date", "total", "line_qty", "line_unit_cost", "line_total", "line_product"] {
+    for f in ["doc_type", "supplier", "invoice_number", "invoice_date", "total", "line_qty", "line_unit_cost", "line_total", "line_product"]
+    {
         assert!(d.pct(f) >= 85.0, "documents {f} accuracy {:.1}% < 85%", d.pct(f));
     }
     for f in ["intent", "line_product", "line_qty"] {
