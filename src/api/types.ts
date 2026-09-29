@@ -116,6 +116,8 @@ export interface FeatureFlags {
   "inventory.locations": boolean;
   "loyalty.enabled": boolean;
   "orders.digital": boolean;
+  "orders.whatsapp_ai": boolean;
+  "orders.whatsapp_upsell": boolean;
   "org.multi_branch": boolean;
   "pwa.companion": boolean;
 }
@@ -1824,4 +1826,387 @@ export interface WaCatalogProductState {
   last_synced_at?: string | null;
   last_error?: string | null;
   not_publishable?: "archived" | "no_name" | "no_price" | null;
+}
+
+// ---- Document Intelligence (supplier documents → review → drafts)
+
+/** Confidence band shown next to every extracted value. */
+export type Band = "high" | "medium" | "low" | "unresolved";
+
+export interface DocEvidence {
+  page: number | null;
+  line: number | null;
+  /** 0..1 of the page: left, top, width, height. */
+  bbox: [number, number, number, number] | null;
+  text: string | null;
+  ocr_conf: number | null;
+}
+
+export interface DocField<T = string | number | null> {
+  value: T | null;
+  raw: string | null;
+  evidence: DocEvidence | null;
+  /** rules | ai | person | learned */
+  source: string;
+  band: Band;
+  /** ok | missing | conflict | corrected */
+  status: string;
+  note: string | null;
+}
+
+export interface DocCandidate {
+  id: string;
+  name: string;
+  score: number;
+  reasons: string[];
+}
+
+export interface DocLine {
+  line_no: number;
+  raw_text: string;
+  description: string | null;
+  code: string | null;
+  barcode: string | null;
+  barcode_valid: boolean | null;
+  qty_milli: number | null;
+  unit: string | null;
+  case_qty_milli: number | null;
+  units_per_case: number | null;
+  base_qty_milli: number | null;
+  pack_text: string | null;
+  pack_clear: boolean;
+  unit_cost_minor: number | null;
+  discount_minor: number | null;
+  vat_rate_bp: number | null;
+  vat_minor: number | null;
+  line_total_minor: number | null;
+  product_id: string | null;
+  product_name: string | null;
+  match_kind: string;
+  match_score: number;
+  match_band: Band;
+  candidates: DocCandidate[] | null;
+  reasons: string[] | null;
+  evidence: DocEvidence | null;
+  flags: string[] | null;
+  include: boolean;
+  new_product: boolean;
+  corrected: boolean;
+  po_item_id: string | null;
+  last_cost_minor: number | null;
+}
+
+export interface DocIssue {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  line_no?: number;
+}
+
+export interface DocReconLine {
+  product_id: string | null;
+  product_name: string | null;
+  line_no: number | null;
+  ordered_milli: number | null;
+  received_milli: number | null;
+  invoiced_milli: number | null;
+  po_cost_minor: number | null;
+  invoice_cost_minor: number | null;
+  cost_variance_minor: number | null;
+  cost_variance_pct: string | null;
+  states: string[];
+  notes: string[];
+}
+
+export interface DocDetail {
+  scan: InvoiceScan;
+  revision: number;
+  stage: string;
+  mime: string | null;
+  source: string;
+  inbox_seq: number | null;
+  page_count: number | null;
+  ai_model: string | null;
+  corrections: number;
+  classification: { doc_type: string; band: Band | null; source: string | null; reasons: string[] };
+  quality: {
+    status?: string | null;
+    messages?: string[];
+    pages?: { page: number; status?: string; messages?: string[] }[];
+  };
+  fields: Record<string, DocField> | null;
+  supplier_match: {
+    id: string | null;
+    name: string | null;
+    kind: string;
+    score: number;
+    band: Band;
+    reasons: string[];
+    alternatives: { id: string; name: string; score: number; reasons: string[] }[];
+  } | null;
+  validation: {
+    arithmetic_ok: boolean;
+    vat_ok: boolean;
+    calc_total_minor: number | null;
+    calc_vat_minor: number | null;
+    lines_net_minor: number;
+    line_basis: string;
+    issues: DocIssue[];
+  } | null;
+  duplicates: { kind: string; scan_id: string; scan_number: string; status: string; reasons: string[] }[] | null;
+  anomalies: { code: string; message: string; line_no?: number }[] | null;
+  recon: {
+    po_id: string | null;
+    po_number: string | null;
+    po_status: string | null;
+    selected_by: string | null;
+    candidates: { po_id: string; po_number: string; status: string; score: number; reasons: string[] }[];
+    three_way: boolean;
+    lines: DocReconLine[];
+    summary: string[];
+  } | null;
+  summary: string | null;
+  lines: DocLine[];
+  receive: {
+    line_no: number;
+    receive_qty_milli: number | null;
+    receive_unit_cost_minor: number | null;
+    cost_exact: boolean;
+  }[];
+  supplier_invoice_id: string | null;
+  receiving_draft_id: string | null;
+}
+
+export interface DocMetrics {
+  documents: number;
+  read: number;
+  failed: number;
+  lines: number;
+  extraction_success_pct: number;
+  ocr_failure_pct: number;
+  supplier_auto_match_pct: number;
+  product_auto_match_pct: number;
+  correction_rate_pct: number;
+  duplicates_detected: number;
+  avg_processing_seconds: number;
+}
+
+export interface ReceivingDraftLine {
+  line_no: number;
+  product_id: string;
+  product_name: string;
+  description: string;
+  qty_milli: number;
+  unit_cost_minor: number;
+  case_qty_milli: number | null;
+  units_per_case: number | null;
+  po_item_id: string | null;
+  scan_line_no: number | null;
+}
+
+export interface ReceivingDraft {
+  draft_id: string;
+  number: string;
+  status: string;
+  supplier_id: string;
+  supplier_name: string;
+  po_id: string | null;
+  po_number: string | null;
+  scan_id: string | null;
+  scan_number: string | null;
+  reference: string | null;
+  created_at: string;
+  posted_at: string | null;
+  posted_by_name: string | null;
+  revision: number;
+  total_minor: number;
+  lines?: ReceivingDraftLine[];
+}
+
+export interface SupplierInvoiceLine {
+  line_no: number;
+  description: string;
+  product_id: string | null;
+  product_name: string | null;
+  qty_milli: number | null;
+  unit_cost_minor: number | null;
+  vat_rate_bp: number | null;
+  vat_minor: number | null;
+  line_total_minor: number | null;
+}
+
+export interface SupplierInvoice {
+  invoice_id: string;
+  number: string;
+  status: string;
+  doc_type: string;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  supplier_name: string;
+  total_minor: number | null;
+  created_at: string;
+  subtotal_minor?: number | null;
+  vat_minor?: number | null;
+  due_date?: string | null;
+  posting?: string;
+  posting_note?: string;
+  scan_id?: string | null;
+  scan_number?: string | null;
+  approved_by_name?: string | null;
+  lines?: SupplierInvoiceLine[];
+}
+
+// ---- WhatsApp AI orders (conversation → draft digital order → staff review)
+
+export interface WaOrderRow {
+  session_id: string;
+  chat: string;
+  phone: string | null;
+  push_name: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_state: string;
+  order_id: string | null;
+  order_number: string | null;
+  order_status: string | null;
+  payment_state: string | null;
+  state: string;
+  intent: string | null;
+  priority: string;
+  priority_reasons: string[] | null;
+  open_questions: number;
+  ai_status: string;
+  staff_takeover: boolean;
+  handled: boolean;
+  last_message: string | null;
+  last_message_at: string | null;
+  delivery_mode: string;
+  delivery_fee_minor: number | null;
+  subtotal_minor?: number;
+  total_minor?: number;
+  complete?: boolean;
+  updated_at: string;
+}
+
+export interface WaOrderOption {
+  product_id: string;
+  name: string;
+  name_ar?: string | null;
+  price_minor: number | null;
+  availability: string;
+  stock_milli?: number | null;
+  score?: number;
+  reasons?: string[];
+}
+
+export interface WaOrderQuestion {
+  id: string;
+  kind: string;
+  line_no?: number | null;
+  text: string;
+  options: WaOrderOption[];
+}
+
+export interface WaOrderLine {
+  line_no: number;
+  product_id: string | null;
+  name: string;
+  requested: string | null;
+  qty_milli: number;
+  unit_price_minor: number | null;
+  line_total_minor: number | null;
+  resolution: string;
+  availability: string;
+  locked: boolean;
+  note: string | null;
+  candidates: WaOrderOption[] | null;
+  alternatives?: WaOrderOption[];
+}
+
+export interface WaOrderDetail {
+  session: {
+    session_id: string;
+    chat: string;
+    phone: string | null;
+    customer_id: string | null;
+    customer_name: string | null;
+    customer_state: string;
+    customer_candidates: { customer_id: string; name: string }[] | null;
+    order_id: string | null;
+    state: string;
+    intent: string | null;
+    priority: string;
+    priority_reasons: string[] | null;
+    delivery_mode: string;
+    address: { area: string | null; parts: AddressParts | null } | null;
+    address_raw: string | null;
+    address_source: string | null;
+    zone_id: string | null;
+    delivery_fee_minor: number | null;
+    fee_state: string;
+    ai_status: string;
+    staff_takeover: boolean;
+    handled: boolean;
+    assigned_to: string | null;
+    questions: WaOrderQuestion[];
+    revision: number;
+    created_at: string;
+    updated_at: string;
+  };
+  messages: {
+    seq: number;
+    dir: "in" | "out";
+    kind: string;
+    text: string | null;
+    at: string;
+    intent?: string | null;
+    status?: string | null;
+  }[];
+  order: {
+    order_id: string;
+    order_number: string;
+    status: string;
+    payment_state: string;
+    lines: WaOrderLine[];
+    subtotal_minor: number;
+    delivery_fee_minor: number | null;
+    total_minor: number;
+    complete: boolean;
+  } | null;
+  payment_evidence?: {
+    review_id: string;
+    review_number: string;
+    status: string;
+    detected_minor: number | null;
+    detected_reference: string | null;
+    ocr_status: string | null;
+    verified: boolean;
+  }[];
+  upsell?: { product_id: string; name: string; price_minor: number | null; reason: string }[];
+  product_info?: { product_id: string; name: string; price_minor: number | null; availability: string }[];
+  events: { seq: number | null; kind: string; source: string; user: string | null; at: string; data: unknown }[];
+  suggested_reply: string;
+  summary: string;
+}
+
+export interface WaOrderMetrics {
+  messages_processed: number;
+  order_intents: number;
+  drafts: number;
+  confirmed: number;
+  conversion_pct: number;
+  clarification_rate_pct: number;
+  product_resolution_pct: number;
+  staff_overrides: number;
+  failed_jobs: number;
+}
+
+export interface DeliveryZone {
+  zone_id: string;
+  name: string;
+  blocks: { from: number; to: number }[];
+  areas: string[];
+  fee_minor: number;
+  free_over_minor: number | null;
+  active: boolean;
 }

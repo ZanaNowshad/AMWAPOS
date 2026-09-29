@@ -46,6 +46,7 @@ import {
   ArrowLeftRight,
   CalendarCheck,
   Smartphone,
+  ShoppingBag,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, EndOfDayPage, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
@@ -74,6 +75,8 @@ import {
   UpdatesPage,
 } from "./system";
 import { WhatsAppPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
+import { DocumentReviewPage } from "./documents";
+import { WhatsAppOrdersPage } from "./waOrders";
 import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
 import { t } from "../../i18n";
@@ -169,9 +172,9 @@ const NAV: { group: string; items: NavItem[] }[] = [
       },
       {
         path: "invoice-scan",
-        label: t("Invoice Scan"),
+        label: t("Supplier documents"),
         icon: FileScan,
-        perm: "purchasing.manage",
+        perm: ["ocr.scan", "purchasing.manage"],
         element: InvoiceScanPage,
       },
     ],
@@ -217,6 +220,14 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: t("AUTOMATION"),
     items: [
       { path: "whatsapp", label: t("WhatsApp"), icon: MessageCircle, perm: "whatsapp.manage", element: WhatsAppPage },
+      {
+        path: "whatsapp-orders",
+        label: t("WhatsApp orders"),
+        icon: ShoppingBag,
+        perm: ["orders.manage", "whatsapp.manage", "whatsapp.send"],
+        element: WhatsAppOrdersPage,
+        feature: "orders.whatsapp_ai",
+      },
       {
         path: "payment-reviews",
         label: t("Payment Reviews"),
@@ -270,6 +281,7 @@ const EXTRA: { path: string; perm?: string | string[]; element: ComponentType }[
   { path: "stocktake/:id", perm: "stocktake.manage", element: StocktakeDetailPage },
   { path: "suppliers/:id", perm: "suppliers.manage", element: SupplierDetailPage },
   { path: "purchase-orders/:id", perm: ["purchasing.manage", "inventory.receive"], element: PoEditorPage },
+  { path: "invoice-scan/:id", perm: ["ocr.scan", "purchasing.manage"], element: DocumentReviewPage },
   { path: "customers/:id", perm: "customers.view", element: CustomerDetailPage },
   { path: "reports/:key", perm: undefined, element: ReportViewer },
   { path: "roles", perm: "users.manage", element: RolesPage },
@@ -359,7 +371,10 @@ function Shell() {
   const features = config?.features;
   const allowed = (perm?: string | string[]) => !perm || (Array.isArray(perm) ? perm.some(has) : has(perm));
   const visible = (i: NavItem) => allowed(i.perm) && (!i.feature || !!features?.[i.feature]);
-  const current = NAV.flatMap((g) => g.items).find((i) => loc.pathname.startsWith("/admin/" + i.path));
+  // The longest match wins ("whatsapp-orders" over "whatsapp").
+  const current = NAV.flatMap((g) => g.items)
+    .filter((i) => loc.pathname === "/admin/" + i.path || loc.pathname.startsWith("/admin/" + i.path + "/"))
+    .sort((a, b) => b.path.length - a.path.length)[0];
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenu(false);

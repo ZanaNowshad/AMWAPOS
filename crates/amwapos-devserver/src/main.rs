@@ -4,7 +4,12 @@
 //! exact same `Runtime`/`AppCore` the desktop app uses. It exists so the UI can
 //! be developed and end-to-end tested in a browser. It is never packaged.
 //!
-//! Usage: amwapos-devserver --data-dir DIR [--port 8787] [--static DIR]
+//! Usage: amwapos-devserver --data-dir DIR [--port 8787] [--static DIR] [--fake-whatsapp]
+//!
+//! `--fake-whatsapp` links the in-memory WhatsApp adapter instead of the real
+//! client and adds `POST /dev/whatsapp` (`{"action":"scan"}`, `{"action":
+//! "deliver","messages":[Inbound…]}`, `{"action":"sent"}`) so end-to-end tests
+//! can drive customer chats without a phone.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -12,6 +17,7 @@ use std::sync::Arc;
 
 use amwapos_core::service::{AppCore, SecretStore};
 use amwapos_core::{AppError, AppResult};
+use amwapos_hub::whatsapp::FakeAdapter;
 use amwapos_hub::Runtime;
 use axum::extract::State;
 use axum::http::{header, StatusCode, Uri};
@@ -75,6 +81,7 @@ struct Rpc {
 
 struct AppState {
     rt: Option<Arc<Runtime>>,
+    fake_wa: Option<FakeAdapter>,
     startup_error: Option<amwapos_core::AppError>,
     static_dir: Option<PathBuf>,
 }
@@ -88,6 +95,31 @@ async fn rpc(State(st): State<Arc<AppState>>, Json(req): Json<Rpc>) -> Response 
     match res {
         Ok(v) => Json(json!({ "ok": true, "data": v })).into_response(),
         Err(e) => Json(json!({ "ok": false, "error": e })).into_response(),
+    }
+}
+
+async fn dev_whatsapp(State(st): State<Arc<AppState>>, Json(req): Json<Value>) -> Response {
+    let Some(fake) = &st.fake_wa else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match req["action"].as_str() {
+        Some("scan") => {
+            fake.scan();
+            Json(json!({ "ok": true })).into_response()
+        }
+        Some("deliver") => {
+            let batch: Vec<amwapos_core::messaging::Inbound> = match serde_json::from_value(req["messages"].clone()) {
+                Ok(b) => b,
+                Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+            };
+            let ok = fake.deliver(batch).await;
+            Json(json!({ "ok": ok })).into_response()
+        }
+        Some("sent") => {
+            Json(json!({ "ok": true, "sent": fake.sent().iter().map(|m| json!({ "to": m.to, "text": m.text })).collect::<Vec<_>>() }))
+                .into_response()
+        }
+        _ => StatusCode::BAD_REQUEST.into_response(),
     }
 }
 
@@ -130,10 +162,16 @@ async fn main() {
     let port: u16 = get("--port").and_then(|p| p.parse().ok()).unwrap_or(8787);
     let static_dir = get("--static").map(PathBuf::from);
     let _ = std::fs::create_dir_all(&data_dir);
+    // The WhatsApp session file needs an absolute path.
+    let data_dir = std::path::absolute(&data_dir).unwrap_or(data_dir);
     let secrets = DevFileSecretStore { path: data_dir.parent().unwrap_or(&data_dir).join("dev-secrets.json"), lock: Default::default() };
+    let fake_wa = args.iter().any(|a| a == "--fake-whatsapp").then(FakeAdapter::new);
     let (rt, startup_error) = match AppCore::open(&data_dir, Arc::new(secrets)) {
         Ok(core) => {
             let rt = Runtime::new(Arc::new(core));
+            if let Some(f) = &fake_wa {
+                rt.set_whatsapp_adapter(Arc::new(f.clone()));
+            }
             rt.ensure_services();
             (Some(rt), None)
         }
@@ -142,8 +180,8 @@ async fn main() {
             (None, Some(e))
         }
     };
-    let st = Arc::new(AppState { rt, startup_error, static_dir });
-    let app = Router::new().route("/rpc", post(rpc)).fallback(static_files).with_state(st);
+    let st = Arc::new(AppState { rt, fake_wa, startup_error, static_dir });
+    let app = Router::new().route("/rpc", post(rpc)).route("/dev/whatsapp", post(dev_whatsapp)).fallback(static_files).with_state(st);
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
     tracing::info!(%addr, data_dir = %data_dir.display(), "AMWAPOS dev bridge listening (loopback only)");

@@ -10,9 +10,19 @@ export function useFeature(name: FeatureName): boolean {
   const { config } = useSession();
   const f = config?.features;
   if (!f) return false;
-  const parent = FEATURE_PARENT[name];
-  return !!f[name] && (!parent || !!f[parent]);
+  // A sub-feature counts only when every module above it is on too.
+  let n: FeatureName | undefined = name;
+  while (n) {
+    if (!f[n] || !(FEATURE_ALSO[n] ?? []).every((x) => !!f[x])) return false;
+    n = FEATURE_PARENT[n];
+  }
+  return true;
 }
+
+/** Other modules a feature needs besides its parent. */
+export const FEATURE_ALSO: Partial<Record<FeatureName, FeatureName[]>> = {
+  "orders.whatsapp_ai": ["whatsapp.enabled"],
+};
 
 /** A sub-feature counts only when its parent module is on. */
 export const FEATURE_PARENT: Partial<Record<FeatureName, FeatureName>> = {
@@ -23,6 +33,8 @@ export const FEATURE_PARENT: Partial<Record<FeatureName, FeatureName>> = {
   "whatsapp.delivery_notices": "whatsapp.enabled",
   "ocr.payment_screenshots": "ocr.enabled",
   "ocr.supplier_invoices": "ocr.enabled",
+  "orders.whatsapp_ai": "orders.digital",
+  "orders.whatsapp_upsell": "orders.whatsapp_ai",
 };
 
 export const FEATURE_LABELS: Record<FeatureName, () => string> = {
@@ -32,8 +44,8 @@ export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   "whatsapp.delivery_notices": () => t("WhatsApp: delivery notices"),
   "ocr.enabled": () => t("Local OCR"),
   "ocr.payment_screenshots": () => t("OCR: payment screenshot reviews"),
-  "ocr.supplier_invoices": () => t("OCR: supplier invoice scanning"),
-  "ocr.ai_parse": () => t("OCR: AI line extraction for invoices"),
+  "ocr.supplier_invoices": () => t("OCR: supplier documents (invoices, credit notes, delivery notes)"),
+  "ocr.ai_parse": () => t("OCR: AI help for unresolved document values"),
   "ai.enabled": () => t("AI assistant (read-only questions)"),
   "ai.mutations": () => t("AI proposed changes (preview and confirm)"),
   "ai.dual_control": () => t("AI: two people confirm high-risk changes"),
@@ -44,6 +56,8 @@ export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   "inventory.locations": () => t("Stock locations and transfers"),
   "loyalty.enabled": () => t("Loyalty points"),
   "orders.digital": () => t("Digital orders (phone, WhatsApp, web)"),
+  "orders.whatsapp_ai": () => t("WhatsApp orders: read chats into draft orders"),
+  "orders.whatsapp_upsell": () => t("WhatsApp orders: suggest related items to staff"),
   "org.multi_branch": () => t("Multiple branches"),
   "pwa.companion": () => t("Owner phone view"),
 };

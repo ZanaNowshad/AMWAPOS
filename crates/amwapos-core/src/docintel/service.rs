@@ -111,6 +111,8 @@ pub struct DocLinePatch {
     pub unit: Option<String>,
     pub include: Option<bool>,
     pub new_product: Option<bool>,
+    /// true: the row is not an item (left out of checks and drafts).
+    pub not_item: Option<bool>,
 }
 
 fn j<T: serde::de::DeserializeOwned + Default>(s: Option<String>) -> T {
@@ -156,7 +158,7 @@ fn threshold_bp(c: &Connection) -> AppResult<i64> {
 pub fn load_lines(c: &Connection, id: &str) -> AppResult<Vec<LineData>> {
     let mut st = c.prepare(
         "SELECT l.line_no, COALESCE(l.description, l.raw_text), l.product_id, p.name, l.qty_milli, l.base_qty_milli, l.units_per_case, l.unit_cost_minor,
-                l.discount_minor, l.vat_rate_bp, l.vat_minor, l.line_total_minor, l.include, l.po_item_id, l.new_product
+                l.discount_minor, l.vat_rate_bp, l.vat_minor, l.line_total_minor, l.include, l.po_item_id, l.new_product, l.flags_json
          FROM invoice_scan_lines l LEFT JOIN products p ON p.product_id=l.product_id WHERE l.scan_id=?1 ORDER BY l.line_no",
     )?;
     let rows = st
@@ -177,6 +179,7 @@ pub fn load_lines(c: &Connection, id: &str) -> AppResult<Vec<LineData>> {
                 include: r.get::<_, i64>(12)? == 1,
                 po_item_id: r.get(13)?,
                 new_product: r.get::<_, i64>(14)? == 1,
+                not_item: r.get::<_, Option<String>>(15)?.is_some_and(|f| f.contains("\"not_item\"")),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1080,7 +1083,29 @@ impl AppCore {
             }
             if let Some(inc) = p.include {
                 tx.execute("UPDATE invoice_scan_lines SET include=?3 WHERE scan_id=?1 AND line_no=?2", params![id, p.line_no, inc as i64])?;
+                if inc {
+                    // Using a line again means it is an item after all.
+                    tx.execute(
+                        "UPDATE invoice_scan_lines SET flags_json=REPLACE(REPLACE(flags_json, ',\"not_item\"', ''), '\"not_item\"', '')
+                         WHERE scan_id=?1 AND line_no=?2 AND flags_json LIKE '%not_item%'",
+                        params![id, p.line_no],
+                    )?;
+                }
                 changed.insert("include".into(), json!(inc));
+            }
+            if let Some(ni) = p.not_item {
+                let flags: Option<String> =
+                    tx.query_row("SELECT flags_json FROM invoice_scan_lines WHERE scan_id=?1 AND line_no=?2", params![id, p.line_no], |r| r.get(0))?;
+                let mut f: Vec<String> = flags.and_then(|x| serde_json::from_str(&x).ok()).unwrap_or_default();
+                f.retain(|x| x != "not_item");
+                if ni {
+                    f.push("not_item".into());
+                }
+                tx.execute(
+                    "UPDATE invoice_scan_lines SET flags_json=?3, include=CASE WHEN ?4 THEN 0 ELSE include END WHERE scan_id=?1 AND line_no=?2",
+                    params![id, p.line_no, serde_json::to_string(&f)?, ni],
+                )?;
+                changed.insert("not_item".into(), json!(ni));
             }
             if let Some(n) = p.new_product {
                 tx.execute("UPDATE invoice_scan_lines SET new_product=?3 WHERE scan_id=?1 AND line_no=?2", params![id, p.line_no, n as i64])?;
@@ -1305,18 +1330,30 @@ impl AppCore {
         self.db.read(|c| {
             let mut st = c.prepare(
                 "SELECT d.draft_id, d.number, d.status, s.name, d.po_id, po.po_number, d.reference, d.created_at,
-                        (SELECT COUNT(*) FROM receiving_draft_lines l WHERE l.draft_id=d.draft_id),
-                        (SELECT COALESCE(SUM(l.qty_milli * l.unit_cost_minor / 1000),0) FROM receiving_draft_lines l WHERE l.draft_id=d.draft_id)
+                        (SELECT COUNT(*) FROM receiving_draft_lines l WHERE l.draft_id=d.draft_id), d.scan_id, x.scan_number
                  FROM receiving_drafts d JOIN suppliers s ON s.supplier_id=d.supplier_id LEFT JOIN purchase_orders po ON po.po_id=d.po_id
+                 LEFT JOIN invoice_scans x ON x.scan_id=d.scan_id
                  WHERE (?1 IS NULL OR d.status=?1) ORDER BY d.created_at DESC LIMIT 300",
             )?;
-            let rows = st
+            let mut rows = st
                 .query_map([status.filter(|x| !x.is_empty())], |r| {
                     Ok(json!({ "draft_id": r.get::<_, String>(0)?, "number": r.get::<_, String>(1)?, "status": r.get::<_, String>(2)?, "supplier_name": r.get::<_, String>(3)?,
                                "po_id": r.get::<_, Option<String>>(4)?, "po_number": r.get::<_, Option<String>>(5)?, "reference": r.get::<_, Option<String>>(6)?,
-                               "created_at": r.get::<_, String>(7)?, "lines": r.get::<_, i64>(8)?, "estimate_minor": r.get::<_, i64>(9)? }))
+                               "created_at": r.get::<_, String>(7)?, "lines": r.get::<_, i64>(8)?, "scan_id": r.get::<_, Option<String>>(9)?,
+                               "scan_number": r.get::<_, Option<String>>(10)? }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
+            // Cost total with the same exact rounding as the draft itself.
+            let mut lt = c.prepare("SELECT unit_cost_minor, qty_milli FROM receiving_draft_lines WHERE draft_id=?1")?;
+            for r in rows.iter_mut() {
+                let id = r["draft_id"].as_str().unwrap_or_default().to_string();
+                let mut total = 0i64;
+                for x in lt.query_map([&id], |q| Ok((q.get::<_, i64>(0)?, q.get::<_, i64>(1)?)))? {
+                    let (cost, qty) = x?;
+                    total += crate::money::extend(cost, qty)?;
+                }
+                r["total_minor"] = json!(total);
+            }
             Ok(rows)
         })
     }

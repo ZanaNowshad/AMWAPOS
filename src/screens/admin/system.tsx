@@ -19,6 +19,7 @@ import type {
   AuditRow,
   BackupInspection,
   BackupRow,
+  DeliveryZone,
   DeviceRow,
   DiagnosticItem,
   FeatureFlags,
@@ -26,6 +27,7 @@ import type {
   ImportPreview,
   TaxRuleRow,
 } from "../../api/types";
+import { DeliveryZonesEditor } from "./waOrders";
 import { useSearchParams } from "react-router-dom";
 import { useSession } from "../../state/session";
 import { FEATURE_LABELS, FEATURE_PARENT, FeatureGate, useFeature } from "../../components/FeatureGate";
@@ -2112,11 +2114,11 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     ),
   "ocr.supplier_invoices": () =>
     t(
-      "Reads supplier invoices into a draft purchase order. Stock is never posted from OCR without a person confirming.",
+      "Reads supplier invoices, credit notes and delivery notes (photos, scans, PDFs) for review against the original page. Creates drafts only: stock is posted when a person with receiving rights posts a receiving draft.",
     ),
   "ocr.ai_parse": () =>
     t(
-      "Sends the OCR text of supplier invoices to the configured AI provider to extract the lines. Needs AI on and a real provider; the lines are still reviewed and confirmed by a person.",
+      "Sends the OCR text of a supplier document to the configured AI provider to fill values the rules could not read. The answer is schema-checked, never overrides a person's correction, and is still reviewed by a person. Needs AI on and a real provider.",
     ),
   "ai.enabled": () =>
     t(
@@ -2145,6 +2147,14 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
   "orders.digital": () =>
     t(
       "Records orders taken by phone, WhatsApp or a web form. A person confirms each order, then a cashier loads it into a sale and takes payment as usual.",
+    ),
+  "orders.whatsapp_ai": () =>
+    t(
+      "Reads incoming WhatsApp chats on the linked number into draft orders with real products, prices and stock. Staff review, answer and confirm every order; nothing is charged, sent or taken from stock automatically. Needs WhatsApp and digital orders.",
+    ),
+  "orders.whatsapp_upsell": () =>
+    t(
+      "Shows staff products often bought with the items in a WhatsApp order. Suggestions are never sent to the customer automatically.",
     ),
   "org.multi_branch": () =>
     t(
@@ -2482,7 +2492,10 @@ interface BlockRow {
 function DeliverySettingsSection() {
   const toast = useToast();
   const { has } = useSession();
-  const { data, setData, error } = useLoad(() => api.settings.get<{ blocks: BlockRow[] }>("delivery"), []);
+  const { data, setData, error } = useLoad(
+    () => api.settings.get<{ blocks: BlockRow[]; zones?: DeliveryZone[] }>("delivery"),
+    [],
+  );
   const act = useAction();
   if (error) return <Banner tone="danger">{error}</Banner>;
   if (!data) return <Skeleton />;
@@ -2557,12 +2570,21 @@ function DeliverySettingsSection() {
           ))}
         </tbody>
       </table>
-      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       {editable ? (
-        <div className="row">
+        <div>
           <Button onClick={() => setData({ ...data, blocks: [...rows, { from: 0, to: 0, area: "" }] })}>
             {t("Add row")}
           </Button>
+        </div>
+      ) : null}
+      <DeliveryZonesEditor
+        zones={data.zones ?? []}
+        editable={editable}
+        onChange={(zones) => setData({ ...data, zones })}
+      />
+      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      {editable ? (
+        <div className="row">
           <Button
             variant="primary"
             className="right"

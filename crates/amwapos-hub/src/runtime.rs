@@ -271,6 +271,7 @@ impl Runtime {
         self.whatsapp.ensure();
         self.ocr.ensure();
         self.images.ensure();
+        self.orders.follow_inbox(self.whatsapp.subscribe());
         self.orders.ensure();
         // Maintenance: scheduled backups.
         let mut g = self.maintenance.lock().unwrap();

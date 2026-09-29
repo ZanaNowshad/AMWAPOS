@@ -189,7 +189,9 @@ fn merge_rows(lines: Vec<Line>) -> Vec<Line> {
             continue;
         }
         let centre = b[1] + b[3] / 2;
-        let hit = out.iter_mut().rev().take(6).find(|o| {
+        // Search the whole page: a right-hand column block (totals) usually
+        // comes after every line of the left-hand block in Tesseract's order.
+        let hit = out.iter_mut().rev().find(|o| {
             o.bbox().filter(|ob| ob[2] >= ob[3]).is_some_and(|ob| {
                 let oc = ob[1] + ob[3] / 2;
                 let tol = ob[3].min(b[3]) / 2;
@@ -237,6 +239,22 @@ mod tests {
         let l = Layout { pages: vec![p] };
         assert_eq!(l.word_count(), 4);
         assert_eq!(l.mean_conf(), (96 + 91 + 88 + 90) / 4);
+    }
+
+    #[test]
+    fn right_column_block_joins_its_rows_after_many_lines() {
+        // Block 1: ten description rows; block 2 (read afterwards): the totals column.
+        let mut tsv = HDR.to_string();
+        for i in 0..10u32 {
+            tsv.push_str(&format!("5\t1\t1\t1\t{}\t1\t70\t{}\t300\t30\t95\tItem{i}\n", i + 1, 100 + i * 60));
+        }
+        for i in 0..10u32 {
+            tsv.push_str(&format!("5\t1\t2\t1\t{}\t1\t1050\t{}\t90\t30\t95\t{}.000\n", i + 1, 101 + i * 60, i + 1));
+        }
+        let p = page_from_tsv(&tsv, 1, 1240, 1400);
+        assert_eq!(p.lines.len(), 10, "{:?}", p.lines.iter().map(|l| l.text()).collect::<Vec<_>>());
+        assert_eq!(p.lines[0].text(), "Item0 1.000");
+        assert_eq!(p.lines[9].text(), "Item9 10.000");
     }
 
     #[test]

@@ -230,6 +230,43 @@ fn duplicates_discrepancies_and_anomalies() {
 }
 
 #[test]
+fn leaving_a_line_out_of_receiving_keeps_the_document_checks() {
+    let e = env();
+    features(&e);
+    let t = &e.owner_token;
+    supplier(&e, "Al Waha Trading", "200011122233344");
+    let v = read_doc(&e, t, "a.jpg", b"a", &INVOICE.replace("Grand Total 24.090", "Grand Total 24.090\nDelivered by Ahmed 1 0.000 0.000"));
+    let id = v["scan"]["scan_id"].as_str().unwrap().to_string();
+    assert_eq!(v["validation"]["arithmetic_ok"], true, "{}", v["validation"]);
+    // Dragon fruit (line 3) is not received, but it is still on the invoice.
+    let rev = v["revision"].as_i64().unwrap();
+    let v = e
+        .core
+        .doc_update_line(t, &id, serde_json::from_value(json!({ "revision": rev, "line_no": 3, "include": false })).unwrap())
+        .unwrap();
+    assert_eq!(line(&v, 3)["include"], false);
+    assert_eq!(v["validation"]["arithmetic_ok"], true, "{}", v["validation"]);
+    assert!(!v["anomalies"].to_string().contains("do not add up"), "{}", v["anomalies"]);
+    // A misread row marked "not an item" leaves the checks and the drafts.
+    let extra = v["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|l| l["raw_text"].as_str().unwrap_or("").contains("Delivered"))
+        .map(|l| l["line_no"].as_i64().unwrap());
+    if let Some(no) = extra {
+        let rev = v["revision"].as_i64().unwrap();
+        let v = e
+            .core
+            .doc_update_line(t, &id, serde_json::from_value(json!({ "revision": rev, "line_no": no, "not_item": true })).unwrap())
+            .unwrap();
+        assert_eq!(line(&v, no)["include"], false);
+        assert!(line(&v, no)["flags"].to_string().contains("not_item"));
+        assert_eq!(v["validation"]["arithmetic_ok"], true);
+    }
+}
+
+#[test]
 fn purchase_order_and_three_way_match() {
     let e = env();
     features(&e);
@@ -340,4 +377,37 @@ fn ai_reading_is_validated_and_never_overrides_people() {
         .unwrap();
     assert_eq!(line(&e.core.doc_get(t, &id).unwrap(), 1)["qty_milli"], 12_000);
     assert!(!e.core.doc_apply_ai(&id, &json!("not json object"), "test:model").unwrap());
+}
+
+#[test]
+fn an_unclear_pack_is_asked_about_not_reported_as_a_price_jump() {
+    let e = env();
+    features(&e);
+    let t = &e.owner_token;
+    supplier(&e, "Al Waha Trading", "200011122233344");
+    e.product("Coca-Cola Original 330 ml", "5449000000996", 150, 90, 0);
+    // "24x330ML 2" with no CTN: 2 cases or 2 cans? The per-can cost is unknown.
+    let v = read_doc(
+        &e,
+        t,
+        "p.jpg",
+        b"p",
+        "Al Waha Trading\nVAT No: 200011122233344\nTAX INVOICE\nInvoice No: 77\nCoca-Cola 24x330ML 2 7.200 14.400\nTotal 14.400",
+    );
+    let l = line(&v, 1);
+    assert_eq!(l["pack_clear"], false, "{l}");
+    assert!(!v["anomalies"].to_string().contains("price_deviation"), "{}", v["anomalies"]);
+    // Once a person says the 2 are cases of 24, the per-can cost is compared.
+    let rev = v["revision"].as_i64().unwrap();
+    let v = e
+        .core
+        .doc_update_line(
+            t,
+            v["scan"]["scan_id"].as_str().unwrap(),
+            serde_json::from_value(json!({ "revision": rev, "line_no": 1, "unit": "ctn", "units_per_case": 24 })).unwrap(),
+        )
+        .unwrap();
+    assert_eq!(line(&v, 1)["base_qty_milli"], 48_000);
+    assert_eq!(v["receive"][0]["receive_unit_cost_minor"], 300);
+    assert!(v["anomalies"].to_string().contains("0.300 BHD"), "{}", v["anomalies"]);
 }

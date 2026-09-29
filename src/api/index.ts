@@ -475,6 +475,105 @@ export const api = {
     /** Ask the AI provider to re-read the lines ("Improve parse"); the review still applies. */
     aiParse: (scan_id: string) => call<{ scan_id: string; replaced: boolean }>("invoicescan.ai_parse", { scan_id }),
   },
+  docs: {
+    import: (a: { file_name: string; data: string; supplier_id?: string | null }) =>
+      call<T.InvoiceScan>("docs.import", a),
+    fromInbox: (seq: number) => call<T.InvoiceScan>("docs.from_inbox", { seq }),
+    get: (scan_id: string) => call<T.DocDetail>("docs.get", { scan_id }),
+    page: (scan_id: string, page: number) =>
+      call<{ page: number; image: T.FileBlob | null }>("docs.page", { scan_id, page }),
+    update: (
+      scan_id: string,
+      patch: {
+        revision: number;
+        doc_type?: string;
+        supplier_id?: string;
+        invoice_number?: string;
+        invoice_date?: string;
+        due_date?: string;
+        subtotal_minor?: number;
+        vat_minor?: number;
+        total_minor?: number;
+        vat_rate_bp?: number;
+        po_id?: string;
+      },
+    ) => call<T.DocDetail>("docs.update", { scan_id, ...patch }),
+    updateLine: (
+      scan_id: string,
+      patch: {
+        revision: number;
+        line_no: number;
+        product_id?: string;
+        clear_product?: boolean;
+        qty_milli?: number;
+        unit_cost_minor?: number;
+        units_per_case?: number;
+        unit?: string;
+        include?: boolean;
+        new_product?: boolean;
+        not_item?: boolean;
+      },
+    ) => call<T.DocDetail>("docs.update_line", { scan_id, ...patch }),
+    newProduct: (scan_id: string, line_no: number) =>
+      call<Record<string, unknown>>("docs.new_product", { scan_id, line_no }),
+    createSupplierInvoice: (scan_id: string, revision: number) =>
+      call<T.SupplierInvoice>("docs.create_supplier_invoice", { scan_id, revision }),
+    createReceiving: (scan_id: string, revision: number) =>
+      call<T.ReceivingDraft>("docs.create_receiving", { scan_id, revision }),
+    metrics: () => call<T.DocMetrics>("docs.metrics"),
+  },
+  receivingDrafts: {
+    list: (status?: string | null) => call<T.ReceivingDraft[]>("receiving.drafts", { status }),
+    get: (draft_id: string) => call<T.ReceivingDraft>("receiving.draft_get", { draft_id }),
+    updateLine: (
+      draft_id: string,
+      line_no: number,
+      a: { qty_milli?: number; unit_cost_minor?: number; remove?: boolean },
+    ) => call<T.ReceivingDraft>("receiving.draft_update_line", { draft_id, line_no, ...a }),
+    cancel: (draft_id: string) => call<T.ReceivingDraft>("receiving.draft_cancel", { draft_id }),
+    /** Posts stock through the normal receiving commands (a person's action). */
+    post: (draft_id: string, operation_id: string) =>
+      call<T.ReceivingDraft>("receiving.draft_post", { draft_id, operation_id }),
+  },
+  supplierInvoices: {
+    list: (status?: string | null) => call<T.SupplierInvoice[]>("supplier_invoices.list", { status }),
+    get: (invoice_id: string) => call<T.SupplierInvoice>("supplier_invoices.get", { invoice_id }),
+    setStatus: (invoice_id: string, status: "approved" | "void") =>
+      call<T.SupplierInvoice>("supplier_invoices.set_status", { invoice_id, status }),
+  },
+  waOrders: {
+    list: (filter: "open" | "attention" | "all" = "open") => call<T.WaOrderRow[]>("waorders.list", { filter }),
+    get: (session_id: string) => call<T.WaOrderDetail>("waorders.get", { session_id }),
+    line: (
+      session_id: string,
+      revision: number,
+      a: {
+        line_no?: number | null;
+        product_id?: string | null;
+        qty_milli?: number | null;
+        remove?: boolean;
+        learn?: boolean;
+      },
+    ) => call<T.WaOrderDetail>("waorders.line", { session_id, revision, ...a }),
+    delivery: (
+      session_id: string,
+      revision: number,
+      mode: "delivery" | "pickup" | "unknown",
+      address_parts?: T.AddressParts | null,
+      zone_id?: string | null,
+    ) => call<T.WaOrderDetail>("waorders.delivery", { session_id, revision, mode, address_parts, zone_id }),
+    customer: (session_id: string, revision: number, customer_id: string) =>
+      call<T.WaOrderDetail>("waorders.customer", { session_id, revision, customer_id }),
+    flags: (session_id: string, a: { takeover?: boolean; handled?: boolean; assign_to_me?: boolean }) =>
+      call<T.WaOrderDetail>("waorders.flags", { session_id, ...a }),
+    confirm: (session_id: string, revision: number) =>
+      call<T.WaOrderDetail>("waorders.confirm", { session_id, revision }),
+    cancel: (session_id: string) => call<T.WaOrderDetail>("waorders.cancel", { session_id }),
+    payment: (session_id: string, review_id: string, decision: "verified" | "rejected", note?: string | null) =>
+      call<T.WaOrderDetail>("waorders.payment", { session_id, review_id, decision, note }),
+    send: (session_id: string, text?: string | null) => call<unknown>("waorders.send", { session_id, text }),
+    metrics: () => call<T.WaOrderMetrics>("waorders.metrics"),
+  },
   updates: {
     status: () => call<T.UpdateStatus>("updates.status"),
     check: () => call<{ newer: boolean; manifest: T.UpdateManifest; status: T.UpdateStatus }>("updates.check"),

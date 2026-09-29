@@ -626,6 +626,9 @@ fn split_items(text: &str) -> Vec<String> {
     parts
 }
 
+/// Bare numbers read as a size in ml after a product ("pepsi 330").
+const COMMON_ML: &[i64] = &[150, 185, 200, 250, 300, 330, 355, 450, 500, 600, 750];
+
 /// Read one item segment ("2 coke big", "lays cheese", "milk small", "half kilo tomato").
 pub fn parse_item(seg: &str) -> Option<Mention> {
     let t = normalize(seg);
@@ -663,9 +666,20 @@ pub fn parse_item(seg: &str) -> Option<Mention> {
             }
             continue;
         }
+        // "coke 1.5" / "pepsi 2.25": a bare decimal after product words is a
+        // bottle size in litres; alone it is never a quantity.
+        if w.contains('.') && w.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            if let Ok(v) = w.parse::<f64>() {
+                if !out.is_empty() && size.is_none() && (0.1..=5.0).contains(&v) {
+                    size = Some(((v * 1000.0).round() as i64, "ml".to_string()));
+                }
+            }
+            continue;
+        }
         if let Some(n) = number_token(w).or_else(|| number_word(w)) {
-            // "2.25" alone is not a quantity (sizes have decimals).
-            if w.contains('.') {
+            // "2 coke 330": a common can/bottle size in ml once the quantity is known.
+            if qty.is_some() && !out.is_empty() && size.is_none() && COMMON_ML.contains(&(n / 1000)) && n % 1000 == 0 {
+                size = Some((n / 1000, "ml".to_string()));
                 continue;
             }
             if qty.is_none() {
@@ -771,6 +785,37 @@ const CONFIRM: &[&str] = &[
     "ok ok",
     "👍",
 ];
+/// Words that may surround a confirmation without changing it ("yes confirm please").
+const CONFIRM_FILL: &[&str] = &[
+    "please",
+    "pls",
+    "plz",
+    "it",
+    "its",
+    "the",
+    "order",
+    "thanks",
+    "thank",
+    "you",
+    "go",
+    "ahead",
+    "من",
+    "فضلك",
+    "لو",
+    "سمحت",
+    "الطلب",
+    "شكرا",
+];
+
+/// A message made only of confirmation words and polite filler.
+fn confirm_only(bare: &str) -> bool {
+    let words: Vec<&str> = bare.split(|c: char| !c.is_alphanumeric() && !has_arabic(&c.to_string())).filter(|w| !w.is_empty()).collect();
+    !words.is_empty()
+        && words.len() <= 6
+        && words.iter().any(|w| CONFIRM.contains(w))
+        && words.iter().all(|w| CONFIRM.contains(w) || CONFIRM_FILL.contains(w))
+}
+
 const PAID: &[&str] =
     &["paid", "transferred", "payment sent", "sent the money", "benefit", "benefitpay", "حولت", "دفعت", "تم التحويل", "حوالة"];
 const URGENT: &[&str] = &["urgent", "asap", "quickly", "fast please", "hurry", "emergency", "بسرعه", "ضروري", "عاجل", "vegam"];
@@ -843,7 +888,7 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
         out.priority = priority;
         return out;
     }
-    if active && CONFIRM.contains(&bare) {
+    if active && (CONFIRM.contains(&bare) || confirm_only(bare)) {
         out.intent = Intent::Confirmation;
         out.band = "high".into();
         out.reasons = vec!["confirmation_words".into()];
@@ -1067,6 +1112,13 @@ mod tests {
         );
         assert_eq!(items("coke x3")[0].0, 3000);
         assert_eq!(items("randu paal")[0], (2000, vec!["milk".into()], None, None));
+        // Bare sizes after the product: "coke 1.5" is a 1.5 L bottle, "pepsi 330" a can.
+        assert_eq!(items("2 coke 1.5")[0], (2000, vec!["coca".into(), "cola".into()], Some((1500, "ml".into())), None));
+        assert_eq!(items("3 pepsi 330")[0].2, Some((330, "ml".into())));
+        assert_eq!(items("coke 2")[0].0, 2000, "a plain number after the product is still the quantity");
+        let two = items("2 coke 1.5 and 1 lays cheese please");
+        assert_eq!(two.len(), 2, "{two:?}");
+        assert_eq!(two[1].1, vec!["lays".to_string(), "cheese".to_string()]);
     }
 
     #[test]
@@ -1105,6 +1157,9 @@ mod tests {
         assert!(matches!(&m("change coke to 4").modifications[0], Modification::SetQty { target } if target.qty.milli == 4000));
         assert_eq!(m("cancel it").intent, Intent::Cancellation);
         assert_eq!(m("yes").intent, Intent::Confirmation);
+        assert_eq!(m("yes confirm").intent, Intent::Confirmation);
+        assert_eq!(m("ok please confirm the order").intent, Intent::Confirmation);
+        assert_ne!(m("yes and add 2 milk").intent, Intent::Confirmation, "a change is not a confirmation");
         assert_eq!(read("text", "yes", false).intent, Intent::Unknown, "\"yes\" with no open draft is not an order");
         assert_eq!(m("2 lays").intent, Intent::OrderModification);
     }

@@ -65,6 +65,10 @@ pub struct LineData {
     pub include: bool,
     pub po_item_id: Option<String>,
     pub new_product: bool,
+    /// A person marked the row as not an item (a misread header, a note):
+    /// left out of the document checks as well as the drafts.
+    #[serde(default)]
+    pub not_item: bool,
 }
 
 impl LineData {
@@ -142,7 +146,10 @@ pub struct Validation {
 /// `product_rates` = tax rate of each matched product by line_no.
 pub fn validate(f: &DocFields, lines: &[LineData], rates: &[i64], product_rates: &[(i64, i64)]) -> Validation {
     let mut v = Validation { arithmetic_ok: true, line_basis: "excl".into(), ..Default::default() };
-    let inc: Vec<&LineData> = lines.iter().filter(|l| l.include).collect();
+    // The document as printed: every item line counts, including lines a
+    // person leaves out of receiving ("Use" off). Only rows marked as not an
+    // item are ignored.
+    let inc: Vec<&LineData> = lines.iter().filter(|l| !l.not_item).collect();
     // ---- lines
     for l in &inc {
         if let (Some(t), Some(c)) = (l.line_total_minor, l.calc_net()) {
@@ -559,6 +566,11 @@ pub fn anomalies(
     // Unusually large price change against the last purchase cost.
     for l in lines.iter().filter(|l| l.include) {
         let (Some(pid), Some((cost, _))) = (&l.product_id, l.receive_unit_cost()) else { continue };
+        // A case size is printed but the quantity is not marked as cases: the
+        // per-unit cost is not known yet (the line asks about the pack).
+        if l.units_per_case.is_some() && l.base_qty_milli.is_none_or(|b| Some(b) == l.qty_milli) {
+            continue;
+        }
         let last: Option<i64> = c
             .query_row("SELECT last_cost_minor FROM product_costs WHERE product_id=?1 AND branch_id=?2", params![pid, branch_id], |r| {
                 r.get(0)
@@ -871,7 +883,7 @@ pub fn summary(s: &SummaryInput) -> String {
         }
     }
     out.push('.');
-    let inc: Vec<&LineData> = s.lines.iter().filter(|l| l.include).collect();
+    let inc: Vec<&LineData> = s.lines.iter().filter(|l| !l.not_item).collect();
     out.push_str(&format!(" {} {}", inc.len(), if inc.len() == 1 { "line" } else { "lines" }));
     let mut money_parts = vec![];
     if let Some(v) = s.f.subtotal_minor.value {

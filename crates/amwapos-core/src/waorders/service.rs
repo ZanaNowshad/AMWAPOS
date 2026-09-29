@@ -703,7 +703,7 @@ fn summary_text(
     } else {
         let items: Vec<String> = rows
             .iter()
-            .filter(|l| l.product_id.is_some())
+            .filter(|l| l.product_id.is_some() && l.resolution.as_deref() != Some("unavailable"))
             .map(|l| format!("{} {}", money::format_qty(l.qty_milli), l.product_name.clone().unwrap_or(l.description.clone())))
             .collect();
         if !items.is_empty() {
@@ -712,10 +712,20 @@ fn summary_text(
         if unresolved > 0 {
             let open: Vec<String> = rows
                 .iter()
-                .filter(|l| l.product_id.is_none() || l.resolution.as_deref() == Some("unavailable"))
+                .filter(|l| l.product_id.is_none())
                 .map(|l| format!("\"{}\"", l.requested.clone().unwrap_or(l.description.clone())))
                 .collect();
-            s.push_str(&format!("Not resolved yet: {}. ", open.join(", ")));
+            let out: Vec<String> = rows
+                .iter()
+                .filter(|l| l.product_id.is_some() && l.resolution.as_deref() == Some("unavailable"))
+                .map(|l| l.product_name.clone().unwrap_or(l.description.clone()))
+                .collect();
+            if !open.is_empty() {
+                s.push_str(&format!("Not resolved yet: {}. ", open.join(", ")));
+            }
+            if !out.is_empty() {
+                s.push_str(&format!("Out of stock: {}. ", out.join(", ")));
+            }
         }
     }
     if mode == "delivery" && fee.is_none() {

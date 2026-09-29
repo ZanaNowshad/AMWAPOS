@@ -242,11 +242,14 @@ export function Drawer({
   onClose,
   children,
   actions,
+  wide,
 }: {
   title: ReactNode;
   onClose: () => void;
   children: ReactNode;
   actions?: ReactNode;
+  /** Room for a table of lines. */
+  wide?: boolean;
 }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -255,8 +258,13 @@ export function Drawer({
   }, [onClose]);
   return createPortal(
     <>
-      <div className="backdrop" style={{ background: "var(--backdrop)", opacity: 0.55 }} onMouseDown={onClose} />
-      <aside className="drawer" role="dialog" aria-modal="true">
+      {/* Below the drawer (45) and any modal opened from it (50). */}
+      <div
+        className="backdrop"
+        style={{ background: "var(--backdrop)", opacity: 0.55, zIndex: 44 }}
+        onMouseDown={onClose}
+      />
+      <aside className={`drawer ${wide ? "wide" : ""}`} role="dialog" aria-modal="true">
         <div className="d-head">
           <h2 className="grow" style={{ fontSize: 18 }}>
             {title}

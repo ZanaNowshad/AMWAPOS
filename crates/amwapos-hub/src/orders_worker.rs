@@ -8,13 +8,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use amwapos_core::{AppCore, AppError, AppResult};
-use tokio::sync::Notify;
+use tokio::sync::{watch, Notify};
+
+use crate::whatsapp::WaStatus;
 use tokio::task::JoinHandle;
 
 pub struct OrdersWorker {
     core: Arc<AppCore>,
     task: Mutex<Option<JoinHandle<()>>>,
     pub poke: Arc<Notify>,
+    /// WhatsApp status: a new inbound batch bumps `inbox_rev` and wakes the pass.
+    inbox: Mutex<Option<watch::Receiver<WaStatus>>>,
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + 'static) -> AppResult<T> {
@@ -23,7 +27,12 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
 
 impl OrdersWorker {
     pub fn new(core: Arc<AppCore>) -> Arc<Self> {
-        Arc::new(Self { core, task: Mutex::new(None), poke: Arc::new(Notify::new()) })
+        Arc::new(Self { core, task: Mutex::new(None), poke: Arc::new(Notify::new()), inbox: Mutex::new(None) })
+    }
+
+    /// Wake on new WhatsApp messages instead of waiting for the next tick.
+    pub fn follow_inbox(&self, rx: watch::Receiver<WaStatus>) {
+        *self.inbox.lock().unwrap() = Some(rx);
     }
 
     /// Start when the module is on. Idempotent; restarts a dead task.
@@ -65,6 +74,8 @@ impl OrdersWorker {
 }
 
 async fn run(w: Arc<OrdersWorker>) {
+    let mut inbox = w.inbox.lock().unwrap().clone();
+    let mut seen = inbox.as_ref().map(|r| r.borrow().inbox_rev).unwrap_or(0);
     loop {
         let c = w.core.clone();
         let on = blocking(move || c.features().map(|f| f.is_on("orders.whatsapp_ai"))).await.unwrap_or(false);
@@ -74,9 +85,25 @@ async fn run(w: Arc<OrdersWorker>) {
         if let Err(e) = w.tick().await {
             tracing::warn!(error = %e.message, "WhatsApp orders pass failed");
         }
+        let fresh = async {
+            match inbox.as_mut() {
+                Some(rx) => loop {
+                    if rx.changed().await.is_err() {
+                        std::future::pending::<()>().await;
+                    }
+                    let rev = rx.borrow().inbox_rev;
+                    if rev != seen {
+                        seen = rev;
+                        return;
+                    }
+                },
+                None => std::future::pending::<()>().await,
+            }
+        };
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(3)) => {}
             _ = w.poke.notified() => {}
+            _ = fresh => {}
         }
     }
 }

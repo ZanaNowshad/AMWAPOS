@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
   CircleAlert,
@@ -15,7 +15,6 @@ import type {
   AutomationStatus,
   FileBlob,
   InvoiceScan,
-  InvoiceScanLine,
   PaymentReview,
   WaConversation,
   WaOutboxRow,
@@ -27,13 +26,14 @@ import { FeatureGate, useFeature } from "../../components/FeatureGate";
 import { WaQr } from "../../components/WaQr";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, Tabs, TextInput } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
-import { formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
+import { formatMoney, parseMoney } from "../../lib/money";
 import { formatDateTime, relative } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
 import { OrderEditor } from "../orders";
 import { AreaPicker, PayChip, TicketRowButton, TicketSheet } from "../pos/SendLoop";
 import { WaCatalog } from "./waCatalog";
+import { DocMetricsStrip, ReceivingDraftsPanel, SupplierInvoicesPanel } from "./documents";
 import type { DigitalOrder, WaTriageItem } from "../../api/types";
 
 // ---------------------------------------------------------------- helpers
@@ -791,6 +791,8 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
   const [images, setImages] = useState<Record<number, string>>({});
   const act = useAction();
   const ordersOn = useFeature("orders.digital");
+  const docsOn = useFeature("ocr.supplier_invoices");
+  const navigate = useNavigate();
   const { has, setMode } = useSession();
   const [draft, setDraft] = useState<DigitalOrder | null>(null);
   const ctx = useLoad(() => api.whatsapp.threadContext(chat.chat), [chat.chat]);
@@ -978,6 +980,19 @@ function WaThreadView({ chat, onRead }: { chat: WaConversation; onRead: () => vo
                     <div className="tiny">{t("Unsupported message type")}</div>
                   ) : null}
                   <div className="tiny">{formatDateTime(it.at)}</div>
+                  {docsOn && has("ocr.scan") && (it.m.kind === "image" || it.m.kind === "document") ? (
+                    <Button
+                      size="sm"
+                      icon={<FileScan size={14} />}
+                      onClick={async () => {
+                        const seq = (it.m as { seq: number }).seq;
+                        const d = await act.run(() => api.docs.fromInbox(seq));
+                        if (d) navigate(`/admin/invoice-scan/${d.scan_id}`);
+                      }}
+                    >
+                      {t("Read as supplier document")}
+                    </Button>
+                  ) : null}
                   {ordersOn && has("orders.manage") && (it.m.body || it.m.caption) ? (
                     <Button
                       size="sm"
@@ -1747,7 +1762,7 @@ function ReviewDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
 // ---------------------------------------------------------------- invoice scan
 
 const SCAN_STATUS: Record<string, () => string> = {
-  imported: () => t("Waiting for OCR"),
+  imported: () => t("Reading"),
   read: () => t("Read"),
   review: () => t("Ready for review"),
   confirmed: () => t("Draft order created"),
@@ -1755,17 +1770,13 @@ const SCAN_STATUS: Record<string, () => string> = {
   failed: () => t("OCR failed"),
 };
 
-const MATCH_LABEL: Record<string, () => string> = {
-  barcode: () => t("Barcode"),
-  sku: () => t("SKU"),
-  name: () => t("Name"),
-  manual: () => t("Chosen"),
-  none: () => t("No match"),
-};
+type DocTab = "documents" | "drafts" | "invoices";
 
 export function InvoiceScanPage() {
+  const navigate = useNavigate();
+  const { has } = useSession();
+  const [tab, setTab] = useState<DocTab>("documents");
   const { data, loading, error, reload } = useLoad(() => api.invoiceScan.list(), []);
-  const [open, setOpen] = useState<string | null>(null);
   const [upload, setUpload] = useState(false);
   const pending = data?.some((s) => s.status === "imported");
   useEffect(() => {
@@ -1776,71 +1787,87 @@ export function InvoiceScanPage() {
   return (
     <div>
       <PageHeader
-        title={t("Invoice Scan")}
-        subtitle={t("Read a supplier invoice with offline OCR, check every line, then create a draft purchase order.")}
+        title={t("Supplier documents")}
+        subtitle={t(
+          "Read supplier invoices, credit notes and delivery notes (photo, scan or PDF), check every value against the page, then create drafts. Nothing changes stock until a person posts a receiving draft.",
+        )}
         actions={
-          <Button variant="primary" icon={<FileScan size={16} />} onClick={() => setUpload(true)}>
-            {t("Scan invoice")}
-          </Button>
+          has("ocr.scan") ? (
+            <Button variant="primary" icon={<FileScan size={16} />} onClick={() => setUpload(true)}>
+              {t("Add document")}
+            </Button>
+          ) : null
         }
       />
       <FeatureGate feature="ocr.supplier_invoices">
         <div className="col gap-16">
-          <Banner tone="info">
-            {t(
-              "Stock never changes from a scan. The draft order is received on the Receiving page when the goods arrive.",
-            )}
-          </Banner>
-          {error ? <Banner tone="danger">{error}</Banner> : null}
-          <DataTable<InvoiceScan>
-            rows={data}
-            loading={loading}
-            rowKey={(r) => r.scan_id}
-            onRowClick={(r) => setOpen(r.scan_id)}
-            empty={<div className="empty">{t("No invoices scanned yet.")}</div>}
-            columns={[
-              { key: "n", label: t("Scan"), render: (r) => r.scan_number },
-              {
-                key: "at",
-                label: t("Scanned"),
-                render: (r) => formatDateTime(r.created_at),
-                sort: (r) => r.created_at,
-              },
-              { key: "sup", label: t("Supplier"), render: (r) => r.supplier_name ?? "—" },
-              { key: "inv", label: t("Invoice"), render: (r) => r.invoice_number ?? "—" },
-              {
-                key: "tot",
-                label: t("Invoice total"),
-                num: true,
-                render: (r) => (r.total_minor === null ? "—" : formatMoney(r.total_minor)),
-              },
-              {
-                key: "st",
-                label: t("Status"),
-                render: (r) => (
-                  <Chip
-                    tone={
-                      r.status === "confirmed"
-                        ? "success"
-                        : r.status === "failed" || r.status === "rejected"
-                          ? "danger"
-                          : r.status === "review"
-                            ? "warning"
-                            : "info"
-                    }
-                  >
-                    {SCAN_STATUS[r.status]?.() ?? r.status}
-                  </Chip>
-                ),
-              },
+          <Tabs<DocTab>
+            value={tab}
+            onChange={setTab}
+            tabs={[
+              { key: "documents", label: t("Documents") },
+              { key: "drafts", label: t("Receiving drafts") },
+              { key: "invoices", label: t("Supplier invoices") },
             ]}
           />
+          {tab === "documents" ? (
+            <>
+              <DocMetricsStrip />
+              {error ? <Banner tone="danger">{error}</Banner> : null}
+              <DataTable<InvoiceScan>
+                rows={data}
+                loading={loading}
+                rowKey={(r) => r.scan_id}
+                onRowClick={(r) => navigate(`/admin/invoice-scan/${r.scan_id}`)}
+                empty={<div className="empty">{t("No documents yet.")}</div>}
+                columns={[
+                  { key: "n", label: t("Document"), render: (r) => r.scan_number },
+                  {
+                    key: "at",
+                    label: t("Added"),
+                    render: (r) => formatDateTime(r.created_at),
+                    sort: (r) => r.created_at,
+                  },
+                  { key: "sup", label: t("Supplier"), render: (r) => r.supplier_name ?? "—" },
+                  { key: "inv", label: t("Invoice"), render: (r) => r.invoice_number ?? "—" },
+                  {
+                    key: "tot",
+                    label: t("Invoice total"),
+                    num: true,
+                    render: (r) => (r.total_minor === null ? "—" : formatMoney(r.total_minor)),
+                  },
+                  {
+                    key: "st",
+                    label: t("Status"),
+                    render: (r) => (
+                      <Chip
+                        tone={
+                          r.status === "confirmed"
+                            ? "success"
+                            : r.status === "failed" || r.status === "rejected"
+                              ? "danger"
+                              : r.status === "review"
+                                ? "warning"
+                                : "info"
+                        }
+                      >
+                        {SCAN_STATUS[r.status]?.() ?? r.status}
+                      </Chip>
+                    ),
+                  },
+                ]}
+              />
+            </>
+          ) : tab === "drafts" ? (
+            <ReceivingDraftsPanel />
+          ) : (
+            <SupplierInvoicesPanel />
+          )}
         </div>
-        {open ? <ScanDrawer id={open} onClose={() => setOpen(null)} onChanged={() => void reload()} /> : null}
         {upload ? (
           <ScanUpload
             onClose={() => setUpload(false)}
-            onDone={(id) => (setUpload(false), void reload(), setOpen(id))}
+            onDone={(id) => (setUpload(false), navigate(`/admin/invoice-scan/${id}`))}
           />
         ) : null}
       </FeatureGate>
@@ -1870,15 +1897,15 @@ function ScanUpload({ onClose, onDone }: { onClose: () => void; onDone: (id: str
   const act = useAction();
   return (
     <Confirm
-      title={t("Scan invoice")}
+      title={t("Add document")}
       confirmLabel={t("Upload and read")}
       busy={act.busy}
       error={act.error}
       onCancel={onClose}
       onConfirm={async () => {
-        if (!file) return act.setError(t("Choose an image file."));
+        if (!file) return act.setError(t("Choose a file."));
         const r = await act.run(async () =>
-          api.invoiceScan.import({
+          api.docs.import({
             file_name: file.name,
             data: await fileToBase64(file),
             supplier_id: supplier || null,
@@ -1890,12 +1917,14 @@ function ScanUpload({ onClose, onDone }: { onClose: () => void; onDone: (id: str
       <div className="col gap-16">
         <input
           type="file"
-          accept="image/*"
-          aria-label={t("Invoice image")}
+          accept="image/*,application/pdf,.pdf"
+          aria-label={t("Document file")}
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
         <div className="tiny">
-          {t("Use a clear photo or scan (PNG or JPG). For a PDF invoice, save the page as an image first.")}
+          {t(
+            "A clear photo, a scan (PNG, JPG, TIFF) or a PDF, up to a few pages. The original is kept on this computer only.",
+          )}
         </div>
         <SupplierSelect value={supplier} onChange={setSupplier} />
       </div>
@@ -1903,252 +1932,7 @@ function ScanUpload({ onClose, onDone }: { onClose: () => void; onDone: (id: str
   );
 }
 
-function ScanDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
-  const toast = useToast();
-  const { data, error, setData, reload } = useLoad(() => api.invoiceScan.get(id), [id]);
-  const [supplier, setSupplier] = useState("");
-  const { has } = useSession();
-  const [picking, setPicking] = useState<InvoiceScanLine | null>(null);
-  const [receiveNow, setReceiveNow] = useState(false);
-  const [reject, setReject] = useState(false);
-  const [reason, setReason] = useState("");
-  const act = useAction();
-  const s = data?.scan;
-  useEffect(() => {
-    if (s?.supplier_id && !supplier) setSupplier(s.supplier_id);
-  }, [s?.supplier_id, supplier]);
-  useEffect(() => {
-    if (s?.status !== "imported") return;
-    const iv = window.setInterval(() => void reload(), 2500);
-    return () => window.clearInterval(iv);
-  }, [s?.status, reload]);
-  const upd = async (line: InvoiceScanLine, patch: Record<string, unknown>) => {
-    const r = await act.run(() => api.invoiceScan.updateLine({ scan_id: id, line_no: line.line_no, ...patch }));
-    if (r) setData(r);
-  };
-  const editable = s?.status === "review";
-  const aiParseOn = useFeature("ocr.ai_parse");
-  return (
-    <Drawer title={s ? `${t("Invoice scan")} ${s.scan_number}` : t("Invoice scan")} onClose={onClose}>
-      {error ? <Banner tone="danger">{error}</Banner> : null}
-      {!data || !s ? (
-        <Skeleton />
-      ) : (
-        <div className="col gap-16">
-          <div className="row">
-            <Chip>{SCAN_STATUS[s.status]?.() ?? s.status}</Chip>
-            {s.duplicate_of ? <Chip tone="warning">{t("Same image as {0}", s.duplicate_of)}</Chip> : null}
-            {s.po_id ? (
-              <Link to={`/admin/purchase-orders/${s.po_id}`}>{t("Open draft order {0}", s.po_number ?? "")}</Link>
-            ) : null}
-          </div>
-          {s.status === "imported" ? (
-            <Banner tone="info">{t("Reading the invoice… this can take up to a minute.")}</Banner>
-          ) : null}
-          {s.status === "failed" ? (
-            <Banner
-              tone="danger"
-              action={
-                <Button
-                  onClick={async () => (await act.run(() => api.ocr.retry("invoice", id))) !== undefined && reload()}
-                >
-                  {t("Read again")}
-                </Button>
-              }
-            >
-              {s.error ? tb(s.error) : t("OCR failed")}
-            </Banner>
-          ) : null}
-          <dl className="kv">
-            <dt>{t("Invoice number")}</dt>
-            <dd>{s.invoice_number ?? "—"}</dd>
-            <dt>{t("Invoice date")}</dt>
-            <dd>{s.invoice_date ?? "—"}</dd>
-            <dt>{t("Invoice total")}</dt>
-            <dd>{s.total_minor === null ? "—" : formatMoney(s.total_minor)}</dd>
-            <dt>{t("Included lines total")}</dt>
-            <dd>{formatMoney(s.lines_total_minor)}</dd>
-            <dt>{t("OCR confidence")}</dt>
-            <dd>{s.ocr_confidence === null ? "—" : `${s.ocr_confidence}%`}</dd>
-          </dl>
-          {data.lines.length ? (
-            <div className="table-wrap card">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t("Use")}</th>
-                    <th>{t("Invoice line")}</th>
-                    <th>{t("Product")}</th>
-                    <th className="num">{t("Qty")}</th>
-                    <th className="num">{t("Unit cost")}</th>
-                    <th className="num">{t("Line total")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.lines.map((l) => (
-                    <tr key={l.line_no} className={l.include ? "" : "muted"}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          aria-label={t("Include line {0}", l.line_no)}
-                          disabled={!editable}
-                          checked={l.include}
-                          onChange={(e) => void upd(l, { include: e.target.checked })}
-                        />
-                      </td>
-                      <td className="small" dir="auto">
-                        {l.raw_text}
-                      </td>
-                      <td>
-                        <div className="col" style={{ gap: 4 }}>
-                          <span>{l.product_name ?? <em className="muted">{t("No match")}</em>}</span>
-                          <span className="tiny">
-                            {MATCH_LABEL[l.match_kind]?.()}
-                            {l.match_kind === "name" ? ` ${l.match_score}%` : ""}
-                            {l.current_cost_minor !== null &&
-                            l.unit_cost_minor !== null &&
-                            l.current_cost_minor !== l.unit_cost_minor
-                              ? ` · ${t("last cost {0}", formatMoney(l.current_cost_minor))}`
-                              : ""}
-                          </span>
-                          {editable ? (
-                            <Button size="sm" variant="ghost" onClick={() => setPicking(l)}>
-                              {l.product_id ? t("Change") : t("Choose product")}
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="num">
-                        <InlineNumber
-                          disabled={!editable}
-                          value={l.qty_milli === null ? "" : formatQty(l.qty_milli)}
-                          onCommit={(v) => {
-                            const q = parseQty(v);
-                            if (q !== null) void upd(l, { qty_milli: q });
-                          }}
-                        />
-                      </td>
-                      <td className="num">
-                        <InlineNumber
-                          disabled={!editable}
-                          value={
-                            l.unit_cost_minor === null ? "" : (formatMoney(l.unit_cost_minor).split(" ").pop() ?? "")
-                          }
-                          onCommit={(v) => {
-                            const c = parseMoney(v);
-                            if (c !== null) void upd(l, { unit_cost_minor: c });
-                          }}
-                        />
-                      </td>
-                      <td className="num">{l.line_total_minor === null ? "—" : formatMoney(l.line_total_minor)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : s.status === "review" ? (
-            <Banner tone="warning">
-              {t("No item lines were recognised. Check the image quality or enter the order manually.")}
-            </Banner>
-          ) : null}
-          {data.image ? (
-            <details>
-              <summary>{t("Invoice image")}</summary>
-              <img src={blobUrl(data.image) ?? ""} alt={t("Invoice image")} style={{ maxWidth: "100%" }} />
-            </details>
-          ) : null}
-          {data.ocr_text ? (
-            <details>
-              <summary>{t("Text read from the image")}</summary>
-              <pre className="small" style={{ whiteSpace: "pre-wrap" }}>
-                {data.ocr_text}
-              </pre>
-            </details>
-          ) : null}
-          {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-          {editable ? (
-            <div className="row" style={{ alignItems: "flex-end" }}>
-              <SupplierSelect value={supplier} onChange={setSupplier} />
-              {has("inventory.receive") ? (
-                <Checkbox label={t("Receive the stock now")} checked={receiveNow} onChange={setReceiveNow} />
-              ) : null}
-              <Button
-                variant="primary"
-                disabled={!supplier}
-                loading={act.busy}
-                onClick={async () => {
-                  const r = await act.run(() => api.invoiceScan.confirm(id, supplier, receiveNow));
-                  if (r) {
-                    setData(r);
-                    onChanged();
-                    toast(
-                      "success",
-                      receiveNow ? t("Purchase order created and received") : t("Draft purchase order created"),
-                    );
-                  }
-                }}
-              >
-                {receiveNow ? t("Create order and receive stock") : t("Create draft purchase order")}
-              </Button>
-              {aiParseOn && data.ocr_text ? (
-                <Button
-                  loading={act.busy}
-                  data-testid="scan-ai-parse"
-                  onClick={async () => {
-                    const r = await act.run(() => api.invoiceScan.aiParse(id));
-                    if (r) {
-                      toast(
-                        r.replaced ? "success" : "info",
-                        r.replaced
-                          ? t("Lines re-read by the AI provider. Check them again.")
-                          : t("The AI found no better lines."),
-                      );
-                      void reload();
-                    }
-                  }}
-                >
-                  {t("Improve parse")}
-                </Button>
-              ) : null}
-              <Button variant="danger" onClick={() => setReject(true)}>
-                {t("Reject scan")}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      )}
-      {picking ? (
-        <ProductPick
-          initial={picking.description ?? ""}
-          onClose={() => setPicking(null)}
-          onPick={(pid) => (void upd(picking, { product_id: pid }), setPicking(null))}
-        />
-      ) : null}
-      {reject ? (
-        <Confirm
-          title={t("Reject scan")}
-          confirmLabel={t("Reject")}
-          danger
-          busy={act.busy}
-          error={act.error}
-          onCancel={() => setReject(false)}
-          onConfirm={async () => {
-            const r = await act.run(() => api.invoiceScan.reject(id, reason));
-            if (r) {
-              setReject(false);
-              onChanged();
-              void reload();
-            }
-          }}
-        >
-          <TextInput label={t("Reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
-        </Confirm>
-      ) : null}
-    </Drawer>
-  );
-}
-
-function InlineNumber({
+export function InlineNumber({
   value,
   onCommit,
   disabled,
@@ -2172,7 +1956,7 @@ function InlineNumber({
   );
 }
 
-function ProductPick({
+export function ProductPick({
   initial,
   onPick,
   onClose,
