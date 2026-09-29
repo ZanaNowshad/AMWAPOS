@@ -283,4 +283,17 @@ pub(crate) mod tests {
         assert_eq!(e.code, ErrorCode::Validation);
         assert!(e.message.contains("damaged"));
     }
+
+    #[test]
+    fn deeply_nested_objects_are_refused_not_a_crash() {
+        // RUSTSEC-2026-0187: nesting used to overflow the parser's stack.
+        let depth = 200_000;
+        let mut body = String::from("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R /X ");
+        body.push_str(&"[".repeat(depth));
+        body.push_str(&"]".repeat(depth));
+        body.push_str(" >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n");
+        let r = std::thread::Builder::new().stack_size(2 << 20).spawn(move || read_pdf(body.as_bytes()).map(|p| p.len())).unwrap().join();
+        let r = r.expect("the parser must not crash on nested objects");
+        assert!(r.is_err() || r.unwrap() == 0);
+    }
 }
