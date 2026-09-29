@@ -11,9 +11,18 @@
 //!   action from current POS data and scopes everything to the linked
 //!   account, so a new account never reuses another account's remote ids.
 //! * Before creating a product without a mapping, the account's catalogue is
-//!   read once per pass and a remote product carrying exactly this retailer
-//!   id (the POS product code) that no other POS product owns is adopted
-//!   instead: a crash between "created" and "recorded" never duplicates.
+//!   consulted (read once, then kept in step with this worker's own writes;
+//!   re-read after 10 minutes, a failed or timed-out create, a "not found",
+//!   a relink, or a full sync's remote check) and a remote product carrying
+//!   exactly this retailer id (the POS product code) that no other POS
+//!   product owns is adopted instead: a crash between "created" and
+//!   "recorded" never duplicates. If it cannot be read, nothing is created.
+//! * An administrator's full sync is a run: progress is tracked, and once
+//!   every product in it was processed the remote catalogue is read once to
+//!   find mapped products deleted on WhatsApp, which are re-checked (and
+//!   published again only as part of that explicit sync).
+//! * Every job is checked against the account linked right now before any
+//!   remote call; edits made while a write was in flight are re-queued.
 //! * POS writes never wait for this; a disconnect only leaves work queued.
 
 use std::collections::{HashMap, HashSet};
@@ -240,8 +249,16 @@ async fn process(
                     }
                     CatalogOutcome::Published { remote_id: remote.id, item, image_url, adopted, image_rejected }
                 }
-                Ok(Err(e)) if e.not_found && hide => CatalogOutcome::Deleted,
-                Ok(Err(e)) if e.not_found => CatalogOutcome::RemoteMissing { error: "The product was deleted on WhatsApp.".into() },
+                Ok(Err(e)) if e.not_found => {
+                    // Deleted on WhatsApp by someone else: the cached index is
+                    // stale (it may still list this id and would adopt it again).
+                    *index = None;
+                    if hide {
+                        CatalogOutcome::Deleted
+                    } else {
+                        CatalogOutcome::RemoteMissing { error: "The product was deleted on WhatsApp.".into() }
+                    }
+                }
                 Ok(Err(e)) => {
                     if target.is_none() {
                         // A create may have happened despite the error: read the
@@ -261,11 +278,18 @@ async fn process(
 
 /// An administrator's full sync asks for one comparison with the remote
 /// catalogue: mapped products that WhatsApp does not list are re-checked.
-async fn verify_run(svc: &Arc<WhatsAppService>, session: &Arc<dyn AdapterSession>, account: &str) {
+/// The fresh read also replaces the cached remote index.
+async fn verify_run(svc: &Arc<WhatsAppService>, session: &Arc<dyn AdapterSession>, account: &str, index: &mut Option<RemoteIndex>) {
     let core = svc.core().clone();
     let (c, a) = (core.clone(), account.to_string());
     let Ok(Some(run)) = blocking(move || c.wa_catalog_verify_due(&a)).await else { return };
-    let listed = read_catalogue(session).await.map(|(_, all)| all);
+    let read = read_catalogue(session).await;
+    *index = read.as_ref().map(|(by_retailer, _)| RemoteIndex {
+        account: account.to_string(),
+        at: Instant::now(),
+        by_retailer: by_retailer.clone(),
+    });
+    let listed = read.map(|(_, all)| all);
     let (c, a) = (core, account.to_string());
     if let Err(e) = blocking(move || c.wa_catalog_verify(&a, &run, listed.as_ref())).await {
         tracing::warn!(error = %e.message, "WhatsApp catalogue: remote check not recorded");
@@ -363,7 +387,7 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
                 tracing::warn!(error = %e.message, "WhatsApp catalogue scan");
             }
         }
-        verify_run(&svc, &session, &account).await;
+        verify_run(&svc, &session, &account, &mut index).await;
         let (c, a) = (core.clone(), account.clone());
         let jobs = match blocking(move || c.wa_catalog_claim(&a, BATCH)).await {
             Ok(j) => j,

@@ -98,7 +98,9 @@ fn text(n: &NodeRef<'_>, tag: &str, max: usize) -> Option<String> {
 
 /// A `<product>` element, or None when it has no valid id.
 pub fn parse_product(n: &NodeRef<'_>) -> Option<RemoteProduct> {
-    let id = text(n, "id", 64).filter(|i| valid_remote_id(i))?;
+    // Read one character past the limit: an over-long id is refused, never
+    // truncated into a different id.
+    let id = text(n, "id", 65).filter(|i| valid_remote_id(i))?;
     let hidden = n.get_attr("is_hidden").map(|v| v.as_str() == "true").unwrap_or(false);
     Some(RemoteProduct { id, retailer_id: text(n, "retailer_id", 200), name: text(n, "name", 500), hidden })
 }
@@ -203,5 +205,125 @@ mod tests {
         assert_eq!(next.as_deref(), Some("cursor-2"));
         let del = NodeBuilder::new("iq").children([NodeBuilder::new(DELETE).attr("deleted_count", "2").build()]).build();
         assert_eq!(parse_deleted(&del.as_node_ref()), 2);
+    }
+
+    // -----------------------------------------------------------------
+    // Golden fixtures: the exact stanzas sent, rendered canonically
+    // (attributes sorted), so any change to what goes on the wire is seen.
+
+    fn xml(n: &Node) -> String {
+        let mut attrs: Vec<(String, String)> = n.attrs.0.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        attrs.sort();
+        let a: String = attrs.iter().map(|(k, v)| format!(" {k}=\"{v}\"")).collect();
+        let body = match &n.content {
+            None => String::new(),
+            Some(NodeContent::Bytes(b)) => String::from_utf8(b.clone()).unwrap(),
+            Some(NodeContent::String(s)) => s.to_string(),
+            Some(NodeContent::Nodes(v)) => v.iter().map(xml).collect(),
+        };
+        format!("<{}{a}>{body}</{}>", n.tag, n.tag)
+    }
+
+    fn content(c: NodeContent) -> String {
+        match c {
+            NodeContent::Nodes(v) => v.iter().map(xml).collect(),
+            _ => panic!("nodes expected"),
+        }
+    }
+
+    #[test]
+    fn golden_add_edit_delete_and_list_stanzas() {
+        assert_eq!(
+            content(write_content(ADD, product_node(None, &product()))),
+            "<product_catalog_add v=\"1\"><product is_hidden=\"false\"><name>Almarai Fresh Milk 1L</name>\
+             <description>حليب طازج</description><retailer_id>100001</retailer_id>\
+             <media><image><url>https://mmg.whatsapp.net/product/image/x</url></image></media>\
+             <price>1250</price><currency>BHD</currency></product><width>100</width><height>100</height></product_catalog_add>"
+        );
+        let hidden = CatalogProduct { hidden: true, image_url: None, description: None, ..product() };
+        assert_eq!(
+            content(write_content(EDIT, product_node(Some("8431"), &hidden))),
+            "<product_catalog_edit v=\"1\"><product is_hidden=\"true\"><id>8431</id><name>Almarai Fresh Milk 1L</name>\
+             <retailer_id>100001</retailer_id><price>1250</price><currency>BHD</currency></product>\
+             <width>100</width><height>100</height></product_catalog_edit>"
+        );
+        assert_eq!(
+            content(delete_content(&["11".into(), "12".into()])),
+            "<product_catalog_delete v=\"1\"><product><id>11</id></product><product><id>12</id></product></product_catalog_delete>"
+        );
+        let jid: Jid = "97330000000@s.whatsapp.net".parse().unwrap();
+        assert_eq!(
+            content(list_content(&jid, 50, Some("cur-2"))),
+            "<product_catalog allow_shop_source=\"true\" jid=\"97330000000@s.whatsapp.net\"><limit>50</limit>\
+             <width>100</width><height>100</height><after>cur-2</after></product_catalog>"
+        );
+        assert!(!content(list_content(&jid, 50, None)).contains("<after>"), "the first page has no cursor");
+    }
+
+    #[test]
+    fn golden_prices_are_exact_integers_in_thousandths() {
+        // BHD has 3 decimals: fils map 1:1 to WhatsApp's thousandths.
+        for (fils, wire) in [
+            (1, "1"),
+            (10, "10"),
+            (100, "100"),
+            (999, "999"),
+            (1_000, "1000"),
+            (1_250, "1250"),
+            (9_990, "9990"),
+            (10_005, "10005"),
+            (99_999, "99999"),
+            (100_000, "100000"),
+            (999_999_999_999, "999999999999"),
+        ] {
+            let price = amwapos_core::wa_catalog::to_wa_price(fils, 3).unwrap();
+            let n = product_node(None, &CatalogProduct { price_1000: Some(price), ..product() });
+            assert_eq!(child_text(&n, "price").as_deref(), Some(wire), "{fils} fils");
+        }
+        for bad in [0, -1, 1_000_000_000_000, i64::MAX] {
+            assert!(amwapos_core::wa_catalog::to_wa_price(bad, 3).is_err(), "{bad} is never sent");
+        }
+    }
+
+    #[test]
+    fn untrusted_replies_are_bounded_and_never_trusted_blindly() {
+        // String content (not bytes), hidden flag, over-long name bounded,
+        // a retailer id with spaces around it trimmed.
+        let long = "x".repeat(5_000);
+        let page = NodeBuilder::new("iq")
+            .children([NodeBuilder::new("product_catalog")
+                .children([
+                    NodeBuilder::new("product")
+                        .attr("is_hidden", "true")
+                        .children([
+                            NodeBuilder::new("id").string_content("42").build(),
+                            text_node("retailer_id", "  SKU-1  "),
+                            text_node("name", &long),
+                        ])
+                        .build(),
+                    NodeBuilder::new("product").attr("is_hidden", "yes").children([text_node("id", "43")]).build(),
+                    NodeBuilder::new("product").children([text_node("id", &"9".repeat(65))]).build(),
+                    NodeBuilder::new("product").children([text_node("id", "a b")]).build(),
+                    NodeBuilder::new("product").children([text_node("id", "")]).build(),
+                ])
+                .build()])
+            .build();
+        let (items, next) = parse_list(&page.as_node_ref());
+        assert_eq!(next, None, "no paging: last page");
+        assert_eq!(items.len(), 2, "ids that are too long, contain spaces or are empty are skipped");
+        assert_eq!((items[0].id.as_str(), items[0].retailer_id.as_deref(), items[0].hidden), ("42", Some("SKU-1"), true));
+        assert_eq!(items[0].name.as_ref().unwrap().chars().count(), 500);
+        assert!(!items[1].hidden, "only the exact value true hides");
+        // A reply for another operation is not taken as this one's.
+        let reply = NodeBuilder::new("iq")
+            .children([NodeBuilder::new(EDIT).children([NodeBuilder::new("product").children([text_node("id", "1")]).build()]).build()])
+            .build();
+        assert!(parse_write_reply(&reply.as_node_ref(), ADD).is_none());
+        // A page without the catalogue element is empty, not an error that loops.
+        assert_eq!(parse_list(&NodeBuilder::new("iq").build().as_node_ref()), (vec![], None));
+        // A delete count that is not a number counts as nothing deleted.
+        let del = NodeBuilder::new("iq").children([NodeBuilder::new(DELETE).attr("deleted_count", "two").build()]).build();
+        assert_eq!(parse_deleted(&del.as_node_ref()), 0);
+        assert!(valid_remote_id("7777001") && !valid_remote_id("<x>") && !valid_remote_id(""));
     }
 }

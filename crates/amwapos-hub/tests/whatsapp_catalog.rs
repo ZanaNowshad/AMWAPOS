@@ -412,3 +412,293 @@ async fn failures_are_isolated_bounded_and_a_resumed_sync_never_duplicates() {
     assert_eq!(writes(&e.fake).0, creates_before + 1, "the copy is adopted, not duplicated");
     assert_eq!(e.fake.remote(ACC).values().filter(|p| p.name == "Late Product").count(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Hardening pass: the worker under load, relinks, duplicates on WhatsApp,
+// refused pictures, rapid presses and permissions, all through the runtime
+// and the same fake session the message worker uses.
+
+fn remote_product(name: &str, retailer: &str) -> CatalogProduct {
+    CatalogProduct {
+        name: name.into(),
+        description: None,
+        price_1000: Some(500),
+        currency: "BHD".into(),
+        retailer_id: retailer.into(),
+        image_url: None,
+        hidden: false,
+    }
+}
+
+fn synced(e: &Env, account: &str) -> i64 {
+    count(&e.core, &format!("SELECT COUNT(*) FROM wa_catalog_products WHERE account='{account}' AND status='synced'"))
+}
+
+fn release_retries(e: &Env) {
+    e.core.db.write(|c| Ok(c.execute("UPDATE wa_catalog_products SET next_at=NULL WHERE status='queued'", [])?)).unwrap();
+    e.rt.whatsapp.catalog_changed();
+}
+
+async fn last_run(e: &Env) -> Value {
+    call(&e.rt, "whatsapp.catalog_status", Some(&e.t), json!({})).await["catalog"]["last_run"].clone()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_large_first_sync_is_bounded_and_never_holds_up_receipts_or_customer_messages() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.rt.whatsapp.set_catalog_pace(Duration::from_millis(20));
+    let theirs = e.fake.add_remote(ACC, remote_product("Gift wrapping", "GIFT"));
+    const N: i64 = 60;
+    for i in 0..N {
+        product(&e, &format!("Bulk item {i:02}"), 100 + i, json!({})).await;
+    }
+    capability(&e, "supported").await;
+    let checks = e.fake.state.catalog.capability_checks.load(Ordering::SeqCst);
+    // A slow WhatsApp: every catalogue call takes 40 ms.
+    e.fake.state.catalog.delay_ms.store(40, Ordering::SeqCst);
+    let r = call(&e.rt, "whatsapp.catalog_sync", Some(&e.t), json!({})).await;
+    assert_eq!(r["published"], true);
+    let st = call(&e.rt, "whatsapp.catalog_status", Some(&e.t), json!({})).await;
+    assert_eq!(st["catalog"]["run"]["total"], N, "the operator sees the size of the job at once");
+
+    // A receipt queued now goes out while the catalogue is still being written.
+    call(
+        &e.rt,
+        "whatsapp.queue",
+        Some(&e.t),
+        json!({ "operation_id": "op-bulk-1", "kind": "text", "to_phone": "33334444", "text": "Receipt 1" }),
+    )
+    .await;
+    until("receipt sent", || e.fake.sent().iter().any(|s| s.text == "Receipt 1")).await;
+    let at_send = synced(&e, "97330000000");
+    assert!(at_send < N, "the receipt waited for the whole catalogue ({at_send} of {N} were done)");
+    // A customer's order message is received meanwhile (AI orders read the inbox).
+    let delivered = e
+        .fake
+        .deliver(vec![amwapos_core::messaging::Inbound {
+            wa_id: "bulk-in-1".into(),
+            chat: "97333445566@s.whatsapp.net".into(),
+            sender_pn: None,
+            push_name: Some("Mariam".into()),
+            ts: chrono::Utc::now().timestamp(),
+            kind: "text".into(),
+            text: Some("2 bulk item 01 please".into()),
+            caption: None,
+            media_mime: None,
+            media_ref: None,
+        }])
+        .await;
+    assert!(delivered);
+
+    until("all published", || synced(&e, "97330000000") == N).await;
+    assert_eq!(count(&e.core, "SELECT COUNT(*) FROM wa_inbox WHERE wa_id='bulk-in-1'"), 1);
+    assert_eq!(writes(&e.fake), (N as u32, 0, 0), "one create per product, nothing else");
+    let mut run = json!(null);
+    for _ in 0..200 {
+        run = last_run(&e).await;
+        if run["verify"] == "done" {
+            break;
+        }
+        e.rt.whatsapp.catalog_changed();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!((run["total"].as_i64(), run["processed"].as_i64(), run["synced"].as_i64()), (Some(N), Some(N), Some(N)), "{run}");
+    assert_eq!(run["verify"], "done", "{run}");
+    // Reads are bounded: one index read (2 pages) + one remote check (2 pages).
+    let lists = e.fake.state.catalog.list_calls.load(Ordering::SeqCst);
+    assert!(lists <= 4, "the catalogue was read {lists} times");
+    assert!(e.fake.state.catalog.capability_checks.load(Ordering::SeqCst) - checks <= 1, "capability is not re-checked per product");
+    // The merchant's own product is untouched; nothing extra exists.
+    let remote = e.fake.remote(ACC);
+    assert_eq!(remote.len() as i64, N + 1);
+    assert_eq!(remote[&theirs].name, "Gift wrapping");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn relinking_mid_pass_and_a_then_b_then_a_never_mixes_accounts() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.rt.whatsapp.set_catalog_pace(Duration::from_millis(250));
+    for i in 0..6 {
+        product(&e, &format!("Relink {i}"), 300 + i, json!({})).await;
+    }
+    capability(&e, "supported").await;
+    call(&e.rt, "whatsapp.catalog_sync", Some(&e.t), json!({})).await;
+    until("a first product published", || synced(&e, "97330000000") >= 1).await;
+    // Mid-pass, another phone is linked.
+    call(&e.rt, "whatsapp.stop", Some(&e.t), json!({})).await;
+    capability(&e, "disconnected").await;
+    e.fake.set_account(ACC2);
+    e.fake.make_business(ACC2, CatalogCapability::Supported);
+    call(&e.rt, "whatsapp.start", Some(&e.t), json!({})).await;
+    let st = capability(&e, "supported").await;
+    assert_eq!(st["capability"]["account"], "97339999999");
+    for _ in 0..2 {
+        release_retries(&e);
+        settle(&e).await;
+    }
+    assert!(e.fake.remote(ACC2).is_empty(), "nothing of A's run is written to B");
+    assert_eq!(count(&e.core, "SELECT COUNT(*) FROM wa_catalog_products WHERE account='97339999999'"), 0);
+    // A again: the run finishes on A, with A's remote ids, without duplicates.
+    call(&e.rt, "whatsapp.stop", Some(&e.t), json!({})).await;
+    capability(&e, "disconnected").await;
+    e.fake.set_account(ACC);
+    call(&e.rt, "whatsapp.start", Some(&e.t), json!({})).await;
+    capability(&e, "supported").await;
+    for _ in 0..100 {
+        if synced(&e, "97330000000") == 6 {
+            break;
+        }
+        release_retries(&e);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert_eq!(synced(&e, "97330000000"), 6);
+    assert_eq!(writes(&e.fake).0, 6, "no duplicate creates across the relinks");
+    let remote = e.fake.remote(ACC);
+    assert_eq!(remote.len(), 6);
+    let ids: Vec<String> = e
+        .core
+        .db
+        .read(|c| {
+            let mut st = c.prepare("SELECT remote_id FROM wa_catalog_products WHERE account='97330000000'")?;
+            let r = st.query_map([], |r| r.get(0))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(r)
+        })
+        .unwrap();
+    assert!(ids.iter().all(|id| remote.contains_key(id)), "every mapping points at A's own products");
+    assert!(e.fake.remote(ACC2).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn duplicates_are_adopted_once_and_a_product_deleted_on_whatsapp_returns_only_on_a_full_sync() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.rt.whatsapp.set_catalog_pace(Duration::from_millis(20));
+    // Two copies left by earlier interrupted runs, and one of the merchant's own.
+    let first = e.fake.add_remote(ACC, remote_product("Dates 1kg", "DATES-1"));
+    let second = e.fake.add_remote(ACC, remote_product("Dates 1kg", "DATES-1"));
+    let gift = e.fake.add_remote(ACC, remote_product("Gift wrapping", "GIFT"));
+    let p = product(&e, "Dates 1kg", 2500, json!({ "sku": "DATES-1" })).await;
+    let pid = p["product_id"].as_str().unwrap().to_string();
+    capability(&e, "supported").await;
+    call(&e.rt, "whatsapp.catalog_sync", Some(&e.t), json!({})).await;
+    until("synced", || status_of(&e, &pid) == "synced").await;
+    assert_eq!(remote_id(&e, &pid).as_deref(), Some(first.as_str()), "the oldest copy is adopted");
+    assert_eq!(writes(&e.fake).0, 0, "never another copy");
+    assert!(e.fake.remote(ACC).contains_key(&second), "the other copy is left alone");
+
+    // Deleted in the WhatsApp Business app: the automatic sync reports it and
+    // does not bring it back by itself.
+    e.fake.state.catalog.products.lock().unwrap().get_mut(ACC).unwrap().remove(&first);
+    call(&e.rt, "products.price_update", Some(&e.t), json!({ "product_id": pid, "amount_minor": 2750 })).await;
+    until("reported missing", || status_of(&e, &pid) == "remote_missing").await;
+    settle(&e).await;
+    assert_eq!(status_of(&e, &pid), "remote_missing");
+    let ps = call(&e.rt, "whatsapp.catalog_product", Some(&e.t), json!({ "product_id": pid })).await;
+    assert_eq!(ps["status"], "remote_missing");
+    // An administrator's full sync publishes it again: the remaining copy is
+    // adopted (the cache that still listed the deleted id is not trusted).
+    call(&e.rt, "whatsapp.catalog_sync", Some(&e.t), json!({})).await;
+    until("back", || status_of(&e, &pid) == "synced").await;
+    assert_eq!(remote_id(&e, &pid).as_deref(), Some(second.as_str()));
+    assert_eq!(e.fake.remote(ACC)[&second].price_1000, Some(2750));
+    assert_eq!(writes(&e.fake).0, 0);
+    // Deleted again, and found by the full sync's remote check (no POS change).
+    e.fake.state.catalog.products.lock().unwrap().get_mut(ACC).unwrap().remove(&second);
+    call(&e.rt, "whatsapp.catalog_sync", Some(&e.t), json!({})).await;
+    until("recreated by the full sync", || status_of(&e, &pid) == "synced" && writes(&e.fake).0 == 1).await;
+    let rid = remote_id(&e, &pid).unwrap();
+    assert!(e.fake.remote(ACC).contains_key(&rid));
+    assert_eq!(e.fake.remote(ACC).values().filter(|x| x.retailer_id == "DATES-1").count(), 1);
+    // Never touched: the merchant's product.
+    assert_eq!(e.fake.remote(ACC)[&gift].name, "Gift wrapping");
+    assert_eq!(writes(&e.fake).2, 0, "nothing deleted remotely");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refused_picture_publishes_the_product_without_it_and_does_not_loop() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.rt.whatsapp.set_catalog_pace(Duration::from_millis(20));
+    e.fake.state.catalog.reject_uploads.store(true, Ordering::SeqCst);
+    let p = product(&e, "Pictured", 1000, json!({ "image_b64": png([10, 150, 10]) })).await;
+    let pid = p["product_id"].as_str().unwrap().to_string();
+    capability(&e, "supported").await;
+    call(&e.rt, "whatsapp.catalog_sync", Some(&e.t), json!({})).await;
+    until("synced", || status_of(&e, &pid) == "synced").await;
+    let rid = remote_id(&e, &pid).unwrap();
+    assert_eq!(e.fake.remote(ACC)[&rid].image_url, None);
+    let ps = call(&e.rt, "whatsapp.catalog_product", Some(&e.t), json!({ "product_id": pid })).await;
+    assert_eq!(ps["picture_refused"], true, "{ps}");
+    for _ in 0..2 {
+        settle(&e).await;
+    }
+    assert_eq!(writes(&e.fake), (1, 0, 0), "no retry loop over the refused picture");
+    // A new picture is tried again.
+    e.fake.state.catalog.reject_uploads.store(false, Ordering::SeqCst);
+    call(&e.rt, "products.image_upload", Some(&e.t), json!({ "product_id": pid, "data": png([200, 200, 10]) })).await;
+    until("picture sent", || e.fake.remote(ACC)[&rid].image_url.is_some()).await;
+    assert_eq!(writes(&e.fake).0, 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn rapid_sync_presses_make_one_run_and_only_whatsapp_and_product_managers_may_press() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.rt.whatsapp.set_catalog_pace(Duration::from_millis(20));
+    for i in 0..5 {
+        product(&e, &format!("Press {i}"), 500 + i, json!({})).await;
+    }
+    capability(&e, "supported").await;
+    // Five presses at once.
+    let presses: Vec<_> = (0..5)
+        .map(|_| {
+            let (rt, t) = (e.rt.clone(), e.t.clone());
+            tokio::spawn(async move { rt.dispatch("whatsapp.catalog_sync", Some(t), json!({})).await })
+        })
+        .collect();
+    for p in presses {
+        p.await.unwrap().unwrap();
+    }
+    until("synced", || synced(&e, "97330000000") == 5).await;
+    settle(&e).await;
+    assert_eq!(writes(&e.fake), (5, 0, 0));
+    assert_eq!(count(&e.core, "SELECT COUNT(*) FROM wa_catalog_runs"), 1, "the presses joined one run");
+
+    // Permissions, through the runtime.
+    let role = |name: &str, perms: &[&str]| {
+        let r = e.core.role_save(&e.t, None, name, None, perms.iter().map(|p| p.to_string()).collect()).unwrap();
+        r.into_iter().find(|x| x.name == name).unwrap().role_id
+    };
+    let wa_only = role("WhatsApp only", &["whatsapp.manage"]);
+    let prod_only = role("Products only", &["products.manage", "products.view"]);
+    for (name, rid, pin) in [("Wafa", wa_only, "3571"), ("Pavel", prod_only, "3572")] {
+        let u = call(&e.rt, "users.create", Some(&e.t), json!({ "user": { "display_name": name, "pin": pin, "role_id": rid } })).await;
+        let t =
+            call(&e.rt, "auth.login", None, json!({ "user_id": u["user_id"], "pin": pin })).await["token"].as_str().unwrap().to_string();
+        for cmd in ["whatsapp.catalog_sync", "whatsapp.catalog_retry", "whatsapp.catalog_configure", "whatsapp.catalog_recheck"] {
+            let err = e.rt.dispatch(cmd, Some(t.clone()), json!({ "auto_sync": false })).await.unwrap_err();
+            assert_eq!(err.code, amwapos_core::ErrorCode::Forbidden, "{name}: {cmd}");
+        }
+    }
+    assert_eq!(count(&e.core, "SELECT COUNT(*) FROM wa_catalog_runs"), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_unreachable_capability_check_is_retried_slowly_and_publishes_nothing() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.fake.state.catalog.fail_capability.store(true, Ordering::SeqCst);
+    product(&e, "Waiting", 700, json!({})).await;
+    let st = capability(&e, "unavailable").await;
+    assert!(st["capability"]["detail"].is_string());
+    let err = e.rt.dispatch("whatsapp.catalog_sync", Some(e.t.clone()), json!({})).await.unwrap_err();
+    assert_eq!(err.details.unwrap()["kind"], "catalog_unavailable");
+    // Many worker wake-ups do not re-check it each time (once a minute at most).
+    let before = e.fake.state.catalog.capability_checks.load(Ordering::SeqCst);
+    for _ in 0..10 {
+        e.rt.whatsapp.catalog_poke.notify_one();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(e.fake.state.catalog.capability_checks.load(Ordering::SeqCst) - before <= 1);
+    assert_eq!(writes(&e.fake), (0, 0, 0));
+    // An administrator's "check again" is honoured at once.
+    e.fake.state.catalog.fail_capability.store(false, Ordering::SeqCst);
+    call(&e.rt, "whatsapp.catalog_recheck", Some(&e.t), json!({})).await;
+    capability(&e, "supported").await;
+}
