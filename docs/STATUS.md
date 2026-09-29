@@ -410,7 +410,7 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 **Direction and ownership.**
 - POS → WhatsApp only. WhatsApp edits never change POS data.
 - The worker only touches remote products it created or adopted.
-- Adoption: before creating an unmapped product, the account's catalogue is read. A remote product whose retailer id equals the POS product code, with exactly one match and not mapped to another product, is updated instead of duplicated. This also makes an interrupted run resumable.
+- Adoption: before creating an unmapped product, the account's catalogue is consulted (a remote index kept in step with the worker's own writes, re-read after 10 min, a failed create, a "not found", a relink or a full sync's remote check). A remote product whose retailer id equals the POS product code and that is not mapped to another product is updated instead of duplicated; with several such copies the oldest is adopted. This also makes an interrupted run resumable.
 - If the catalogue cannot be read, the create waits; it never runs blind.
 - Remote products created in the WhatsApp app are never modified or deleted.
 
@@ -426,11 +426,12 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 - A different linked number starts with no mappings and needs its own first sync. The old account's rows are kept as history and never used.
 
 **What is sent.**
-- Name: at most 150 characters, cut deterministically with "…".
+- Name: one line (control characters and repeated spaces removed), at most 150 characters, cut deterministically with "…". Descriptions keep single line breaks.
+- A hidden product that lost its price keeps its last published price.
 - Description: the product description, else the Arabic name, else none (nothing invented); at most 1000 characters.
 - Price in thousandths of the currency (the protocol's amount×1000). For BHD, fils map 1:1: 0.100 → 100, 1.250 → 1250, 9.990 → 9990, 100.000 → 100000. Integer arithmetic only.
 - Currency code, retailer id = the POS product code (SKU), hidden flag.
-- Picture: the POS-managed stored JPEG (uploaded or automatically found), sent byte for byte. It is re-uploaded only when its hash changes. Outside search URLs are never used, and a product without a picture is published without one.
+- Picture: the POS-managed stored JPEG (uploaded or automatically found), sent byte for byte. It is re-uploaded only when its hash changes (an upload is reused by the retry of a failed write for 24 h). Outside search URLs are never used, and a product without a picture is published without one. A missing, non-JPEG or refused picture publishes the product without it (shown on the product) instead of failing it.
 - These character limits are AMWAPOS' conservative choice; WhatsApp does not publish its limits.
 
 **Eligibility.**
@@ -442,8 +443,10 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 - `queued → syncing → synced | hidden | removed | failed | remote_missing`.
 - Temporary errors (disconnect, timeout, 429 with the server's back-off, 5xx) retry after 1, 5, 30 and 120 min; the 5th failure gives `failed`.
 - `failed` is terminal until the product's representation changes, or an administrator presses Retry. There is no loop.
-- `remote_missing` (deleted on WhatsApp) is re-created only on Retry.
-- A claim abandoned for 10 min is taken back.
+- `remote_missing` (deleted on WhatsApp) is re-created only by Retry or an administrator's full sync, never by the automatic sync.
+- A claim abandoned for 10 min is taken back; a restarted worker releases all claims at once.
+- An edit made while that product's write is in flight is re-queued, never recorded as published.
+- A full sync is a run (`wa_catalog_runs`, migration 0024): its progress is shown, and once per run the remote catalogue is read to find mapped products deleted on WhatsApp.
 - An unchanged fingerprint means no remote write.
 
 **When it runs.**
@@ -462,6 +465,7 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 - Core state machine: `crates/amwapos-core/tests/wa_catalog.rs`.
 - End to end with the fake adapter: `crates/amwapos-hub/tests/whatsapp_catalog.rs`.
 - Stanza building and parsing: unit tests in `catalog_proto.rs`.
+- Hardening audit 2026-09-29 (17 findings, fixes, invariants, state machine): `docs/WA_CATALOGUE_AUDIT.md`. Golden stanza fixtures in `catalog_proto.rs`; load, relink, duplicate, refused-picture, rapid-press and permission tests in the hub suite.
 - **Not verified live**: no WhatsApp Business account was available in this environment. Business detection, catalogue access, product create/update with picture and BHD price, and re-sync without duplicates must be checked once on a real linked Business number. Collections are unsupported by design (blocked).
 
 ## Supplier documents and WhatsApp orders, 2026-09-29

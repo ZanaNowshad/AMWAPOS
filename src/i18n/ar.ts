@@ -3663,4 +3663,60 @@ export const AR: Record<string, string> = {
   "Not an item line": "هذا السطر ليس صنفاً",
   "Receive this line (it stays in the document checks either way)":
     "استلام هذا البند (يبقى ضمن تحققات المستند في كل الأحوال)",
+  // WhatsApp catalogue (hardening pass).
+  "{0} / {1} products processed": "تمت معالجة {0} من {1} منتج",
+  "Published: {0}": "نُشر: {0}",
+  "Already up to date: {0}": "محدَّث مسبقاً: {0}",
+  "Hidden: {0}": "مخفي: {0}",
+  "Removed: {0}": "أُزيل: {0}",
+  "Could not publish: {0}": "تعذّر نشره: {0}",
+  "Sync in progress": "المزامنة جارية",
+  "Last full sync": "آخر مزامنة كاملة",
+  "Catalogue sync progress": "تقدّم مزامنة الكتالوج",
+  "Checking the WhatsApp catalogue for products deleted there…": "جارٍ فحص كتالوج واتساب بحثاً عن منتجات حُذفت هناك…",
+  "The WhatsApp catalogue could not be read completely, so products deleted there were not looked for.":
+    "تعذّرت قراءة كتالوج واتساب كاملاً، لذلك لم يُبحث عن المنتجات المحذوفة هناك.",
+  "Runs in the background, about one product a second. Receipts and WhatsApp messages keep going; you can leave this page.":
+    "تعمل في الخلفية، بمعدل منتج واحد تقريباً في الثانية. تستمر الإيصالات ورسائل واتساب؛ يمكنك مغادرة هذه الصفحة.",
+  "Last problem": "آخر مشكلة",
+  "Before the first sync": "قبل المزامنة الأولى",
+  "Nothing is sent to WhatsApp until you press Sync.": "لا يُرسل شيء إلى واتساب حتى تضغط مزامنة.",
+  "{0} active products with a price will be published, with their AMWAPOS name, price, description and product code.":
+    "سيُنشر {0} منتجاً نشطاً له سعر، باسمه وسعره ووصفه ورمزه في AMWAPOS.",
+  "Left out: {0} archived, {1} without a price, {2} with a price WhatsApp cannot show.":
+    "المستبعد: {0} مؤرشف، {1} بلا سعر، {2} بسعر لا يستطيع واتساب عرضه.",
+  "Pictures come only from AMWAPOS product pictures. No picture search is started; products without a picture are published without one.":
+    "تأتي الصور من صور منتجات AMWAPOS فقط. لا يبدأ أي بحث عن صور؛ المنتجات بلا صورة تُنشر بدون صورة.",
+  "Products you created yourself in WhatsApp Business are never changed or deleted. A WhatsApp product with the same product code is linked instead of duplicated.":
+    "المنتجات التي أنشأتها بنفسك في واتساب للأعمال لا تُغيَّر ولا تُحذف أبداً. ويُربط منتج واتساب الذي يحمل الرمز نفسه بدلاً من تكراره.",
+  "Categories are not created as WhatsApp collections: this WhatsApp link cannot write them.":
+    "لا تُنشأ الفئات كمجموعات في واتساب: هذا الربط مع واتساب لا يستطيع كتابتها.",
+  "It takes about {0} min in the background. Receipts and messages keep going.":
+    "تستغرق نحو {0} دقيقة في الخلفية. تستمر الإيصالات والرسائل.",
+  "The WhatsApp catalogue is managed on the hub computer, where WhatsApp is linked. Open this page there.":
+    "يُدار كتالوج واتساب على الحاسوب المركزي حيث رُبط واتساب. افتح هذه الصفحة هناك.",
+  "Changed in AMWAPOS since the last sync": "تغيّر في AMWAPOS منذ آخر مزامنة",
+  "Retrying automatically": "إعادة المحاولة تلقائياً",
+  "Left out (price WhatsApp cannot show)": "مستبعد (سعر لا يستطيع واتساب عرضه)",
+  "Automatic sync is off: changes reach WhatsApp at the next Sync.":
+    "المزامنة التلقائية متوقفة: تصل التغييرات إلى واتساب عند المزامنة التالية.",
+  "On: product changes are published within about a minute. Off: nothing changes on WhatsApp until you press Sync. Products deleted in WhatsApp are only published again by Sync or Retry.":
+    "تشغيل: تُنشر تغييرات المنتجات خلال دقيقة تقريباً. إيقاف: لا يتغير شيء في واتساب حتى تضغط مزامنة. المنتجات المحذوفة في واتساب لا تُنشر من جديد إلا بالمزامنة أو إعادة المحاولة.",
+  "changed since the last sync": "تغيّر منذ آخر مزامنة",
+  "WhatsApp refused the picture; published without it": "رفض واتساب الصورة؛ نُشر بدونها",
+  "WhatsApp was not connected; it is retried automatically.": "لم يكن واتساب متصلاً؛ تُعاد المحاولة تلقائياً.",
+  "WhatsApp did not answer in time; it is retried automatically.":
+    "لم يستجب واتساب في الوقت المحدد؛ تُعاد المحاولة تلقائياً.",
+  "WhatsApp asked AMWAPOS to slow down; it is retried later.": "طلب واتساب من AMWAPOS الإبطاء؛ تُعاد المحاولة لاحقاً.",
+  "The WhatsApp catalogue could not be read to rule out a duplicate; it is retried.":
+    "تعذّرت قراءة كتالوج واتساب لاستبعاد التكرار؛ تُعاد المحاولة.",
+  "This product was deleted in WhatsApp. A full sync or Retry publishes it again.":
+    "حُذف هذا المنتج في واتساب. تعيد المزامنة الكاملة أو إعادة المحاولة نشره.",
+  "WhatsApp returned a product that belongs to another POS product. Check the product codes (SKU).":
+    "أعاد واتساب منتجاً يخص منتجاً آخر في نقطة البيع. تحقق من رموز المنتجات (SKU).",
+  "WhatsApp refused this product. Check its name, price and picture, then Retry. ({0})":
+    "رفض واتساب هذا المنتج. تحقق من اسمه وسعره وصورته ثم أعد المحاولة. ({0})",
+  "The linked WhatsApp number changed.": "تغيّر رقم واتساب المرتبط.",
+  "WhatsApp disconnected.": "انقطع اتصال واتساب.",
+  "The picture upload timed out.": "انتهت مهلة رفع الصورة.",
 };

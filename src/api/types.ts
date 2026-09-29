@@ -1791,17 +1791,45 @@ export type WaCatalogCapability =
 export type WaCatalogItemStatus =
   "queued" | "syncing" | "synced" | "hidden" | "removed" | "not_synced" | "failed" | "remote_missing";
 
+/** An administrator's full sync, with its progress. */
+export interface WaCatalogRun {
+  run_id: string;
+  started_at: string;
+  finished_at: string | null;
+  /** Products this run has to write (unchanged ones are not counted). */
+  total: number;
+  processed: number;
+  /** Products already identical on WhatsApp when the run started. */
+  unchanged: number;
+  synced: number;
+  hidden: number;
+  removed: number;
+  failed: number;
+  /** The one comparison with the remote catalogue per run. */
+  verify: "pending" | "done" | "skipped";
+  verify_note: string | null;
+}
+
+export type WaCatalogLeftOut = "archived" | "no_name" | "no_price" | "price_not_supported";
+
 export interface WaCatalogOverview {
   account: string | null;
   published: boolean;
   auto_sync: boolean;
   publishable: number;
-  not_publishable: Partial<Record<"archived" | "no_name" | "no_price", number>>;
+  not_publishable: Partial<Record<WaCatalogLeftOut, number>>;
   counts: Partial<Record<WaCatalogItemStatus, number>>;
+  /** Waiting after a temporary error; retried automatically. */
+  retrying?: number;
+  /** On WhatsApp, but changed in AMWAPOS since (auto-sync off). */
+  out_of_date?: number;
   last_synced_at: string | null;
-  failures: { product_id: string; name: string | null; status: string; error: string | null }[];
+  /** `error` is the operator wording; `detail` what WhatsApp said. */
+  failures: { product_id: string; name: string | null; status: string; error: string | null; detail?: string | null }[];
   categories: number;
   collections_recorded: number;
+  run?: WaCatalogRun | null;
+  last_run?: WaCatalogRun | null;
 }
 
 export interface WaCatalogStatus {
@@ -1825,7 +1853,9 @@ export interface WaCatalogProductState {
   on_whatsapp?: boolean;
   last_synced_at?: string | null;
   last_error?: string | null;
-  not_publishable?: "archived" | "no_name" | "no_price" | null;
+  not_publishable?: WaCatalogLeftOut | null;
+  out_of_date?: boolean;
+  picture_refused?: boolean;
 }
 
 // ---- Document Intelligence (supplier documents → review → drafts)
