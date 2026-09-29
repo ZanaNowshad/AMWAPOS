@@ -232,6 +232,12 @@ pub const LEXICON: &[(&str, &str)] = &[
 ];
 
 const STOP: &[&str] = &[
+    "will",
+    "pick",
+    "up",
+    "collect",
+    "come",
+    "myself",
     "please",
     "pls",
     "plz",
@@ -916,7 +922,9 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
     // Remove the address part before reading items.
     let item_text = strip_address(&t);
     let question = t.contains('?')
-        || any(&t, &["do you have", "is there", "have you", "available", "in stock", "عندكم", "فيه", "متوفر", "undo", "und"]);
+        || any(&t, &["do you have", "is there", "have you", "available", "in stock", "عندكم", "متوفر"])
+        // Short words match whole words only ("und" is not "refund").
+        || word_in(&t, &["فيه", "undo", "und"]);
     let price_q = any(&t, &["how much", "price", "cost", "rate", "كم سعر", "بكم", "كم", "سعر", "ethra", "evide price"]);
     // Modifications (only meaningful with an open draft).
     if active {
@@ -942,7 +950,11 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
     }
     if !out.modifications.is_empty() {
         // done above
-    } else if !priority.is_empty() && priority.iter().any(|p| p != "urgent_request") && !out.items.iter().any(|i| i.qty.explicit) {
+    } else if !priority.is_empty()
+        && priority.iter().any(|p| p != "urgent_request")
+        // "I want a refund" is not a quantity; "2 milk" is.
+        && !out.items.iter().any(|i| i.qty.explicit && i.text.chars().any(|c| c.is_ascii_digit()))
+    {
         out.intent = Intent::SupportIssue;
         out.band = "medium".into();
         reasons.push("support_words".into());

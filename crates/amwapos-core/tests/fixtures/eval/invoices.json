@@ -1,0 +1,89 @@
+{
+  "_note": "Synthetic supplier documents (OCR text as the worker would supply it) with the structured result a reviewer expects. No real business or customer data.",
+  "suppliers": [
+    { "name": "Al Waha Trading", "vat_number": "200011122233344" },
+    { "name": "Gulf Fresh Trading", "vat_number": "200099988877766" },
+    { "name": "Noor Foodstuff Co", "vat_number": "220055566677788" }
+  ],
+  "products": [
+    { "name": "Milk Full Cream 1L", "barcode": "6291041500213", "price_minor": 600, "cost_minor": 400 },
+    { "name": "Coca-Cola Original 330 ml", "barcode": "5449000000996", "price_minor": 150, "cost_minor": 90 },
+    { "name": "Basmati Rice 5kg", "barcode": "6290000000011", "price_minor": 4000, "cost_minor": 3000 },
+    { "name": "Sunflower Oil 1.8L", "barcode": "6290000000028", "price_minor": 1500, "cost_minor": 1100 },
+    { "name": "Lipton Yellow Label 100 bags", "barcode": "6290000000035", "price_minor": 1200, "cost_minor": 850 }
+  ],
+  "cases": [
+    {
+      "name": "clean English tax invoice",
+      "text": "Al Waha Trading Co. W.L.L.\nVAT No: 200011122233344\nTAX INVOICE\nInvoice No: INV-00123   Date: 28/09/2026\n6291041500213 Milk Full Cream 1L 10 PCS 0.450 4.500\nCOKE REG 24x330ML 2 CTN 7.200 14.400\nSubtotal 18.900\nVAT 10% 1.890\nGrand Total 20.790",
+      "expect": {
+        "doc_type": "invoice", "supplier": "Al Waha Trading", "invoice_number": "INV-00123", "invoice_date": "2026-09-28",
+        "subtotal_minor": 18900, "vat_minor": 1890, "total_minor": 20790, "arithmetic_ok": true, "vat_ok": true,
+        "lines": [
+          { "product": "Milk Full Cream 1L", "qty_milli": 10000, "unit_cost_minor": 450, "line_total_minor": 4500 },
+          { "product": "Coca-Cola Original 330 ml", "qty_milli": 2000, "unit_cost_minor": 7200, "line_total_minor": 14400 }
+        ]
+      }
+    },
+    {
+      "name": "dashes in the date, Inv# label",
+      "text": "Gulf Fresh Trading W.L.L.\nVAT Reg: 200099988877766\nTax Invoice\nInv# GF-2091\nDate: 27-09-2026\nBasmati Rice 5kg 4 3.100 12.400\nSunflower Oil 1.8L 6 1.150 6.900\nSub Total 19.300\nVAT 10% 1.930\nTotal Due 21.230",
+      "expect": {
+        "doc_type": "invoice", "supplier": "Gulf Fresh Trading", "invoice_number": "GF-2091", "invoice_date": "2026-09-27",
+        "subtotal_minor": 19300, "vat_minor": 1930, "total_minor": 21230, "arithmetic_ok": true, "vat_ok": true,
+        "lines": [
+          { "product": "Basmati Rice 5kg", "qty_milli": 4000, "unit_cost_minor": 3100, "line_total_minor": 12400 },
+          { "product": "Sunflower Oil 1.8L", "qty_milli": 6000, "unit_cost_minor": 1150, "line_total_minor": 6900 }
+        ]
+      }
+    },
+    {
+      "name": "totals that do not add up",
+      "text": "Al Waha Trading\nVAT No: 200011122233344\nTAX INVOICE\nInvoice No: INV-7781\nDate 01/10/2026\nMilk Full Cream 1L 10 0.450 4.500\nSubtotal 4.500\nVAT 10% 0.450\nGrand Total 5.450",
+      "expect": {
+        "doc_type": "invoice", "supplier": "Al Waha Trading", "invoice_number": "INV-7781", "invoice_date": "2026-10-01",
+        "total_minor": 5450, "arithmetic_ok": false,
+        "lines": [{ "product": "Milk Full Cream 1L", "qty_milli": 10000, "unit_cost_minor": 450, "line_total_minor": 4500 }]
+      }
+    },
+    {
+      "name": "credit note",
+      "text": "Al Waha Trading\nVAT No: 200011122233344\nCREDIT NOTE\nCredit Note No: CN-044\nDate: 02/10/2026\nMilk Full Cream 1L 2 0.450 0.900\nTotal 0.900",
+      "expect": { "doc_type": "credit_note", "supplier": "Al Waha Trading", "invoice_number": "CN-044", "invoice_date": "2026-10-02" }
+    },
+    {
+      "name": "delivery note without prices",
+      "text": "Noor Foodstuff Co\nVAT No: 220055566677788\nDELIVERY NOTE\nDN No: DN-5512\nDate: 03/10/2026\nLipton Yellow Label 100 bags 12\nBasmati Rice 5kg 5",
+      "expect": { "doc_type": "delivery_note", "supplier": "Noor Foodstuff Co", "invoice_number": "DN-5512", "invoice_date": "2026-10-03" }
+    },
+    {
+      "name": "unknown product is a candidate, never invented",
+      "text": "Gulf Fresh Trading\nVAT No: 200099988877766\nTAX INVOICE\nInvoice No: GF-3000\nDate: 05/10/2026\nDragon Fruit Premium 3 1.000 3.000\nTotal 3.000",
+      "expect": {
+        "doc_type": "invoice", "supplier": "Gulf Fresh Trading", "invoice_number": "GF-3000", "total_minor": 3000,
+        "lines": [{ "product": null, "qty_milli": 3000, "unit_cost_minor": 1000, "line_total_minor": 3000 }]
+      }
+    },
+    {
+      "name": "supplier known only by VAT number (different trading name)",
+      "text": "NFC Wholesale Branch 2\nVAT Number 220055566677788\nTAX INVOICE\nInvoice No: 88120\nDate: 06/10/2026\nLipton Yellow Label 100 bags 5 0.850 4.250\nTotal 4.250",
+      "expect": {
+        "doc_type": "invoice", "supplier": "Noor Foodstuff Co", "invoice_number": "88120", "invoice_date": "2026-10-06", "total_minor": 4250,
+        "lines": [{ "product": "Lipton Yellow Label 100 bags", "qty_milli": 5000, "unit_cost_minor": 850, "line_total_minor": 4250 }]
+      }
+    },
+    {
+      "name": "Arabic labels",
+      "text": "مؤسسة الواحة التجارية\nالرقم الضريبي: 200011122233344\nفاتورة ضريبية\nرقم الفاتورة: 5566\nالتاريخ: 07/10/2026\n6291041500213 Milk Full Cream 1L 6 0.450 2.700\nالمجموع 2.700",
+      "expect": {
+        "doc_type": "invoice", "supplier": "Al Waha Trading", "invoice_number": "5566", "invoice_date": "2026-10-07",
+        "lines": [{ "product": "Milk Full Cream 1L", "qty_milli": 6000, "unit_cost_minor": 450, "line_total_minor": 2700 }]
+      }
+    },
+    {
+      "name": "unknown supplier stays unresolved",
+      "text": "Blue Harbour Supplies\nTAX INVOICE\nInvoice No: BH-19\nDate: 08/10/2026\nMilk Full Cream 1L 1 0.450 0.450\nTotal 0.450",
+      "expect": { "doc_type": "invoice", "supplier": null, "invoice_number": "BH-19", "total_minor": 450 }
+    }
+  ]
+}

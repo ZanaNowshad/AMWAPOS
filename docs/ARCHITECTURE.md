@@ -157,6 +157,8 @@ Runtime ── WhatsAppService (crates/amwapos-hub/src/whatsapp/service.rs)     
                   └─ FakeAdapter          (tests)                                        │
          ── OcrWorker (crates/amwapos-hub/src/ocr_worker.rs): bundled Tesseract,        │
             one child process per image, on its own task                                │
+         ── OrdersWorker (crates/amwapos-hub/src/orders_worker.rs): WhatsApp chats →      │
+            draft orders, woken by new inbound messages, on its own task                 │
 AppCore ── wa_outbox / wa_inbox / payment_reviews / invoice_scans (ledger DB) ◄──────────┘
 ```
 
@@ -183,6 +185,7 @@ How the rules are enforced:
   and payload return the first row; a different payload fails with `idempotency_mismatch`. The
   WhatsApp message id is derived from the outbox id, so a retried send is the same message.
 - **OCR is assistance.** Payment screenshots end as `ocr_match | likely_match | mismatch |
-  needs_review`; only a person confirms. Invoices become a draft purchase order. Models are
+  needs_review`; only a person confirms. Supplier documents go through Document Intelligence
+  and WhatsApp chats can become draft orders: see `docs/DOCUMENTS_AND_ORDERS.md`. Models are
   checked against `ocr/models/models.json`; without the English model OCR reports
   `ocr_model_missing` and cannot be switched on.

@@ -463,3 +463,43 @@ Publishes the POS catalogue to the WhatsApp Business catalogue of the linked num
 - End to end with the fake adapter: `crates/amwapos-hub/tests/whatsapp_catalog.rs`.
 - Stanza building and parsing: unit tests in `catalog_proto.rs`.
 - **Not verified live**: no WhatsApp Business account was available in this environment. Business detection, catalogue access, product create/update with picture and BHD price, and re-sync without duplicates must be checked once on a real linked Business number. Collections are unsupported by design (blocked).
+
+## Supplier documents and WhatsApp orders, 2026-09-29
+
+Architecture, flows, permissions, AI boundary and limits: `docs/DOCUMENTS_AND_ORDERS.md`.
+
+**Built.**
+- **Document Intelligence.**
+  - Images and PDFs; a quality check with preprocessing and rotation; layout OCR with word boxes (English and Arabic).
+  - Classification of invoices, credit notes and delivery notes.
+  - Every field with provenance and a confidence band.
+  - Supplier and product matching that learns from people's corrections.
+  - Deterministic arithmetic and VAT checks, duplicates, anomaly signals, and PO and three-way reconciliation.
+  - A review screen with evidence boxes.
+  - Supplier invoice records (review only) and receiving drafts, posted by a person through normal receiving.
+- **WhatsApp AI orders.**
+  - Customer chats on the existing link become draft digital orders with real products, prices and stock.
+  - Clarifying questions with real options, Bahrain addresses, and a fee from the delivery zones.
+  - Staff reply, take over, correct (learned aliases), verify payment screenshots, confirm or cancel.
+  - Nothing is sent, charged or moved by itself.
+- **Optional AI.** For both features the AI fills only unresolved values. Its output is schema-validated and never overrides a person.
+- **Assistant tools.** Read tools for all of this in the assistant's tool map.
+
+**Verified here.**
+- Core, hub and real-OCR tests, and the runtime test with the fake WhatsApp adapter.
+- Playwright end to end for both flows: real Tesseract on a synthetic invoice image, then receiving by a person; a chat with a question, then staff reply and confirmation.
+- The evaluation set: 9 documents and 16 chats, 100% per field, with no unsafe result.
+- Clippy, rustfmt, typecheck, lint, vitest and build.
+
+**Not verified live.**
+- A real AI provider reading documents or chats. Validation and fallback are tested, with the offline provider.
+- A real WhatsApp number receiving customer chats. This uses the same link that is already live-unverified for catalogue sync.
+- Real supplier documents. The evaluation data is synthetic by design.
+
+**Limits.**
+- Text PDFs have no evidence boxes.
+- JBIG2 and CCITT images inside PDFs are not decoded.
+- Handwriting is best-effort.
+- Image barcodes are not decoded.
+- There is no payables ledger, so no supplier liability is posted.
+- The cost-variance threshold has no screen field yet.

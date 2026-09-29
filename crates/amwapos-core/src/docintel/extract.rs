@@ -963,6 +963,18 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
             qty = parse_decimal(&decs[0].0.text, 3).ok().map(|q| (q, decs[0].1));
             line.unit_cost_minor = Some(decs[1].0.minor);
         }
+        // The printed arithmetic decides between candidate quantities: in
+        // "Tea 100 bags 5 0.850 4.250" the quantity is 5, not the 100 in the name.
+        if let (Some(u), Some(t)) = (line.unit_cost_minor, line.line_total_minor) {
+            let fits = |q: i64| crate::money::extend(u, q).ok() == Some(t - line.vat_minor.unwrap_or(0) + line.discount_minor.unwrap_or(0))
+                || crate::money::extend(u, q).ok() == Some(t);
+            if !qty.is_some_and(|(q, _)| fits(q)) {
+                if let Some((v, i)) = ints.iter().rev().find(|(v, _)| *v > 0 && fits(*v * 1000)) {
+                    qty = Some((*v * 1000, *i));
+                    line.flags.push("qty_from_arithmetic".into());
+                }
+            }
+        }
         line.qty_milli = qty.map(|q| q.0);
     }
     // Missing quantity or unit cost: derive only when the division is exact.

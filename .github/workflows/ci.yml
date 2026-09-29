@@ -82,6 +82,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # Supplier documents are read with the real OCR engine end to end.
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-ara
       - run: npx vite build
       - run: npx playwright test
       - uses: actions/upload-artifact@v4

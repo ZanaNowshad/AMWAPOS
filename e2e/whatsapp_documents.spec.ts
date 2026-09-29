@@ -77,7 +77,16 @@ async function signIn(page: Page) {
   await page.getByRole("button", { name: /Zana/ }).click();
   await page.getByLabel("PIN").fill("4826");
   await page.getByRole("button", { name: "Log in" }).click();
-  await page.getByRole("button", { name: "Admin" }).click();
+  // Signed in to the start-of-shift screen, or to the till when an earlier
+  // spec left a shift open: both lead to Admin.
+  const admin = page.getByRole("button", { name: "Admin" });
+  const more = page.getByTestId("pos-more");
+  await expect(admin.or(more).first()).toBeVisible();
+  if (await admin.isVisible()) await admin.click();
+  else {
+    await more.click();
+    await page.getByRole("menuitem", { name: "Admin" }).click();
+  }
 }
 
 test("supplier document: OCR → review with evidence → receiving draft → a person receives the stock", async ({
