@@ -1516,6 +1516,13 @@ impl AppCore {
         if let Some(spec) = crate::ai_tools::find(name) {
             return self.ai_registry_tool(&s, token, cid, spec, input);
         }
+        // Action-risk model: a legacy tool runs directly only when its class
+        // is automatic; proposals are recorded, never executed, here.
+        let cmd = crate::ai_actions::legacy_command(name).ok_or_else(|| AppError::validation("Unknown tool."))?;
+        let class = crate::ai_actions::class_of(cmd, input).ok_or_else(|| AppError::validation("Unknown tool."))?;
+        if !class.automatic() && !name.starts_with("propose_") {
+            return Err(AppError::forbidden("ai.mutate"));
+        }
         let (_, digits) = self.db.read(|c| self.currency(c))?;
         let f = self.features()?;
         match name {
@@ -1809,6 +1816,12 @@ impl AppCore {
                 )
             }
         };
+        let class = crate::ai_actions::legacy_command(name)
+            .and_then(|c| crate::ai_actions::class_of(c, input))
+            .ok_or_else(|| AppError::validation("Unknown tool."))?;
+        if risk == "low" && class.min_risk() == "medium" {
+            risk = "medium";
+        }
         if untrusted {
             risk = bump(bump(risk));
             reasons.push("This conversation read WhatsApp or OCR text; check that the request came from you".into());
@@ -2486,6 +2499,8 @@ impl AppCore {
                 if spec.params.contains("limit:") {
                     args["limit"] = json!(limit);
                 }
+                // The class of the command decides, not the tool's declared kind.
+                crate::ai_actions::require_automatic(spec.cmd, &args)?;
                 let v = if spec.cmd.starts_with("virtual.") {
                     self.ai_virtual(token, s, spec.cmd, &args)?
                 } else {
@@ -2582,7 +2597,12 @@ impl AppCore {
     }
 
     fn ai_virtual(&self, token: &str, s: &crate::auth::Session, cmd: &str, args: &Value) -> AppResult<Value> {
-        let d = |c: &str, a: Value| crate::commands::dispatch(self, c, Some(token), a);
+        // Composing reads can never reach a write: every inner command is
+        // checked against the action-risk model before it runs.
+        let d = |c: &str, a: Value| {
+            crate::ai_actions::require_automatic(c, &a)?;
+            crate::commands::dispatch(self, c, Some(token), a)
+        };
         let sarg = |k: &str| args.get(k).and_then(|v| v.as_str()).map(str::to_string);
         match cmd {
             "virtual.refund_get" => {
@@ -2726,7 +2746,12 @@ impl AppCore {
                 .unwrap_or(0)
                 != 0)
         })?;
+        let class = crate::ai_actions::class_of(spec.cmd, &args)
+            .ok_or_else(|| AppError::forbidden("ai.mutate").with_details(json!({ "kind": "ai_action_unknown", "command": spec.cmd })))?;
         let mut risk = crate::ai_tools::risk_for(spec, &args);
+        if risk == "low" && class.min_risk() == "medium" {
+            risk = "medium";
+        }
         let mut reasons: Vec<String> = vec![match risk {
             "high" => "High-risk change: the command's own manager approval / Windows Hello checks run on Confirm".to_string(),
             "medium" => "Changes store records; review the before/after".to_string(),
@@ -2734,6 +2759,16 @@ impl AppCore {
         }];
         if crate::ai_tools::owner_only_for(spec, &args) {
             reasons.push("Only the owner can confirm this".into());
+        }
+        match class {
+            crate::ai_actions::ActionClass::CommitFinancial => {
+                reasons.push("Changes money: only a person with this permission can confirm it".into())
+            }
+            crate::ai_actions::ActionClass::CommitInventory => {
+                reasons.push("Moves stock: only a person with this permission can confirm it".into())
+            }
+            crate::ai_actions::ActionClass::ExternalCommunication => reasons.push("Sends a message outside the store".into()),
+            _ => {}
         }
         if untrusted {
             risk = "high";
@@ -2744,7 +2779,7 @@ impl AppCore {
         }
         let preview = self.ai_preview(token, spec, &args);
         let params_v = json!({ "tool": spec.name, "command": spec.cmd, "args": args, "runtime": spec.runtime,
-                               "confirm_inputs": spec.confirm_inputs, "secret_result": spec.secret_result });
+                               "confirm_inputs": spec.confirm_inputs, "secret_result": spec.secret_result, "class": class.as_str() });
         let actor = self.actor(s, None);
         let kind = format!("command:{}", spec.cmd);
         let (id, number) = self.db.write(|tx| {
@@ -2755,7 +2790,7 @@ impl AppCore {
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'proposed',?9,?10)",
                 params![id, number, cid, kind, params_v.to_string(), preview.to_string(), risk, serde_json::to_string(&reasons)?, s.user_id, time::now_str()],
             )?;
-            audit::record(tx, &actor, "ai.proposal.created", "ai_proposal", Some(&id), None, Some(&json!({ "tool": spec.name, "command": spec.cmd, "risk": risk })))?;
+            audit::record(tx, &actor, "ai.proposal.created", "ai_proposal", Some(&id), None, Some(&json!({ "tool": spec.name, "command": spec.cmd, "risk": risk, "class": class.as_str(), "origin": "ai_assisted" })))?;
             Ok((id, number))
         })?;
         Ok(envelope(
@@ -2921,6 +2956,13 @@ impl AppCore {
         self.dual_control_gate(&s, &id)?;
         let spec = crate::ai_tools::find(tool).ok_or_else(|| AppError::conflict("This kind of proposal is no longer available."))?;
         let mut args = p.params["args"].clone();
+        // The class is derived again from the command and its arguments; a
+        // stored class that differs (or an unclassified command) is refused.
+        let class = crate::ai_actions::class_of(spec.cmd, &args)
+            .ok_or_else(|| AppError::conflict("This kind of proposal is no longer available."))?;
+        if p.params.get("class").and_then(|c| c.as_str()).is_some_and(|c| c != class.as_str()) {
+            return Err(AppError::conflict("This proposal no longer matches its command. Ask the assistant again."));
+        }
         if !crate::ai_tools::allowed(spec, &s) || (crate::ai_tools::owner_only_for(spec, &args) && s.role_id != crate::auth::ROLE_OWNER) {
             return Err(AppError::forbidden(spec.perms.first().copied().unwrap_or("admin.access")));
         }

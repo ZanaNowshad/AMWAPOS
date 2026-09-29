@@ -633,3 +633,51 @@ async fn undo_reverts_a_delivery_status_change() {
     let ev = after["events"].as_array().unwrap();
     assert_eq!(ev.last().unwrap()["from"], "preparing", "undo is recorded as its own event: {after}");
 }
+
+// ---- Action-risk model (platform pass) -------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn action_classes_are_enforced_in_the_backend_not_by_prompt_wording() {
+    let e = env().await;
+    flags(&e, json!({})).await;
+    let cid = conversation(&e, &e.t, "please change the price of Tea 100g to 1.200");
+    // A stock-moving proposal: recorded with its class, never executed.
+    let stock_before = count(&e, "SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels");
+    let (v, err) = e.core.ai_tool(
+        &e.t,
+        &cid,
+        "propose_receive_stock",
+        &json!({ "lines": [{ "product_id": e.pid, "qty_milli": 5000, "unit_cost_minor": 100 }] }),
+    );
+    assert!(!err, "{v}");
+    let id = v["data"]["proposal_id"].as_str().unwrap().to_string();
+    let params: String =
+        e.core.db.read(|c| Ok(c.query_row("SELECT params_json FROM ai_proposals WHERE proposal_id=?1", [&id], |r| r.get(0))?)).unwrap();
+    let params: Value = serde_json::from_str(&params).unwrap();
+    assert_eq!(params["class"], "commit_inventory");
+    assert_ne!(v["data"]["risk"], "low", "money and stock proposals are at least medium risk");
+    assert_eq!(count(&e, "SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels"), stock_before, "nothing moved");
+
+    // A stored proposal whose class was lowered is refused on Confirm.
+    e.core
+        .db
+        .write(|c| {
+            let tampered = json!({ "tool": params["tool"], "command": params["command"], "args": params["args"], "runtime": false,
+                                   "confirm_inputs": [], "secret_result": false, "class": "draft" });
+            Ok(c.execute("UPDATE ai_proposals SET params_json=?2 WHERE proposal_id=?1", rusqlite::params![id, tampered.to_string()])?)
+        })
+        .unwrap();
+    let err = e.rt.dispatch("ai.proposal_confirm", Some(e.t.clone()), json!({ "proposal_id": id })).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict, "{}", err.message);
+    assert_eq!(count(&e, "SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels"), stock_before);
+
+    // Reads never reach a write, whatever the tool is called: a proposal
+    // tool used as if it were a read only records a proposal; with proposals
+    // switched off it is refused outright.
+    flags(&e, json!({ "ai.mutations": false })).await;
+    let (v, err) = e.core.ai_tool(&e.t, &cid, "propose_margin_price", &json!({ "product_id": e.pid }));
+    assert!(err, "{v}");
+    let (v, err) = e.core.ai_tool(&e.t, &cid, "propose_price_change", &json!({ "product_id": e.pid, "new_price": "0.001", "reason": "x" }));
+    assert!(err, "{v}");
+    assert_eq!(price(&e), 4500, "no price moved");
+}
