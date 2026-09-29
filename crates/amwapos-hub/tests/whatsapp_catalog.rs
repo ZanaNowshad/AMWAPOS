@@ -391,16 +391,24 @@ async fn failures_are_isolated_bounded_and_a_resumed_sync_never_duplicates() {
     e.rt.whatsapp.catalog_changed();
     until("retried ok", || e.fake.remote(ACC).values().any(|p| p.name == "Good Product" && p.price_1000 == Some(650))).await;
 
-    // Without a readable catalogue a new product is not created blind.
+    // A create whose reply is lost (stored on WhatsApp, error here), and then
+    // an unreadable catalogue: the product is not created again blind; once
+    // the catalogue can be read, the copy is adopted, never duplicated.
+    let creates_before = writes(&e.fake).0;
+    e.fake.state.catalog.fail_after_create.store(1, Ordering::SeqCst);
     e.fake.state.catalog.fail_list.store(true, Ordering::SeqCst);
     let late = product(&e, "Late Product", 800, json!({})).await;
-    let lp = late["product_id"].as_str().unwrap();
-    until("waits", || {
-        count(
-            &e.core,
-            &format!("SELECT COUNT(*) FROM wa_catalog_products WHERE product_id='{lp}' AND status='queued' AND last_error IS NOT NULL"),
-        ) == 1
-    })
-    .await;
-    assert!(!e.fake.remote(ACC).values().any(|p| p.name == "Late Product"));
+    let lp = late["product_id"].as_str().unwrap().to_string();
+    until("reply lost", || writes(&e.fake).0 == creates_before + 1).await;
+    for _ in 0..3 {
+        e.core.db.write(|c| Ok(c.execute("UPDATE wa_catalog_products SET next_at=NULL WHERE status='queued'", [])?)).unwrap();
+        settle(&e).await;
+    }
+    assert_eq!(writes(&e.fake).0, creates_before + 1, "not created again while the catalogue cannot be read");
+    assert_eq!(status_of(&e, &lp), "queued");
+    e.fake.state.catalog.fail_list.store(false, Ordering::SeqCst);
+    e.core.db.write(|c| Ok(c.execute("UPDATE wa_catalog_products SET next_at=NULL WHERE status='queued'", [])?)).unwrap();
+    until("adopted", || status_of(&e, &lp) == "synced").await;
+    assert_eq!(writes(&e.fake).0, creates_before + 1, "the copy is adopted, not duplicated");
+    assert_eq!(e.fake.remote(ACC).values().filter(|p| p.name == "Late Product").count(), 1);
 }

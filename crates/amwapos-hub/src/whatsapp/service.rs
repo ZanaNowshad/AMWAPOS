@@ -116,6 +116,9 @@ pub struct WhatsAppService {
     catalog: Mutex<CatalogInfo>,
     catalog_recheck: AtomicBool,
     catalog_dirty: AtomicBool,
+    /// Pause between two catalogue writes (ms): keeps the shared session
+    /// free for receipts and chats. Tests shorten it.
+    catalog_pace_ms: std::sync::atomic::AtomicU64,
     inbox_rev: Arc<AtomicU64>,
     /// Set when the session location was refused; the client never starts.
     path_error: Option<String>,
@@ -164,6 +167,7 @@ impl WhatsAppService {
             catalog: Mutex::new(CatalogInfo { capability: "disconnected".into(), ..Default::default() }),
             catalog_recheck: AtomicBool::new(false),
             catalog_dirty: AtomicBool::new(true),
+            catalog_pace_ms: std::sync::atomic::AtomicU64::new(1200),
             inbox_rev: Arc::new(AtomicU64::new(0)),
             path_error,
         })
@@ -206,6 +210,15 @@ impl WhatsAppService {
     pub fn catalog_changed(&self) {
         self.catalog_dirty.store(true, Ordering::SeqCst);
         self.catalog_poke.notify_one();
+    }
+
+    /// Pause between catalogue writes.
+    pub fn set_catalog_pace(&self, d: std::time::Duration) {
+        self.catalog_pace_ms.store(d.as_millis() as u64, Ordering::SeqCst);
+    }
+
+    pub(super) fn catalog_pace(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(self.catalog_pace_ms.load(Ordering::SeqCst))
     }
 
     pub(super) fn take_catalog_dirty(&self) -> bool {

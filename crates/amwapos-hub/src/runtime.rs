@@ -583,8 +583,16 @@ impl Runtime {
             "whatsapp.catalog_status" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let st = self.whatsapp.status();
-                let info = self.whatsapp.catalog();
-                let account = info.account.clone().or(st.account.clone());
+                let mut info = self.whatsapp.catalog();
+                // Always the number linked right now: a capability checked for
+                // a previous number is shown as "checking", never reused.
+                let linked = st.account.as_deref().and_then(amwapos_core::wa_catalog::account_key);
+                if st.connected && linked.is_some() && info.account != linked && info.capability != "terminal" {
+                    info.capability = "checking".into();
+                    info.detail = None;
+                    info.account = linked.clone();
+                }
+                let account = linked.or(info.account.clone());
                 let c = self.core.clone();
                 let overview = blocking(move || c.wa_catalog_overview(&t, account.as_deref())).await?;
                 self.whatsapp.ensure();
@@ -623,6 +631,11 @@ impl Runtime {
                             .ok_or_else(|| AppError::validation("Missing argument 'auto_sync'."))?;
                         blocking(move || c.wa_catalog_configure(&t, on)).await?
                     }
+                    "whatsapp.catalog_retry" if info.capability == "terminal" => {
+                        return Err(AppError::conflict(
+                            "The WhatsApp catalogue is managed on the hub computer, where WhatsApp is linked. Open this page there.",
+                        ));
+                    }
                     "whatsapp.catalog_retry" if !checked_for_linked => {
                         return Err(AppError::conflict("WhatsApp is not connected, or the linked account is still being checked."));
                     }
@@ -637,6 +650,7 @@ impl Runtime {
                                 "personal" => "The linked WhatsApp number is a personal account. Catalogues need WhatsApp Business.",
                                 "business_no_catalog" => "This WhatsApp Business account has no catalogue that AMWAPOS can read. Create the catalogue once in the WhatsApp Business app, then check again.",
                                 "disconnected" => "WhatsApp is not connected.",
+                                "terminal" => "The WhatsApp catalogue is managed on the hub computer, where WhatsApp is linked. Open this page there.",
                                 _ => "The WhatsApp catalogue is not available right now. Check again in a moment.",
                             })
                             .with_details(json!({ "kind": "catalog_unavailable", "capability": info.capability })));
@@ -650,7 +664,8 @@ impl Runtime {
             "whatsapp.catalog_product" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
                 let pid = arg(&args, "product_id")?;
-                let account = self.whatsapp.catalog().account.or(self.whatsapp.status().account);
+                // The number linked right now (never a previous number's state).
+                let account = self.whatsapp.status().account;
                 let c = self.core.clone();
                 blocking(move || c.wa_catalog_product_state(&t, account.as_deref(), &pid)).await
             }

@@ -16,7 +16,7 @@
 //!   instead: a crash between "created" and "recorded" never duplicates.
 //! * POS writes never wait for this; a disconnect only leaves work queued.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -30,11 +30,13 @@ use super::service::WhatsAppService;
 const TICK: Duration = Duration::from_secs(5);
 /// Re-check the capability this often while connected.
 const RECHECK: Duration = Duration::from_secs(30 * 60);
+/// Re-check an "unavailable" capability this often (not on every tick).
+const RECHECK_UNAVAILABLE: Duration = Duration::from_secs(60);
 const DETECT_TIMEOUT: Duration = Duration::from_secs(40);
 const OP_TIMEOUT: Duration = Duration::from_secs(60);
-/// Products per claim; one remote change at a time, spaced out.
+/// Products per claim; one remote change at a time, spaced out by the
+/// service's catalogue pace (1.2 s by default).
 const BATCH: usize = 5;
-const BETWEEN_OPS: Duration = Duration::from_millis(1200);
 /// Catalogue pages read for reconciliation at most (50 per page).
 const MAX_LIST_PAGES: usize = 40;
 /// Full POS ↔ WhatsApp comparison at least this often (auto-sync).
@@ -84,50 +86,87 @@ fn outcome_of(e: AdapterError) -> CatalogOutcome {
     }
 }
 
-/// Remote products of this account by retailer id (for adoption), read once
-/// per pass. `None`: the catalogue could not be read.
-async fn remote_index(session: &Arc<dyn AdapterSession>) -> Option<HashMap<String, Vec<String>>> {
+/// The linked account's remote products by retailer id, for adoption. Read
+/// once and then kept up to date with this worker's own creates/deletes (the
+/// only writer); re-read after `INDEX_TTL`, on another account, or after a
+/// failed read. Without it, a first sync of N products would read the whole
+/// remote catalogue N/BATCH times.
+struct RemoteIndex {
+    account: String,
+    at: Instant,
+    by_retailer: HashMap<String, Vec<String>>,
+}
+
+const INDEX_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// Read the whole catalogue: `(ids by retailer id, all ids)`. `None`: it could
+/// not be read completely (error, timeout, or more pages than allowed).
+async fn read_catalogue(session: &Arc<dyn AdapterSession>) -> Option<(HashMap<String, Vec<String>>, HashSet<String>)> {
     let mut by_retailer: HashMap<String, Vec<String>> = HashMap::new();
+    let mut all = HashSet::new();
     let mut cursor: Option<String> = None;
     for _ in 0..MAX_LIST_PAGES {
         let (items, next) = tokio::time::timeout(OP_TIMEOUT, session.catalog_list(cursor.as_deref())).await.ok()?.ok()?;
         for p in items {
+            all.insert(p.id.clone());
             if let Some(r) = p.retailer_id {
                 by_retailer.entry(r).or_default().push(p.id);
             }
         }
         match next {
+            // A server repeating its cursor is treated as the end.
             Some(c) if cursor.as_deref() != Some(c.as_str()) => cursor = Some(c),
-            _ => break,
+            Some(_) => return Some((by_retailer, all)),
+            None => return Some((by_retailer, all)),
         }
     }
-    Some(by_retailer)
+    None
 }
 
 async fn process(
     svc: &Arc<WhatsAppService>,
     session: &Arc<dyn AdapterSession>,
     job: CatalogJob,
-    index: &mut Option<Option<HashMap<String, Vec<String>>>>,
+    index: &mut Option<RemoteIndex>,
 ) -> CatalogOutcome {
     let core = svc.core().clone();
     match job.action {
         CatalogAction::Delete => {
             let Some(id) = job.remote_id.clone() else { return CatalogOutcome::Deleted };
-            match tokio::time::timeout(OP_TIMEOUT, session.catalog_delete(&[id])).await {
+            let r = match tokio::time::timeout(OP_TIMEOUT, session.catalog_delete(std::slice::from_ref(&id))).await {
                 Ok(Ok(_)) => CatalogOutcome::Deleted,
                 Ok(Err(e)) if e.not_found => CatalogOutcome::Deleted,
                 Ok(Err(e)) => outcome_of(e),
                 Err(_) => CatalogOutcome::Transient { error: "WhatsApp did not answer in time.".into(), retry_after_s: None },
+            };
+            if matches!(r, CatalogOutcome::Deleted) {
+                if let Some(ix) = index.as_mut() {
+                    ix.by_retailer.values_mut().for_each(|v| v.retain(|x| x != &id));
+                }
             }
+            r
         }
         CatalogAction::Upsert | CatalogAction::Hide => {
-            let Some(item) = job.item.clone() else { return CatalogOutcome::Failed { error: "Nothing to publish.".into() } };
+            let Some(mut item) = job.item.clone() else { return CatalogOutcome::Failed { error: "Nothing to publish.".into() } };
             // The POS-managed picture: re-used while unchanged, else uploaded.
+            // A picture WhatsApp refuses is left out (the product is still
+            // published); a temporary upload problem retries the product.
+            let mut image_rejected = None;
             let image_url = match (&job.image_url, job.image_jpeg) {
                 (Some(u), _) => Some(u.clone()),
                 (None, Some(bytes)) => match tokio::time::timeout(OP_TIMEOUT, session.catalog_upload_image(bytes)).await {
-                    Ok(Ok(u)) => Some(u),
+                    Ok(Ok(u)) => {
+                        if let Some(h) = item.image_hash.clone() {
+                            let (c, a, p, url) = (core.clone(), job.account.clone(), job.product_id.clone(), u.clone());
+                            let _ = blocking(move || c.wa_catalog_note_upload(&a, &p, &h, &url)).await;
+                        }
+                        Some(u)
+                    }
+                    Ok(Err(e)) if e.permanent => {
+                        tracing::warn!(product_id = %job.product_id, error = %e.message, "WhatsApp refused the product picture; published without it");
+                        image_rejected = item.image_hash.take();
+                        None
+                    }
                     Ok(Err(e)) => return outcome_of(e),
                     Err(_) => return CatalogOutcome::Transient { error: "The picture upload timed out.".into(), retry_after_s: None },
                 },
@@ -146,21 +185,35 @@ async fn process(
             let (target, adopted) = match &job.remote_id {
                 Some(id) => (Some(id.clone()), false),
                 None => {
-                    if index.is_none() {
-                        *index = Some(remote_index(session).await);
+                    if index.as_ref().is_none_or(|ix| ix.account != job.account || ix.at.elapsed() > INDEX_TTL) {
+                        *index = read_catalogue(session).await.map(|(by_retailer, _)| RemoteIndex {
+                            account: job.account.clone(),
+                            at: Instant::now(),
+                            by_retailer,
+                        });
                     }
-                    let Some(Some(idx)) = index.as_ref() else {
+                    let Some(ix) = index.as_ref() else {
                         // Without the catalogue we cannot rule out a duplicate: retry later.
                         return CatalogOutcome::Transient {
                             error: "The WhatsApp catalogue could not be read to check for an existing copy.".into(),
                             retry_after_s: None,
                         };
                     };
+                    // A remote product carrying exactly this product code that no
+                    // other POS product owns is ours (an interrupted earlier
+                    // create): adopt it. With several such copies, the oldest
+                    // (smallest id) is adopted and the others are left alone:
+                    // never create yet another one.
                     let mut adopt = None;
-                    if let Some(ids) = idx.get(&item.retailer_id).filter(|ids| ids.len() == 1 && !item.retailer_id.is_empty()) {
-                        let (c, acc, rid) = (core.clone(), job.account.clone(), ids[0].clone());
-                        if blocking(move || c.wa_catalog_remote_owner(&acc, &rid)).await.ok().flatten().is_none() {
-                            adopt = Some(ids[0].clone());
+                    if !item.retailer_id.is_empty() {
+                        let mut ids = ix.by_retailer.get(&item.retailer_id).cloned().unwrap_or_default();
+                        ids.sort_by(|a, b| (a.len(), a).cmp(&(b.len(), b)));
+                        for rid in ids {
+                            let (c, acc, r2) = (core.clone(), job.account.clone(), rid.clone());
+                            if blocking(move || c.wa_catalog_remote_owner(&acc, &r2)).await.ok().flatten().is_none() {
+                                adopt = Some(rid);
+                                break;
+                            }
                         }
                     }
                     let adopted = adopt.is_some();
@@ -180,23 +233,56 @@ async fn process(
                         (None, _) => "created",
                     };
                     tracing::info!(product_id = %job.product_id, remote_id = %remote.id, what, "WhatsApp catalogue product");
-                    CatalogOutcome::Published { remote_id: remote.id, item, image_url, adopted }
+                    if target.is_none() {
+                        if let Some(ix) = index.as_mut() {
+                            ix.by_retailer.entry(item.retailer_id.clone()).or_default().push(remote.id.clone());
+                        }
+                    }
+                    CatalogOutcome::Published { remote_id: remote.id, item, image_url, adopted, image_rejected }
                 }
                 Ok(Err(e)) if e.not_found && hide => CatalogOutcome::Deleted,
                 Ok(Err(e)) if e.not_found => CatalogOutcome::RemoteMissing { error: "The product was deleted on WhatsApp.".into() },
-                Ok(Err(e)) => outcome_of(e),
-                Err(_) => CatalogOutcome::Transient { error: "WhatsApp did not answer in time.".into(), retry_after_s: None },
+                Ok(Err(e)) => {
+                    if target.is_none() {
+                        // A create may have happened despite the error: read the
+                        // catalogue again before the next create.
+                        *index = None;
+                    }
+                    outcome_of(e)
+                }
+                Err(_) => {
+                    *index = None;
+                    CatalogOutcome::Transient { error: "WhatsApp did not answer in time.".into(), retry_after_s: None }
+                }
             }
         }
     }
 }
 
+/// An administrator's full sync asks for one comparison with the remote
+/// catalogue: mapped products that WhatsApp does not list are re-checked.
+async fn verify_run(svc: &Arc<WhatsAppService>, session: &Arc<dyn AdapterSession>, account: &str) {
+    let core = svc.core().clone();
+    let (c, a) = (core.clone(), account.to_string());
+    let Ok(Some(run)) = blocking(move || c.wa_catalog_verify_due(&a)).await else { return };
+    let listed = read_catalogue(session).await.map(|(_, all)| all);
+    let (c, a) = (core, account.to_string());
+    if let Err(e) = blocking(move || c.wa_catalog_verify(&a, &run, listed.as_ref())).await {
+        tracing::warn!(error = %e.message, "WhatsApp catalogue: remote check not recorded");
+    }
+}
+
 /// Runs for the life of the WhatsApp service.
 pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
+    // Nothing is in flight yet: rows a previous worker had claimed are free.
+    let c = svc.core().clone();
+    let _ = blocking(move || c.wa_catalog_release_claims()).await;
     let mut rx = svc.session_watch();
-    let mut detected: Option<(String, Instant)> = None;
+    // (account, checked at, result was "unavailable")
+    let mut detected: Option<(String, Instant, bool)> = None;
     let mut last_session: Option<usize> = None;
     let mut last_scan: Option<Instant> = None;
+    let mut index: Option<RemoteIndex> = None;
     loop {
         tokio::select! {
             _ = tokio::time::sleep(TICK) => {}
@@ -217,6 +303,7 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
         if last_session != Some(sid) {
             last_session = Some(sid);
             detected = None;
+            index = None;
         }
         let core = svc.core().clone();
         if core.device().is_some_and(|d| d.mode == "terminal") {
@@ -228,7 +315,11 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
             continue;
         };
         let force = svc.take_catalog_recheck();
-        let stale = force || detected.as_ref().map(|(a, t)| a != &account || t.elapsed() > RECHECK).unwrap_or(true);
+        let stale = force
+            || detected.as_ref().is_none_or(|(a, t, unavailable)| {
+                // "Unavailable" is re-checked after a minute, the others after RECHECK.
+                a != &account || t.elapsed() > if *unavailable { RECHECK_UNAVAILABLE } else { RECHECK }
+            });
         if stale {
             svc.set_catalog(|i| {
                 i.capability = "checking".into();
@@ -249,8 +340,7 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
                 i.checked_at = Some(now());
                 i.collections = collections;
             });
-            // Unavailable is re-checked on the next tick; the others hold.
-            detected = (name != "unavailable").then(|| (account.clone(), Instant::now()));
+            detected = Some((account.clone(), Instant::now(), name == "unavailable"));
         }
         if svc.catalog().capability != "supported" {
             continue;
@@ -273,6 +363,7 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
                 tracing::warn!(error = %e.message, "WhatsApp catalogue scan");
             }
         }
+        verify_run(&svc, &session, &account).await;
         let (c, a) = (core.clone(), account.clone());
         let jobs = match blocking(move || c.wa_catalog_claim(&a, BATCH)).await {
             Ok(j) => j,
@@ -284,17 +375,18 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
         if jobs.is_empty() {
             continue;
         }
-        let mut index = None;
         let mut done = 0u32;
+        let mut failed = false;
         for job in jobs {
-            if !session.connected() {
-                // Stop the pass; claimed rows are re-queued by the core after
-                // the claim timeout, or complete as transient here.
+            // Stop the pass when the session dropped or another number is
+            // linked now: an outcome is never attached to the wrong account.
+            let linked = svc.status().account.as_deref().and_then(account_key);
+            if !session.connected() || linked.as_deref() != Some(job.account.as_str()) {
+                let why = if session.connected() { "The linked WhatsApp number changed." } else { "WhatsApp disconnected." };
                 let (c, a, p) = (core.clone(), job.account.clone(), job.product_id.clone());
-                let _ = blocking(move || {
-                    c.wa_catalog_complete(&a, &p, CatalogOutcome::Transient { error: "WhatsApp disconnected.".into(), retry_after_s: None })
-                })
-                .await;
+                let _ =
+                    blocking(move || c.wa_catalog_complete(&a, &p, CatalogOutcome::Transient { error: why.into(), retry_after_s: None }))
+                        .await;
                 continue;
             }
             let pid = job.product_id.clone();
@@ -303,6 +395,7 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
             if let CatalogOutcome::Failed { error } | CatalogOutcome::Transient { error, .. } = &outcome {
                 tracing::warn!(product_id = %pid, error = %error, "WhatsApp catalogue product not synchronised");
                 let e = error.clone();
+                failed = true;
                 svc.set_catalog(|i| i.last_error = Some(e));
             }
             let c = core.clone();
@@ -314,11 +407,14 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
                 }
                 Err(e) => tracing::warn!(error = %e.message, "WhatsApp catalogue: outcome not recorded"),
             }
-            tokio::time::sleep(BETWEEN_OPS).await;
+            tokio::time::sleep(svc.catalog_pace()).await;
         }
         svc.set_catalog(|i| {
             i.last_pass_at = Some(now());
             i.last_pass_done = done;
+            if !failed {
+                i.last_error = None;
+            }
         });
         // More may be due: go again without waiting for the tick.
         svc.catalog_poke.notify_one();

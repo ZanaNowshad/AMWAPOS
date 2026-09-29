@@ -64,6 +64,18 @@ pub struct FakeCatalog {
     pub reject_retailer: Mutex<Option<String>>,
     /// Reading the catalogue fails.
     pub fail_list: AtomicBool,
+    /// Picture uploads are refused (permanent).
+    pub reject_uploads: AtomicBool,
+    /// The next N creates are stored remotely but answer with a temporary
+    /// error (the reply is lost): the crash-after-create case.
+    pub fail_after_create: AtomicU32,
+    /// Every catalogue call takes this long (ms): a slow WhatsApp.
+    pub delay_ms: std::sync::atomic::AtomicU64,
+    /// Calls made, for rate assertions.
+    pub list_calls: AtomicU32,
+    pub capability_checks: AtomicU32,
+    /// Capability checks fail (temporary) while set.
+    pub fail_capability: AtomicBool,
 }
 
 #[derive(Clone, Default)]
@@ -220,6 +232,13 @@ struct FakeSession {
 
 impl FakeSession {
     /// Connected, Business with a catalogue, and not asked to fail.
+    async fn slow(&self) {
+        let ms = self.state.catalog.delay_ms.load(Ordering::SeqCst);
+        if ms > 0 {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+        }
+    }
+
     fn catalog_gate(&self, retailer: Option<&str>) -> Result<(), AdapterError> {
         if !self.state.connected.load(Ordering::SeqCst) {
             return Err(AdapterError::temporary("WhatsApp is not connected."));
@@ -290,6 +309,10 @@ impl AdapterSession for FakeSession {
         self.accept(send_id, to_phone, caption.unwrap_or_default(), Some((file_name.to_string(), bytes.len())))
     }
     async fn catalog_capability(&self) -> Result<CatalogCapability, AdapterError> {
+        self.state.catalog.capability_checks.fetch_add(1, Ordering::SeqCst);
+        if self.state.catalog.fail_capability.load(Ordering::SeqCst) {
+            return Err(AdapterError::temporary("WhatsApp did not answer in time."));
+        }
         if !self.state.connected.load(Ordering::SeqCst) {
             return Err(AdapterError::temporary("WhatsApp is not connected."));
         }
@@ -297,19 +320,30 @@ impl AdapterSession for FakeSession {
         Ok(self.state.catalog.capability.lock().unwrap().get(&acc).cloned().unwrap_or(CatalogCapability::Personal))
     }
     async fn catalog_upload_image(&self, jpeg: Vec<u8>) -> Result<String, AdapterError> {
+        self.slow().await;
         self.catalog_gate(None)?;
+        if self.state.catalog.reject_uploads.load(Ordering::SeqCst) {
+            return Err(AdapterError::permanent("The product picture is not a stored JPEG."));
+        }
         let mut u = self.state.catalog.uploads.lock().unwrap();
         u.push(jpeg);
         Ok(format!("https://mmg.whatsapp.net/product/image/fake-{}", u.len()))
     }
     async fn catalog_create(&self, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        self.slow().await;
         self.catalog_gate(Some(&product.retailer_id))?;
         let id = format!("{}", 700_000 + self.state.catalog.next_id.fetch_add(1, Ordering::SeqCst));
         self.state.catalog.products.lock().unwrap().entry(self.state.account()).or_default().insert(id.clone(), product.clone());
         self.state.catalog.creates.fetch_add(1, Ordering::SeqCst);
+        let lost = self.state.catalog.fail_after_create.load(Ordering::SeqCst);
+        if lost > 0 {
+            self.state.catalog.fail_after_create.store(lost - 1, Ordering::SeqCst);
+            return Err(AdapterError::temporary("WhatsApp did not answer in time."));
+        }
         Ok(RemoteProduct { id, retailer_id: Some(product.retailer_id.clone()), name: Some(product.name.clone()), hidden: product.hidden })
     }
     async fn catalog_update(&self, remote_id: &str, product: &CatalogProduct) -> Result<RemoteProduct, AdapterError> {
+        self.slow().await;
         self.catalog_gate(Some(&product.retailer_id))?;
         let mut all = self.state.catalog.products.lock().unwrap();
         let cat = all.entry(self.state.account()).or_default();
@@ -324,6 +358,7 @@ impl AdapterSession for FakeSession {
         })
     }
     async fn catalog_delete(&self, remote_ids: &[String]) -> Result<u32, AdapterError> {
+        self.slow().await;
         self.catalog_gate(None)?;
         let mut all = self.state.catalog.products.lock().unwrap();
         let cat = all.entry(self.state.account()).or_default();
@@ -332,6 +367,8 @@ impl AdapterSession for FakeSession {
         Ok(n)
     }
     async fn catalog_list(&self, cursor: Option<&str>) -> Result<(Vec<RemoteProduct>, Option<String>), AdapterError> {
+        self.slow().await;
+        self.state.catalog.list_calls.fetch_add(1, Ordering::SeqCst);
         if !self.state.connected.load(Ordering::SeqCst) || self.state.catalog.fail_list.load(Ordering::SeqCst) {
             return Err(AdapterError::temporary("catalogue read failed"));
         }
