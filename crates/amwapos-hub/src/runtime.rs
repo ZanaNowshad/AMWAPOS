@@ -59,6 +59,8 @@ pub struct Runtime {
     pub ocr: Arc<OcrWorker>,
     /// One-time product image lookups (on by default; hub / standalone only).
     pub images: Arc<crate::image_worker::ImageWorker>,
+    /// WhatsApp AI orders (feature `orders.whatsapp_ai`).
+    pub orders: Arc<crate::orders_worker::OrdersWorker>,
     /// Signed update checker/installer.
     pub updater: Arc<crate::updater::Updater>,
     /// OS step-up provider (set by the desktop shell on Windows).
@@ -88,6 +90,7 @@ impl Runtime {
             whatsapp: WhatsAppService::new(core.clone(), Arc::new(RustWhatsAppAdapter::new())),
             ocr: OcrWorker::new(core.clone()),
             images: crate::image_worker::ImageWorker::new(core.clone()),
+            orders: crate::orders_worker::OrdersWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
             bind_ip: Ipv4Addr::UNSPECIFIED,
@@ -105,6 +108,7 @@ impl Runtime {
             whatsapp: WhatsAppService::new(core.clone(), Arc::new(RustWhatsAppAdapter::new())),
             ocr: OcrWorker::new(core.clone()),
             images: crate::image_worker::ImageWorker::new(core.clone()),
+            orders: crate::orders_worker::OrdersWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
             bind_ip: ip,
@@ -267,12 +271,13 @@ impl Runtime {
         self.whatsapp.ensure();
         self.ocr.ensure();
         self.images.ensure();
+        self.orders.ensure();
         // Maintenance: scheduled backups.
         let mut g = self.maintenance.lock().unwrap();
         if g.as_ref().map(|h| h.is_finished()).unwrap_or(true) {
             let core = self.core.clone();
             let updater = self.updater.clone();
-            let (wa, ocr, images) = (self.whatsapp.clone(), self.ocr.clone(), self.images.clone());
+            let (wa, ocr, images, orders) = (self.whatsapp.clone(), self.ocr.clone(), self.images.clone(), self.orders.clone());
             *g = Some(tokio::spawn(async move {
                 let mut minutes: u64 = 0;
                 loop {
@@ -282,6 +287,7 @@ impl Runtime {
                     wa.ensure();
                     ocr.ensure();
                     images.ensure();
+                    orders.ensure();
                     // A8: scheduled AI briefings (only while the app is open).
                     let c = core.clone();
                     if let Ok(Ok(due)) = tokio::task::spawn_blocking(move || c.ai_briefings_due()).await {
@@ -710,7 +716,8 @@ impl Runtime {
                         | "whatsapp.outbox_action"
                         | "payreviews.decide"
                         | "deliveries.update"
-                        | "pos.finalize" => self.whatsapp.poke.notify_one(),
+                        | "pos.finalize"
+                        | "waorders.send" => self.whatsapp.poke.notify_one(),
                         "invoicescan.import" | "docs.import" | "docs.from_inbox" | "payreviews.upload" | "ocr.retry" => {
                             self.ocr.poke.notify_one()
                         }

@@ -25,7 +25,7 @@ fn read_doc(e: &Env, token: &str, name: &str, bytes: &[u8], text: &str) -> Value
     e.core.doc_get(token, &s.scan_id).unwrap()
 }
 
-fn line<'a>(v: &'a Value, no: i64) -> &'a Value {
+fn line(v: &Value, no: i64) -> &Value {
     v["lines"].as_array().unwrap().iter().find(|l| l["line_no"] == no).unwrap()
 }
 

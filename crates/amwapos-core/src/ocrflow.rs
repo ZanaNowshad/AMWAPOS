@@ -578,7 +578,15 @@ impl AppCore {
                     )
                     .optional()?;
                 let Some((path, sha, phone, customer)) = row else { continue };
-                ids.push(insert_review(tx, "whatsapp", Some(*seq), &path, &sha.unwrap_or_default(), phone, customer, None, None)?);
+                let rid = insert_review(tx, "whatsapp", Some(*seq), &path, &sha.unwrap_or_default(), phone, customer, None, None)?;
+                // An image sent during an open WhatsApp order is that draft's
+                // payment evidence (still to be verified by a person).
+                tx.execute(
+                    "UPDATE payment_reviews SET order_id=(SELECT w.order_id FROM wa_order_sessions w JOIN wa_inbox i ON i.chat=w.chat
+                        WHERE i.seq=?2 AND w.state IN ('collecting','clarifying','ready') AND w.order_id IS NOT NULL) WHERE review_id=?1",
+                    params![rid, seq],
+                )?;
+                ids.push(rid);
             }
             Ok(ids)
         })

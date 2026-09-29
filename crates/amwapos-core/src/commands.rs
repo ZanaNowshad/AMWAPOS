@@ -463,6 +463,51 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "supplier_invoices.set_status" => {
             out(core.supplier_invoice_set_status(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "status")?))
         }
+        // WhatsApp AI orders (conversation → structured draft → staff review)
+        "waorders.list" => out(core.wa_orders_list(tk()?, opt(&args, "filter")?)),
+        "waorders.get" => out(core.wa_order_get(tk()?, &req::<String>(&args, "session_id")?)),
+        "waorders.line" => out(core.wa_order_line(
+            tk()?,
+            &req::<String>(&args, "session_id")?,
+            req(&args, "revision")?,
+            opt(&args, "line_no")?,
+            opt(&args, "product_id")?,
+            opt(&args, "qty_milli")?,
+            opt(&args, "remove")?.unwrap_or(false),
+            opt(&args, "learn")?.unwrap_or(false),
+        )),
+        "waorders.delivery" => out(core.wa_order_delivery(
+            tk()?,
+            &req::<String>(&args, "session_id")?,
+            req(&args, "revision")?,
+            &req::<String>(&args, "mode")?,
+            opt(&args, "address_parts")?,
+            opt(&args, "zone_id")?,
+        )),
+        "waorders.customer" => out(core.wa_order_customer(
+            tk()?,
+            &req::<String>(&args, "session_id")?,
+            req(&args, "revision")?,
+            &req::<String>(&args, "customer_id")?,
+        )),
+        "waorders.flags" => out(core.wa_order_flags(
+            tk()?,
+            &req::<String>(&args, "session_id")?,
+            opt(&args, "takeover")?,
+            opt(&args, "handled")?,
+            opt(&args, "assign_to_me")?,
+        )),
+        "waorders.confirm" => out(core.wa_order_confirm(tk()?, &req::<String>(&args, "session_id")?, req(&args, "revision")?)),
+        "waorders.cancel" => out(core.wa_order_cancel(tk()?, &req::<String>(&args, "session_id")?)),
+        "waorders.payment" => out(core.wa_order_payment(
+            tk()?,
+            &req::<String>(&args, "session_id")?,
+            &req::<String>(&args, "review_id")?,
+            &req::<String>(&args, "decision")?,
+            opt(&args, "note")?,
+        )),
+        "waorders.send" => out(core.wa_order_send(tk()?, &req::<String>(&args, "session_id")?, opt(&args, "text")?)),
+        "waorders.metrics" => out(core.wa_orders_metrics(tk()?)),
         // stock locations and transfers (inventory.locations)
         "locations.list" => out(core.locations_list(tk()?)),
         "locations.save" => out(core.location_save(tk()?, opt(&args, "location_id")?, req(&args, "location")?)),

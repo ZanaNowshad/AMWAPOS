@@ -7,6 +7,7 @@ pub mod client;
 pub mod discovery;
 pub mod image_worker;
 pub mod ocr_worker;
+pub mod orders_worker;
 pub mod runtime;
 pub mod server;
 pub mod updater;

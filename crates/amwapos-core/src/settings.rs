@@ -284,6 +284,14 @@ pub struct FeatureFlags {
     /// Digital order intake (phone / WhatsApp / web) converted to sales on a till.
     #[serde(rename = "orders.digital")]
     pub orders_digital: bool,
+    /// WhatsApp messages are read into reviewable order drafts (needs
+    /// `orders.digital` and `whatsapp.enabled`). Rules always; the AI
+    /// provider helps only when `ai.enabled` and AI consent are on.
+    #[serde(rename = "orders.whatsapp_ai")]
+    pub orders_whatsapp_ai: bool,
+    /// Show a few in-stock add-on suggestions to staff (never added by itself).
+    #[serde(rename = "orders.whatsapp_upsell")]
+    pub orders_whatsapp_upsell: bool,
     /// Several branches in one organisation (branch stock, prices, users).
     #[serde(rename = "org.multi_branch")]
     pub multi_branch: bool,
@@ -313,6 +321,10 @@ impl FeatureFlags {
             "inventory.locations" => self.inventory_locations,
             "loyalty.enabled" => self.loyalty,
             "orders.digital" => self.orders_digital,
+            "orders.whatsapp_ai" => self.orders_digital && self.whatsapp_enabled && self.orders_whatsapp_ai,
+            "orders.whatsapp_upsell" => {
+                self.orders_digital && self.whatsapp_enabled && self.orders_whatsapp_ai && self.orders_whatsapp_upsell
+            }
             "org.multi_branch" => self.multi_branch,
             "pwa.companion" => self.pwa_companion,
             _ => false,
@@ -438,6 +450,44 @@ pub struct BlockArea {
 #[serde(default)]
 pub struct DeliverySettings {
     pub blocks: Vec<BlockArea>,
+    /// Delivery zones with their fee (WhatsApp orders, digital orders).
+    /// Empty: no fee is suggested.
+    pub zones: Vec<DeliveryZone>,
+}
+
+/// A delivery zone: blocks and/or area names, and the fee the shop charges.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct DeliveryZone {
+    pub zone_id: String,
+    pub name: String,
+    /// Block ranges in the zone ("256-258", as from/to).
+    pub blocks: Vec<BlockRange>,
+    /// Area names in the zone (matched without case).
+    pub areas: Vec<String>,
+    pub fee_minor: i64,
+    /// Free delivery from this order subtotal (fils); None = never free.
+    pub free_over_minor: Option<i64>,
+    pub active: bool,
+}
+impl Default for DeliveryZone {
+    fn default() -> Self {
+        Self {
+            zone_id: String::new(),
+            name: String::new(),
+            blocks: vec![],
+            areas: vec![],
+            fee_minor: 0,
+            free_over_minor: None,
+            active: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct BlockRange {
+    pub from: u32,
+    pub to: u32,
 }
 impl Default for DeliverySettings {
     fn default() -> Self {
@@ -451,6 +501,7 @@ impl Default for DeliverySettings {
                 b(801, 841, "Isa Town"),
                 b(1201, 1217, "Hamad Town"),
             ],
+            zones: vec![],
         }
     }
 }
@@ -625,6 +676,32 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
                 serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if d.blocks.len() > 500 {
                 return Err(AppError::validation("The block list can hold up to 500 rows."));
+            }
+            if d.zones.len() > 100 {
+                return Err(AppError::validation("Up to 100 delivery zones."));
+            }
+            let mut ids = std::collections::BTreeSet::new();
+            for z in &mut d.zones {
+                z.name = z.name.trim().to_string();
+                if z.zone_id.trim().is_empty() {
+                    z.zone_id = crate::ids::new_id();
+                }
+                if !ids.insert(z.zone_id.clone()) {
+                    return Err(AppError::validation("Two delivery zones have the same id."));
+                }
+                if z.name.is_empty() || z.name.chars().count() > 80 {
+                    return Err(AppError::validation("Each delivery zone needs a name (up to 80 characters)."));
+                }
+                if !(0..=100_000).contains(&z.fee_minor) || z.free_over_minor.is_some_and(|f| !(0..=100_000_000).contains(&f)) {
+                    return Err(AppError::validation(format!("{}: the fee is out of range.", z.name)));
+                }
+                if z.blocks.iter().any(|r| r.from == 0 || r.to > 9999 || r.from > r.to) {
+                    return Err(AppError::validation(format!("{}: block ranges are between 1 and 9999, lowest first.", z.name)));
+                }
+                z.areas = z.areas.iter().map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect();
+                if z.blocks.is_empty() && z.areas.is_empty() {
+                    return Err(AppError::validation(format!("{}: add at least one block range or area.", z.name)));
+                }
             }
             for r in &mut d.blocks {
                 r.area = r.area.trim().to_string();
