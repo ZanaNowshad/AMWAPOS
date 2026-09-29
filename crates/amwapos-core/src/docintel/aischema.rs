@@ -55,7 +55,7 @@ pub fn money(v: &Value, digits: u32) -> Result<Option<i64>, String> {
 
 fn qty(v: &Value) -> Result<Option<i64>, String> {
     match money(v, 3)? {
-        Some(q) if q == 0 => Err("quantity 0".into()),
+        Some(0) => Err("quantity 0".into()),
         Some(q) if q > 1_000_000_000 => Err("quantity out of range".into()),
         x => Ok(x),
     }

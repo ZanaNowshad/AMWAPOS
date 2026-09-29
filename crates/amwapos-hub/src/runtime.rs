@@ -711,7 +711,9 @@ impl Runtime {
                         | "payreviews.decide"
                         | "deliveries.update"
                         | "pos.finalize" => self.whatsapp.poke.notify_one(),
-                        "invoicescan.import" | "payreviews.upload" | "ocr.retry" => self.ocr.poke.notify_one(),
+                        "invoicescan.import" | "docs.import" | "docs.from_inbox" | "payreviews.upload" | "ocr.retry" => {
+                            self.ocr.poke.notify_one()
+                        }
                         "products.create" | "products.image_find" | "products.image_backfill" | "products.image_configure" => {
                             self.images.ensure();
                             self.images.poke.notify_one();

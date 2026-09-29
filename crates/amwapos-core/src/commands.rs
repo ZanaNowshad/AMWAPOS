@@ -429,6 +429,40 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "receive")?.unwrap_or(false),
         )),
         "invoicescan.reject" => out(core.inv_reject(tk()?, &req::<String>(&args, "scan_id")?, &req::<String>(&args, "reason")?)),
+        // Document Intelligence (supplier documents → review → drafts)
+        "docs.import" => {
+            out(core.doc_import(tk()?, &req::<String>(&args, "file_name")?, &req::<String>(&args, "data")?, opt(&args, "supplier_id")?))
+        }
+        "docs.from_inbox" => out(core.doc_from_inbox(tk()?, req(&args, "seq")?)),
+        "docs.get" => out(core.doc_get(tk()?, &req::<String>(&args, "scan_id")?)),
+        "docs.page" => out(core.doc_page(tk()?, &req::<String>(&args, "scan_id")?, req(&args, "page")?)),
+        "docs.update" => out(core.doc_update(tk()?, &req::<String>(&args, "scan_id")?, all(&args)?)),
+        "docs.update_line" => out(core.doc_update_line(tk()?, &req::<String>(&args, "scan_id")?, all(&args)?)),
+        "docs.new_product" => out(core.doc_new_product_draft(tk()?, &req::<String>(&args, "scan_id")?, req(&args, "line_no")?)),
+        "docs.create_supplier_invoice" => {
+            out(core.doc_create_supplier_invoice(tk()?, &req::<String>(&args, "scan_id")?, req(&args, "revision")?))
+        }
+        "docs.create_receiving" => out(core.doc_create_receiving(tk()?, &req::<String>(&args, "scan_id")?, req(&args, "revision")?)),
+        "docs.metrics" => out(core.doc_metrics(tk()?)),
+        "receiving.drafts" => out(core.receiving_drafts_list(tk()?, opt(&args, "status")?)),
+        "receiving.draft_get" => out(core.receiving_draft_get(tk()?, &req::<String>(&args, "draft_id")?)),
+        "receiving.draft_update_line" => out(core.receiving_draft_update_line(
+            tk()?,
+            &req::<String>(&args, "draft_id")?,
+            req(&args, "line_no")?,
+            opt(&args, "qty_milli")?,
+            opt(&args, "unit_cost_minor")?,
+            opt(&args, "remove")?.unwrap_or(false),
+        )),
+        "receiving.draft_cancel" => out(core.receiving_draft_cancel(tk()?, &req::<String>(&args, "draft_id")?)),
+        "receiving.draft_post" => {
+            out(core.receiving_draft_post(tk()?, &req::<String>(&args, "draft_id")?, &req::<String>(&args, "operation_id")?))
+        }
+        "supplier_invoices.list" => out(core.supplier_invoices_list(tk()?, opt(&args, "status")?)),
+        "supplier_invoices.get" => out(core.supplier_invoice_get(tk()?, &req::<String>(&args, "invoice_id")?)),
+        "supplier_invoices.set_status" => {
+            out(core.supplier_invoice_set_status(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "status")?))
+        }
         // stock locations and transfers (inventory.locations)
         "locations.list" => out(core.locations_list(tk()?)),
         "locations.save" => out(core.location_save(tk()?, opt(&args, "location_id")?, req(&args, "location")?)),

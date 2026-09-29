@@ -47,6 +47,81 @@ fn encode_png(img: image::DynamicImage) -> Option<Vec<u8>> {
     Some(out.into_inner())
 }
 
+/// Text of a page with its line breaks: a new line starts whenever the text
+/// position moves vertically (Td/TD with a y offset, T*, ', ", Tm with a new
+/// y) or a text object ends. Font encodings are decoded by lopdf.
+fn page_text(doc: &Document, page_id: lopdf::ObjectId) -> String {
+    use lopdf::Object;
+    let fonts = match doc.get_page_fonts(page_id) {
+        Ok(f) => f,
+        Err(_) => return String::new(),
+    };
+    let encodings: std::collections::BTreeMap<Vec<u8>, lopdf::Encoding> =
+        fonts.into_iter().filter_map(|(name, font)| font.get_font_encoding(doc).ok().map(|e| (name, e))).collect();
+    let Ok(data) = doc.get_page_content(page_id) else { return String::new() };
+    let Ok(content) = lopdf::content::Content::decode(&data) else { return String::new() };
+    let mut out = String::new();
+    let mut enc: Option<&lopdf::Encoding> = None;
+    let mut y: Option<f32> = None;
+    let newline = |out: &mut String| {
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+    };
+    let num = |o: &Object| o.as_float().ok().or_else(|| o.as_i64().ok().map(|v| v as f32));
+    for op in &content.operations {
+        let a = &op.operands;
+        match op.operator.as_str() {
+            "Tf" => enc = a.first().and_then(|n| n.as_name().ok()).and_then(|n| encodings.get(n)),
+            "Td" | "TD" => {
+                let (tx, ty) = (a.first().and_then(num).unwrap_or(0.0), a.get(1).and_then(num).unwrap_or(0.0));
+                if ty.abs() > 0.5 {
+                    newline(&mut out);
+                } else if tx > 0.5 && !out.ends_with([' ', '\n']) && !out.is_empty() {
+                    out.push(' ');
+                }
+            }
+            "T*" | "'" | "\"" => newline(&mut out),
+            "Tm" => {
+                let ny = a.get(5).and_then(num);
+                if let (Some(prev), Some(n)) = (y, ny) {
+                    if (prev - n).abs() > 0.5 {
+                        newline(&mut out);
+                    } else if !out.ends_with([' ', '\n']) {
+                        out.push(' ');
+                    }
+                }
+                y = ny;
+            }
+            "ET" => newline(&mut out),
+            _ => {}
+        }
+        if matches!(op.operator.as_str(), "Tj" | "'" | "\"" | "TJ") {
+            let Some(e) = enc else { continue };
+            let items: Vec<&Object> = match op.operator.as_str() {
+                "TJ" => a.first().and_then(|x| x.as_array().ok()).map(|v| v.iter().collect()).unwrap_or_default(),
+                _ => a.last().into_iter().collect(),
+            };
+            for it in items {
+                match it {
+                    Object::String(bytes, _) => {
+                        if let Ok(t) = Document::decode_text(e, bytes) {
+                            out.push_str(&t);
+                        }
+                    }
+                    other => {
+                        // Large kerning back-steps are word gaps.
+                        if num(other).is_some_and(|v| v < -200.0) && !out.ends_with([' ', '\n']) {
+                            out.push(' ');
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 fn page_image(doc: &Document, page_id: lopdf::ObjectId) -> (Option<(Vec<u8>, bool)>, Option<String>) {
     let images = match doc.get_page_images(page_id) {
         Ok(i) => i,
@@ -120,7 +195,7 @@ pub fn read_pdf(bytes: &[u8]) -> AppResult<Vec<PdfPage>> {
     }
     let mut out = vec![];
     for (n, id) in pages.iter().take(MAX_PAGES) {
-        let text = doc.extract_text(&[*n]).unwrap_or_default();
+        let text = page_text(&doc, *id);
         let (img, note) = page_image(&doc, *id);
         let (image, image_is_jpeg) = match img {
             Some((b, j)) => (Some(b), j),
@@ -197,6 +272,7 @@ pub(crate) mod tests {
         assert_eq!(pages.len(), 2);
         assert!(pages[0].has_text(), "{:?}", pages[0].text);
         assert!(pages[0].text.contains("INV-7"));
+        assert!(pages[0].text.lines().any(|l| l.trim() == "Milk 10 0.450 4.500"), "{:?}", pages[0].text);
         assert!(pages[1].image.is_some() && pages[1].image_is_jpeg);
         assert!(!pages[1].has_text());
     }

@@ -358,6 +358,16 @@ pub fn rotations(img: &DynamicImage) -> Vec<(u32, DynamicImage)> {
     vec![(90, img.rotate90()), (180, img.rotate180()), (270, img.rotate270())]
 }
 
+/// Text read sideways: most multi-word lines are taller than they are wide.
+pub fn looks_rotated(page: &super::layout::Page) -> bool {
+    let boxes: Vec<[u32; 4]> = page.lines.iter().filter(|l| l.words.len() >= 2).filter_map(|l| l.bbox()).collect();
+    if boxes.len() < 3 {
+        return false;
+    }
+    let tall = boxes.iter().filter(|b| b[3] > b[2] * 3 / 2).count();
+    tall * 2 > boxes.len()
+}
+
 /// Measured OCR quality used to pick a variant: words × mean confidence,
 /// counting only words with a plausible shape.
 pub fn ocr_score(layout_page: &super::layout::Page) -> i64 {

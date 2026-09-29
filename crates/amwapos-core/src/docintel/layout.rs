@@ -182,9 +182,15 @@ fn merge_rows(lines: Vec<Line>) -> Vec<Line> {
             out.push(l);
             continue;
         };
+        // Sideways text (tall line boxes) is never merged: its lines share a
+        // vertical centre by nature.
+        if b[3] > b[2] {
+            out.push(l);
+            continue;
+        }
         let centre = b[1] + b[3] / 2;
         let hit = out.iter_mut().rev().take(6).find(|o| {
-            o.bbox().is_some_and(|ob| {
+            o.bbox().filter(|ob| ob[2] >= ob[3]).is_some_and(|ob| {
                 let oc = ob[1] + ob[3] / 2;
                 let tol = ob[3].min(b[3]) / 2;
                 oc.abs_diff(centre) <= tol.max(2) && (ob[0] + ob[2] <= b[0] || b[0] + b[2] <= ob[0])

@@ -3,6 +3,9 @@
 //! learning), drafts, and the explicit posting of a receiving draft through
 //! the normal receiving workflows.
 
+// Row tuples read straight from SQL are kept inline where they are used.
+#![allow(clippy::type_complexity)]
+
 use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension};

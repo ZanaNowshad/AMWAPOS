@@ -22,6 +22,9 @@ pub mod pdfdoc;
 pub mod quality;
 pub mod service;
 
+/// Re-exported so the OCR worker decodes pages with the same image library.
+pub use image;
+
 use serde::{Deserialize, Serialize};
 
 /// Application-defined confidence band. Not a calibrated probability: OCR

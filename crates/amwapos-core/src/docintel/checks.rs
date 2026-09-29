@@ -633,7 +633,7 @@ pub fn po_candidates(c: &Connection, supplier: &str, f: &DocFields, lines: &[Lin
             out.push(PoCandidate { po_id: id, po_number: number, status, score: score.min(100), reasons });
         }
     }
-    out.sort_by(|a, b| b.score.cmp(&a.score));
+    out.sort_by_key(|c| std::cmp::Reverse(c.score));
     Ok(out)
 }
 

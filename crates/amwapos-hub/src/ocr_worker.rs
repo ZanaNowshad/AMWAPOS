@@ -13,6 +13,8 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use amwapos_core::docintel as dq;
+use amwapos_core::docintel::service::DocOcr;
 use amwapos_core::{AppCore, AppError, AppResult, ErrorCode};
 use serde::Serialize;
 use serde_json::json;
@@ -151,6 +153,11 @@ impl OcrWorker {
 
     /// Recognise one image: text and mean word confidence (0–100).
     pub async fn recognize(&self, image: &Path, langs: &[&str]) -> AppResult<(String, i64)> {
+        Ok(parse_tsv(&self.recognize_tsv(image, langs).await?))
+    }
+
+    /// Recognise one image: Tesseract's TSV (words with boxes and confidence).
+    pub async fn recognize_tsv(&self, image: &Path, langs: &[&str]) -> AppResult<String> {
         let (dir, have) = {
             let me = self.prepared.lock().unwrap().clone();
             match me {
@@ -191,7 +198,7 @@ impl OcrWorker {
             let err = String::from_utf8_lossy(&out.stderr);
             return Err(AppError::validation(format!("The image could not be read: {}", err.lines().last().unwrap_or("unknown error"))));
         }
-        Ok(parse_tsv(&String::from_utf8_lossy(&out.stdout)))
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     }
 }
 
@@ -272,6 +279,176 @@ fn parse_tsv(tsv: &str) -> (String, i64) {
     (lines.join("\n"), if n > 0.0 { (sum / n).round() as i64 } else { 0 })
 }
 
+/// Languages for supplier documents: English and Arabic (mixed invoices).
+const DOC_LANGS: &[&str] = &["eng", "ara"];
+
+/// OCR one page image: every preprocessing variant is read, and the variant
+/// (and, when the upright read is poor, the quarter-turn) with the best
+/// measured OCR score is kept. Returns the page layout and, when the kept
+/// image differs from the original file, that image for the review screen.
+#[allow(clippy::too_many_arguments)]
+async fn read_page(
+    w: &Arc<OcrWorker>,
+    img: Option<dq::image::DynamicImage>,
+    original: &Path,
+    number: u32,
+    work: &Path,
+    file_bytes: Option<u64>,
+    is_jpeg: bool,
+    derived_always: bool,
+) -> AppResult<(dq::layout::Page, Option<dq::quality::PageQuality>, Option<u64>, Option<String>)> {
+    let Some(img) = img else {
+        // Not decodable here (e.g. an unusual TIFF): let Tesseract try the file as is.
+        let tsv = w.recognize_tsv(original, DOC_LANGS).await?;
+        let mut p = dq::layout::page_from_tsv(&tsv, number, 0, 0);
+        p.variant = "original_undecoded".into();
+        return Ok((p, None, None, None));
+    };
+    let (q, hash, variants) = {
+        let img = img.clone();
+        blocking(move || {
+            let q = dq::quality::assess(&img, number, file_bytes, is_jpeg);
+            let h = dq::quality::dhash(&img);
+            let v: Vec<(String, dq::image::DynamicImage)> =
+                dq::quality::variants(&img, &q).into_iter().map(|(n, i)| (n.to_string(), i)).collect();
+            Ok((q, h, v))
+        })
+        .await?
+    };
+    std::fs::create_dir_all(work)?;
+    let mut best: Option<(i64, dq::layout::Page, dq::image::DynamicImage, String, u32)> = None;
+    for (name, v) in variants {
+        let file = if name == "original" && !derived_always { original.to_path_buf() } else { work.join(format!("p{number}-{name}.png")) };
+        if file != original {
+            let (v2, f2) = (v.clone(), file.clone());
+            blocking(move || v2.save(&f2).map_err(|e| AppError::internal(format!("could not write page image: {e}")))).await?;
+        }
+        let tsv = w.recognize_tsv(&file, DOC_LANGS).await?;
+        let (pw, ph) = (v.width(), v.height());
+        let mut page = dq::layout::page_from_tsv(&tsv, number, pw, ph);
+        page.variant = name.clone();
+        let score = dq::quality::ocr_score(&page);
+        if best.as_ref().is_none_or(|b| score > b.0) {
+            best = Some((score, page, v, name, 0));
+        }
+    }
+    let (mut score, mut page, mut chosen, mut name, mut rot) = best.ok_or_else(|| AppError::internal("no page variant"))?;
+    // Poor upright read: try quarter turns (orientation by OCR signal).
+    let words = page.lines.iter().map(|l| l.words.len()).sum::<usize>();
+    if words < 12 || (dq::layout::Layout { pages: vec![page.clone()] }).mean_conf() < 55 || dq::quality::looks_rotated(&page) {
+        let base = chosen.clone();
+        for (deg, r) in blocking(move || Ok(dq::quality::rotations(&base))).await? {
+            let file = work.join(format!("p{number}-rot{deg}.png"));
+            let (r2, f2) = (r.clone(), file.clone());
+            blocking(move || r2.save(&f2).map_err(|e| AppError::internal(format!("could not write page image: {e}")))).await?;
+            let tsv = w.recognize_tsv(&file, DOC_LANGS).await?;
+            let mut p = dq::layout::page_from_tsv(&tsv, number, r.width(), r.height());
+            let s2 = dq::quality::ocr_score(&p);
+            // A clearly better read (20%), or an upright read nearly as good
+            // as a sideways one (upright text keeps table columns usable).
+            let upright_fix = dq::quality::looks_rotated(&page) && !dq::quality::looks_rotated(&p) && s2 * 10 >= score * 9;
+            if s2 > score + score / 5 + 50 || upright_fix {
+                p.variant = name.clone();
+                (score, page, chosen, rot) = (s2, p, r, deg);
+            }
+        }
+    }
+    page.rotation = rot;
+    if rot != 0 {
+        name = format!("{name}+rot{rot}");
+        page.variant = name.clone();
+    }
+    // The review screen must show the image the boxes refer to.
+    let derived = if name != "original" || derived_always {
+        let f = work.join(format!("page-{number}.png"));
+        let (c2, f2) = (chosen.clone(), f.clone());
+        blocking(move || c2.save(&f2).map_err(|e| AppError::internal(format!("could not write page image: {e}")))).await?;
+        Some(f.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+    let mut q = q;
+    if rot != 0 {
+        q.issues.push(format!("was turned {rot}° to read it"));
+    }
+    Ok((page, Some(q), Some(hash), derived))
+}
+
+/// Read a supplier document (PDF or image) into pages with layout and quality.
+pub async fn read_document(w: &Arc<OcrWorker>, id: &str, path: &Path) -> AppResult<DocOcr> {
+    let core = w.core.clone();
+    let stage = |s: &'static str| {
+        let (c, id) = (core.clone(), id.to_string());
+        async move {
+            let _ = blocking(move || c.doc_stage(&id, s)).await;
+        }
+    };
+    stage("preprocessing").await;
+    let bytes = tokio::fs::read(path).await.map_err(|e| AppError::validation(format!("The uploaded file could not be opened: {e}")))?;
+    let work = w.core.data_dir.join("invoice-scans").join(format!("{id}-pages"));
+    let mut out = DocOcr::default();
+    let mut qualities = vec![];
+    let mut hashes = vec![];
+    if bytes.starts_with(b"%PDF") {
+        let b = bytes.clone();
+        let pages = blocking(move || dq::pdfdoc::read_pdf(&b)).await?;
+        out.page_count = pages.len() as u32;
+        stage("ocr").await;
+        for p in pages {
+            if p.has_text() {
+                let mut l = dq::layout::Layout::from_text(&p.text, 100).pages.remove(0);
+                l.number = p.number;
+                l.source = "pdf_text".into();
+                out.layout.pages.push(l);
+                continue;
+            }
+            match p.image {
+                Some(img_bytes) => {
+                    let ext = if p.image_is_jpeg { "jpg" } else { "png" };
+                    std::fs::create_dir_all(&work)?;
+                    let f = work.join(format!("src-{}.{ext}", p.number));
+                    std::fs::write(&f, &img_bytes)?;
+                    let n = img_bytes.len() as u64;
+                    let dec = blocking(move || Ok(dq::image::load_from_memory(&img_bytes).ok())).await?;
+                    let (page, q, h, derived) = read_page(w, dec, &f, p.number, &work, Some(n), p.image_is_jpeg, true).await?;
+                    out.layout.pages.push(page);
+                    qualities.extend(q);
+                    hashes.extend(h);
+                    if let Some(d) = derived {
+                        out.page_images.push((p.number, d));
+                    }
+                }
+                None => out.notes.push(format!(
+                    "Page {}: {}",
+                    p.number,
+                    p.note.unwrap_or_else(|| "has no text layer and no page image to read.".into())
+                )),
+            }
+        }
+    } else {
+        out.page_count = 1;
+        let n = bytes.len() as u64;
+        let is_jpeg = bytes.starts_with(&[0xFF, 0xD8]);
+        let dec = blocking(move || Ok(dq::image::load_from_memory(&bytes).ok())).await?;
+        if dec.is_none() {
+            out.notes.push("Page 1: the image could not be decoded for the quality check; it was read as uploaded.".into());
+        }
+        stage("ocr").await;
+        let (page, q, h, derived) = read_page(w, dec, path, 1, &work, Some(n), is_jpeg, false).await?;
+        out.layout.pages.push(page);
+        qualities.extend(q);
+        hashes.extend(h);
+        if let Some(d) = derived {
+            out.page_images.push((1, d));
+        }
+    }
+    stage("extracting").await;
+    if !qualities.is_empty() {
+        out.quality = Some(dq::quality::combine(qualities, &hashes));
+    }
+    Ok(out)
+}
+
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + 'static) -> AppResult<T> {
     tokio::task::spawn_blocking(f).await.map_err(|e| AppError::internal(format!("worker failed: {e}")))?
 }
@@ -319,8 +496,29 @@ async fn run(w: Arc<OcrWorker>) {
         let c = w.core.clone();
         let jobs = blocking(move || c.ocr_pending(2)).await.unwrap_or_default();
         for j in jobs {
-            // Payment screenshots are often Arabic; supplier invoices mostly English.
-            let langs: &[&str] = if j.kind == "payment" { &["eng", "ara"] } else { &["eng"] };
+            if j.kind == "invoice" {
+                // Supplier documents: the Document Intelligence reader.
+                match read_document(&w, &j.id, Path::new(&j.path)).await {
+                    Ok(doc) => {
+                        let (c, id) = (w.core.clone(), j.id.clone());
+                        if let Err(e) = blocking(move || c.doc_ocr_done(&id, doc)).await {
+                            tracing::warn!(error = %e.message, "document analysis failed");
+                            let (c, id, m) = (w.core.clone(), j.id.clone(), e.message.clone());
+                            let _ = blocking(move || c.doc_failed(&id, &m)).await;
+                        }
+                        ai_parse(&w.core, &j.id).await;
+                    }
+                    Err(e) if e.code == ErrorCode::OcrModelMissing => break,
+                    Err(e) => {
+                        let (c, id, m) = (w.core.clone(), j.id.clone(), e.message.clone());
+                        let _ = blocking(move || c.doc_failed(&id, &m)).await;
+                    }
+                }
+                w.status.lock().unwrap().last_job_at = Some(amwapos_core::time::now_str());
+                continue;
+            }
+            // Payment screenshots are often Arabic.
+            let langs: &[&str] = &["eng", "ara"];
             let outcome = match w.recognize(Path::new(&j.path), langs).await {
                 Ok(r) => Ok(r),
                 Err(e) if e.code == ErrorCode::OcrModelMissing => break,
@@ -329,9 +527,6 @@ async fn run(w: Arc<OcrWorker>) {
             let c = w.core.clone();
             let (kind, id) = (j.kind, j.id.clone());
             let _ = blocking(move || c.ocr_result(kind, &id, outcome)).await;
-            if kind == "invoice" {
-                ai_parse(&w.core, &j.id).await;
-            }
             w.status.lock().unwrap().last_job_at = Some(amwapos_core::time::now_str());
         }
         tokio::select! {

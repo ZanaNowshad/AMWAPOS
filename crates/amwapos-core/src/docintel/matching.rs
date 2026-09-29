@@ -39,6 +39,9 @@ impl MatchResult {
 
 // ---------------------------------------------------------------- supplier
 
+/// id, name, VAT, CR, phone, WhatsApp
+type SupplierRow = (String, String, Option<String>, Option<String>, Option<String>, Option<String>);
+
 fn add(cands: &mut Vec<(Candidate, &'static str)>, id: String, name: String, score: i64, reason: String, kind: &'static str) {
     if let Some((c, k)) = cands.iter_mut().find(|(c, _)| c.id == id) {
         if score > c.score {
@@ -54,7 +57,7 @@ fn add(cands: &mut Vec<(Candidate, &'static str)>, id: String, name: String, sco
 /// Match the document's supplier. `preset` = a supplier a person chose at upload.
 pub fn match_supplier(c: &Connection, f: &DocFields, preset: Option<&str>) -> AppResult<MatchResult> {
     let mut cands: Vec<(Candidate, &'static str)> = vec![];
-    let suppliers: Vec<(String, String, Option<String>, Option<String>, Option<String>, Option<String>)> = {
+    let suppliers: Vec<SupplierRow> = {
         let mut st = c.prepare("SELECT supplier_id, name, vat_number, cr_number, phone, whatsapp FROM suppliers WHERE active=1")?;
         let rows =
             st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?.collect::<Result<Vec<_>, _>>()?;

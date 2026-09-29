@@ -812,7 +812,7 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
         let w = words[i].text.to_lowercase();
         let right = words[i + 1].text.to_lowercase();
         let right_is_size = right.starts_with(|c: char| c.is_ascii_digit())
-            && (right.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.').len() > 0 && is_size_token(&right)
+            && (!right.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.').is_empty() && is_size_token(&right)
                 || words
                     .get(i + 2)
                     .is_some_and(|nw| matches!(nw.text.to_lowercase().as_str(), "ml" | "l" | "ltr" | "g" | "gm" | "kg" | "cl")));
@@ -1100,6 +1100,24 @@ pub fn extract(layout: &Layout, digits: u32, own_vat: Option<&str>, own_names: &
             if let Some((n, i)) = doc_number_after(l, INVOICE_NO) {
                 f.invoice_number =
                     Field::found(n.clone(), n, ev(l, Some((i, i + 1))), band_for(l.line.words.get(i).map(|w| w.conf), Band::High));
+            }
+        }
+        // "INVOICE 4471" / "TAX INVOICE #88" / "فاتورة 12": a number right after the title.
+        if !f.invoice_number.is_set() && !has_any(&low, PO_NO) {
+            if let Some(k) = l.line.words.iter().position(|w| {
+                let t = w.text.to_lowercase();
+                matches!(t.trim_matches(|c: char| !c.is_alphanumeric()), "invoice" | "inv" | "فاتورة" | "note")
+            }) {
+                if let Some(w) = l.line.words.get(k + 1) {
+                    let t = clean_id_token(&normalize_digits(&w.text));
+                    if t.len() >= 2
+                        && t.chars().any(|c| c.is_ascii_digit())
+                        && t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '/')
+                        && find_dates(&t).is_empty()
+                    {
+                        f.invoice_number = Field::found(t.clone(), t, ev(l, Some((k + 1, k + 2))), Band::Medium);
+                    }
+                }
             }
         }
         if !f.po_number.is_set() && !has_any(&low, INVOICE_NO) {
