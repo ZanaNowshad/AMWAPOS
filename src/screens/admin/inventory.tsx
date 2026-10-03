@@ -172,9 +172,9 @@ export function InventoryPage() {
       />
       <div className="kpis" style={{ marginBottom: 16 }}>
         {[
-          [t("Total SKUs"), counts.data?.all, ""],
-          [t("Low Stock"), counts.data?.low, "low"],
-          [t("Out of Stock"), counts.data?.out, "out"],
+          [t("All products"), counts.data?.all, ""],
+          [t("Low stock"), counts.data?.low, "low"],
+          [t("Out of stock"), counts.data?.out, "out"],
           [t("Negative Stock"), counts.data?.neg, "negative"],
         ].map(([label, v, key]) => (
           <button
@@ -288,8 +288,10 @@ export function MovementsPage() {
   return (
     <div>
       <PageHeader
-        title={t("Stock Movements")}
-        subtitle={t("The append-only ledger behind every stock level. Movements cannot be edited or deleted.")}
+        title={t("Stock movements")}
+        subtitle={t(
+          "Every change to stock, newest first: sales, refunds, deliveries, counts and adjustments. Entries are never edited or deleted.",
+        )}
       />
       <div className="filters">
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b), setOffset(0))} />
@@ -360,7 +362,7 @@ export function StocktakesPage() {
         title={t("Stocktake")}
         actions={
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-            {t("New Stocktake")}
+            {t("New stocktake")}
           </Button>
         }
       />
@@ -535,7 +537,7 @@ export function StocktakeDetailPage() {
         />
         <div className="grow">
           <div className="tiny">{t("Stocktake {0}", data.stocktake_number)}</div>
-          <h1>{data.name}</h1>
+          <h1 dir="auto">{data.name}</h1>
         </div>
         <Chip tone={data.status === "completed" ? "success" : "info"}>{codeLabel(data.status)}</Chip>
         {counting ? (
@@ -960,7 +962,7 @@ export function ReceivingPage() {
               }
             }}
           >
-            {t("Receive Goods")}
+            {t("Receive goods")}
           </Button>
         </div>
       </div>

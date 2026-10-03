@@ -191,7 +191,13 @@ function TransfersBody() {
         </div>
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
         {list.error ? <Banner tone="danger">{list.error}</Banner> : null}
-        {list.data && list.data.length === 0 ? <Empty title={t("No transfers")} /> : null}
+        {list.data && list.data.length === 0 ? (
+          <Empty title={t("No transfers")}>
+            {t(
+              "A transfer moves stock to another location or branch. It is shipped here, then received at the other end; stock counts change only at those two steps.",
+            )}
+          </Empty>
+        ) : null}
         {(list.data ?? []).map((tr) => (
           <div key={tr.transfer_id} className="card card-pad col gap-8" data-testid="transfer-card">
             <div className="row wrap">

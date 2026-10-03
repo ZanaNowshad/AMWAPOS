@@ -57,7 +57,7 @@ export function UsersPage() {
               {t("Roles & Permissions")}
             </Button>
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => open("new")}>
-              {t("User")}
+              {t("Add user")}
             </Button>
           </>
         }
@@ -81,7 +81,7 @@ export function UsersPage() {
             sort: (r) => r.display_name,
           },
           { key: "r", label: t("Role"), render: (r) => tb(r.role_name), sort: (r) => r.role_name },
-          { key: "l", label: t("Last Login"), render: (r) => formatShort(r.last_login_at) },
+          { key: "l", label: t("Last sign-in"), render: (r) => formatShort(r.last_login_at) },
           {
             key: "s",
             label: t("Status"),
@@ -203,7 +203,7 @@ export function RolesPage() {
         actions={
           has("roles.manage") ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => setSel("new")}>
-              {t("Role")}
+              {t("New role")}
             </Button>
           ) : null
         }
@@ -216,7 +216,7 @@ export function RolesPage() {
               className={sel !== "new" && sel?.role_id === r.role_id ? "active" : ""}
               onClick={() => setSel(r)}
             >
-              {r.name} <span className="tiny">({r.user_count})</span>
+              {tb(r.name)} <span className="tiny">({r.user_count})</span>
             </button>
           ))}
         </div>
@@ -241,15 +241,14 @@ export function RolesPage() {
           <div className="perm-matrix">
             {domains.map(([domain, ps]) => (
               <div key={domain}>
-                <h3 style={{ marginBottom: 6 }}>{domain}</h3>
+                <h3 style={{ marginBottom: 6 }}>{tb(domain)}</h3>
                 <div className="col" style={{ gap: 4 }}>
                   {ps.map((p) => (
                     <Checkbox
                       key={p.code}
                       label={
-                        <span>
-                          {p.description} <span className="tiny mono">{p.code}</span>
-                        </span>
+                        // The internal code stays available as a tooltip for support, not in the label.
+                        <span title={p.code}>{tb(p.description)}</span>
                       }
                       checked={checked.has(p.code)}
                       disabled={!canEdit}
@@ -306,63 +305,64 @@ export function ProfilePage() {
   const act = useAction();
   if (!session) return null;
   return (
-    <div className="grid-2">
-      <div className="card card-pad col gap-16">
-        <div className="row">
-          <span className="avatar">{initials(session.display_name)}</span>
-          <div>
-            <h2>{session.display_name}</h2>
-            <div className="muted">{tb(session.role_name)}</div>
+    <div>
+      <PageHeader title={t("My profile")} subtitle={t("Your sign-in and your PIN.")} />
+      <div className="grid-2">
+        <div className="card card-pad col gap-16">
+          <div className="row">
+            <span className="avatar">{initials(session.display_name)}</span>
+            <div>
+              <h2 dir="auto">{session.display_name}</h2>
+              <div className="muted">{tb(session.role_name)}</div>
+            </div>
           </div>
+          <dl className="kv">
+            <dt>{t("Signed in")}</dt>
+            <dd>{formatDateTime(session.created_at)}</dd>
+          </dl>
         </div>
-        <dl className="kv">
-          <dt>{t("Signed in")}</dt>
-          <dd>{formatDateTime(session.created_at)}</dd>
-          <dt>{t("Permissions")}</dt>
-          <dd>{session.permissions.length}</dd>
-        </dl>
-      </div>
-      <div className="card card-pad col gap-16">
-        <h3>{t("Change PIN")}</h3>
-        <TextInput
-          label={t("Current PIN")}
-          type="password"
-          inputMode="numeric"
-          value={cur}
-          onChange={(e) => setCur(e.target.value.replace(/\D/g, ""))}
-        />
-        <TextInput
-          label={t("New PIN")}
-          type="password"
-          inputMode="numeric"
-          value={next}
-          onChange={(e) => setNext(e.target.value.replace(/\D/g, ""))}
-        />
-        <TextInput
-          label={t("Confirm new PIN")}
-          type="password"
-          inputMode="numeric"
-          value={again}
-          onChange={(e) => setAgain(e.target.value.replace(/\D/g, ""))}
-          error={again && again !== next ? t("PINs do not match.") : null}
-        />
-        {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-        <Button
-          variant="primary"
-          disabled={!cur || next.length < 4 || next !== again}
-          loading={act.busy}
-          onClick={async () => {
-            const r = await act.run(() => api.auth.changePin(cur, next));
-            if (r !== undefined) {
-              toast("success", t("PIN changed"));
-              setCur("");
-              setNext("");
-              setAgain("");
-            }
-          }}
-        >
-          {t("Change PIN")}
-        </Button>
+        <div className="card card-pad col gap-16">
+          <h3>{t("Change PIN")}</h3>
+          <TextInput
+            label={t("Current PIN")}
+            type="password"
+            inputMode="numeric"
+            value={cur}
+            onChange={(e) => setCur(e.target.value.replace(/\D/g, ""))}
+          />
+          <TextInput
+            label={t("New PIN")}
+            type="password"
+            inputMode="numeric"
+            value={next}
+            onChange={(e) => setNext(e.target.value.replace(/\D/g, ""))}
+          />
+          <TextInput
+            label={t("Confirm new PIN")}
+            type="password"
+            inputMode="numeric"
+            value={again}
+            onChange={(e) => setAgain(e.target.value.replace(/\D/g, ""))}
+            error={again && again !== next ? t("PINs do not match.") : null}
+          />
+          {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+          <Button
+            variant="primary"
+            disabled={!cur || next.length < 4 || next !== again}
+            loading={act.busy}
+            onClick={async () => {
+              const r = await act.run(() => api.auth.changePin(cur, next));
+              if (r !== undefined) {
+                toast("success", t("PIN changed"));
+                setCur("");
+                setNext("");
+                setAgain("");
+              }
+            }}
+          >
+            {t("Change PIN")}
+          </Button>
+        </div>
       </div>
     </div>
   );

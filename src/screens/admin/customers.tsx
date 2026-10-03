@@ -114,7 +114,7 @@ export function CustomersPage() {
             <WhatsAppContactsButton onImported={() => void reload()} />
             {has("customers.manage") ? (
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-                {t("Customer")}
+                {t("Add customer")}
               </Button>
             ) : null}
           </>
@@ -211,7 +211,7 @@ export function CustomerDetailPage() {
         />
         <div className="grow">
           <div className="tiny">{t("Customer")}</div>
-          <h1>{c.name}</h1>
+          <h1 dir="auto">{c.name}</h1>
           <div className="muted">{c.phone ?? t("No phone")}</div>
         </div>
         {wa ? (
@@ -456,6 +456,8 @@ function TicketBoard() {
       key={`${key}-${value}`}
       type="button"
       className={`filter-chip ${f[key] === value ? "active" : ""}`}
+      // Area and rider chips show names people typed, in either language.
+      dir={key === "area" || key === "rider" ? "auto" : undefined}
       onClick={() => setF({ ...f, [key]: f[key] === value ? undefined : value })}
     >
       {label}

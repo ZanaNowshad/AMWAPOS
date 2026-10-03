@@ -26,7 +26,7 @@ export function ReportsHome() {
       <div className="stack-24">
         {groups.map((g) => (
           <div key={g}>
-            <h3 style={{ marginBottom: 10 }}>{g}</h3>
+            <h3 style={{ marginBottom: 10 }}>{tb(g)}</h3>
             <div className="choice-cards">
               {data!
                 .filter((r) => r.group === g)
@@ -106,7 +106,7 @@ export function ReportViewer() {
         />
         <div className="grow">
           <div className="tiny">{t("Reports")}</div>
-          <h1>{report?.title ?? t("Report")}</h1>
+          <h1>{report ? tb(report.title) : t("Report")}</h1>
         </div>
         <Button
           icon={<Download size={16} />}
@@ -169,7 +169,7 @@ export function ReportViewer() {
               value={params.days ?? 60}
               onChange={(e) => setParams({ ...params, days: Number(e.target.value.replace(/\D/g, "")) || 60 })}
             />
-            days
+            {t("days")}
           </label>
         ) : null}
         <Button variant="primary" icon={<Play size={15} />} onClick={() => run()} loading={act.busy}>
@@ -177,7 +177,7 @@ export function ReportViewer() {
         </Button>
       </div>
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-      {!report ? (
+      {!report && act.error ? null : !report ? (
         <Skeleton rows={8} />
       ) : (
         <div className="stack-16">

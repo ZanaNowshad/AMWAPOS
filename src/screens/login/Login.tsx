@@ -105,7 +105,8 @@ export function LoginScreen() {
           <Logo size={36} />
           <strong style={{ fontSize: 18 }}>{t("AMWAPOS")}</strong>
         </div>
-        <h1>{t("Fast retail. Accurate operations.")}</h1>
+        {/* One page heading per screen: the question on the right is the h1. */}
+        <p className="tagline">{t("Fast retail. Accurate operations.")}</p>
         <div className="meta">
           <div>{t("AMWAPOS Terminal")}</div>
           <div>

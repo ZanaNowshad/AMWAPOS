@@ -180,7 +180,7 @@ export function ProductsPage() {
             </Button>
             {has("products.manage") ? (
               <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav("/admin/products/new")}>
-                {t("Add Product")}
+                {t("Add product")}
               </Button>
             ) : null}
           </>
@@ -252,7 +252,7 @@ export function ProductsPage() {
                 <>
                   <Button onClick={() => nav("/admin/import")}>{t("Import Products")}</Button>
                   <Button variant="primary" onClick={() => nav("/admin/products/new")}>
-                    {t("Add Product")}
+                    {t("Add product")}
                   </Button>
                 </>
               )
@@ -467,7 +467,7 @@ export function ProductEditorPage() {
         />
         <div className="grow">
           <div className="tiny">{t("Products")}</div>
-          <h1>
+          <h1 dir={isNew ? undefined : "auto"}>
             {isNew ? t("New product") : detail?.name} {detail && !detail.active ? <Chip>{t("Archived")}</Chip> : null}
           </h1>
         </div>
@@ -491,7 +491,8 @@ export function ProductEditorPage() {
           </Button>
         ) : null}
       </div>
-      <Tabs tabs={tabs} value={tab} onChange={setTab} />
+      {/* A new product has one form; the other tabs appear once it is saved. */}
+      {tabs.length > 1 ? <Tabs tabs={tabs} value={tab} onChange={setTab} /> : null}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       {tab === "general" ? (
         <div className="grid-3">
@@ -812,7 +813,7 @@ function BarcodesTab({
               aria-label={t("New barcode")}
             />
             <Button variant="primary" icon={<Plus size={16} />} onClick={add} disabled={!v.trim()} loading={act.busy}>
-              {t("Add Barcode")}
+              {t("Add barcode")}
             </Button>
           </div>
           {act.error ? (
@@ -1106,7 +1107,7 @@ export function CategoriesPage() {
         actions={
           canEdit ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => open("new")}>
-              {t("Add Category")}
+              {t("Add category")}
             </Button>
           ) : null
         }
@@ -1329,7 +1330,7 @@ export function PricingPage() {
         <span className="grow" />
         <select
           className="select"
-          style={{ width: 170 }}
+          style={{ width: "auto", minWidth: 200 }}
           value={rule.kind}
           onChange={(e) =>
             setRule({ kind: e.target.value as Rule["kind"], value: e.target.value === "round" ? "0.050" : rule.value })
@@ -1437,7 +1438,7 @@ export function UnknownBarcodesPage() {
   return (
     <div>
       <PageHeader
-        title={t("Unknown Barcodes")}
+        title={t("Unknown barcodes")}
         subtitle={t("Barcodes scanned at the till that are not in the catalogue.")}
       />
       <div className="filters">

@@ -79,7 +79,7 @@ export function DevicesPage() {
           },
           { key: "c", label: t("Code"), render: (r) => <span className="mono">{r.device_code}</span> },
           { key: "id", label: t("Device ID"), render: (r) => <span className="mono">{r.device_id.slice(-8)}</span> },
-          { key: "m", label: t("Mode"), render: (r) => r.mode },
+          { key: "m", label: t("Mode"), render: (r) => codeLabel(r.mode) },
           { key: "b", label: t("Branch"), render: (r) => r.branch_name ?? "—" },
           { key: "l", label: t("Last Seen"), render: (r) => (r.is_this_device ? t("now") : relative(r.last_seen_at)) },
           { key: "v", label: t("Version"), render: (r) => r.app_version ?? "—" },
@@ -586,7 +586,9 @@ export function ImportPage() {
     <div>
       <PageHeader
         title={t("Import products")}
-        subtitle={t("CSV import with explicit review. Nothing is changed until you press Apply Import.")}
+        subtitle={t(
+          "Bring products in from a CSV file. You check every row first; nothing changes until you press Apply import.",
+        )}
       />
       <div className="row" style={{ marginBottom: 16 }}>
         {steps.map((s, i) => (
@@ -796,7 +798,7 @@ export function ImportPage() {
                 }
               }}
             >
-              {t("Apply Import")}
+              {t("Apply import")}
             </Button>
           </div>
         </div>
@@ -877,7 +879,7 @@ export function BackupsPage() {
               }
             }}
           >
-            {t("Backup Now")}
+            {t("Back up now")}
           </Button>
         }
       />
@@ -915,7 +917,7 @@ export function BackupsPage() {
         empty={<div className="empty">{t("No backups yet. Create one now.")}</div>}
         columns={[
           { key: "d", label: t("Date"), render: (r) => formatDateTime(r.created_at), sort: (r) => r.created_at },
-          { key: "k", label: t("Type"), render: (r) => r.kind },
+          { key: "k", label: t("Type"), render: (r) => codeLabel(r.kind) },
           {
             key: "s",
             label: t("Size"),
@@ -957,7 +959,7 @@ export function BackupsPage() {
             value={custom}
             onChange={(e) => setCustom(e.target.value)}
             fieldClass="grow"
-            placeholder={t("E:\\\\AMWAPOS backups\\\\AMWAPOS-MAIN-manual-20260924-190000.amwbak")}
+            placeholder={"E:\\AMWAPOS backups\\AMWAPOS-MAIN-manual-20260924-190000.amwbak"}
           />
           <Button disabled={!custom.trim()} onClick={() => void inspect(custom.trim())}>
             {t("Inspect")}
@@ -1266,8 +1268,9 @@ type Section =
 
 export function SettingsPage() {
   const { has } = useSession();
-  const [params] = useSearchParams();
-  const [section, setSection] = useState<Section>((params.get("section") as Section | null) ?? "business");
+  // The section lives in the address, so links such as "Open Settings → Features"
+  // land on it even when Settings is already open, and a reload keeps it.
+  const [params, setParams] = useSearchParams();
   const sections: [Section, string][] = [
     ["business", t("Business")],
     ["tax", t("Tax")],
@@ -1288,13 +1291,21 @@ export function SettingsPage() {
     ["ai", t("AI assistant")],
     ["about", t("About")],
   ];
+  const asked = params.get("section");
+  const section: Section = sections.some(([k]) => k === asked) ? (asked as Section) : "business";
+  const setSection = (k: Section) => setParams({ section: k }, { replace: true });
   return (
     <div>
       <PageHeader title={t("Settings")} />
       <div className="settings-layout">
         <nav className="subnav" aria-label={t("Settings sections")}>
           {sections.map(([k, l]) => (
-            <button key={k} className={section === k ? "active" : ""} onClick={() => setSection(k)}>
+            <button
+              key={k}
+              className={section === k ? "active" : ""}
+              aria-current={section === k ? "page" : undefined}
+              onClick={() => setSection(k)}
+            >
               {l}
             </button>
           ))}
@@ -2338,7 +2349,7 @@ export function DiagnosticsPage() {
         actions={
           <>
             <Button icon={<ShieldCheck size={16} />} onClick={() => (setFull(true), void reload())} loading={loading}>
-              {t("Run Health Check")}
+              {t("Run health check")}
             </Button>
             <Button
               icon={<Copy size={16} />}
@@ -2354,7 +2365,7 @@ export function DiagnosticsPage() {
                 }
               }}
             >
-              {t("Export Diagnostics")}
+              {t("Export diagnostics")}
             </Button>
           </>
         }

@@ -40,7 +40,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("button", { name: /Continue/ }).click();
   for (let i = 0; i < 4; i++) await page.getByRole("button", { name: /Continue/ }).click(); // terminal, receipt, printer, backup
   await shot(page, "02-review");
-  await page.getByRole("button", { name: "Finish Setup" }).click();
+  await page.getByRole("button", { name: "Finish setup" }).click();
 
   // ---- Login ----
   await expect(page.getByRole("heading", { name: "Who is signing in?" })).toBeVisible();
@@ -50,7 +50,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("button", { name: "Log in" }).click();
 
   // ---- Shift open ----
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
   await page.getByLabel("Opening float (cash in drawer)").fill("20.000");
   await shot(page, "04-shift-open");
   await page.getByRole("button", { name: "Open Shift" }).click();
@@ -159,7 +159,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("button", { name: "Close Shift" }).click();
   await expect(page.getByText("Shift closed")).toBeVisible();
   await page.getByRole("button", { name: "Done" }).click();
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
 
   // ---- Admin: dashboard & reports reflect the activity ----
   await page.getByRole("button", { name: "Admin" }).click();
@@ -170,7 +170,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await expect(alert).toContainText("Backup overdue");
   await expect(alert).toContainText("No successful backup yet");
   await shot(page, "11a-backup-alert");
-  await alert.getByRole("button", { name: "Backup Now" }).click();
+  await alert.getByRole("button", { name: "Back up now" }).click();
   await expect(page.getByText("Backup created and verified")).toBeVisible();
   await expect(alert).toBeHidden();
   await shot(page, "11-dashboard");
@@ -180,7 +180,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await expect(page.getByRole("heading", { name: "Products", level: 1 })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Almarai Fresh Milk 1L" })).toHaveCount(1);
   await shot(page, "12-products");
-  await page.getByRole("link", { name: "Unknown Barcodes" }).click();
+  await page.getByRole("link", { name: "Unknown barcodes" }).click();
   await expect(page.getByText("9999999999999")).toBeVisible();
   await page.getByRole("link", { name: "Reports" }).click();
   await page.getByRole("button", { name: /VAT/ }).click();
@@ -190,7 +190,7 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("link", { name: "Audit" }).click();
   await expect(page.getByText("Audit chain verified")).toBeVisible();
   await page.getByRole("link", { name: "Backups" }).click();
-  await page.getByRole("button", { name: "Backup Now" }).click();
+  await page.getByRole("button", { name: "Back up now" }).click();
   await expect(page.getByText("Backup created and verified").first()).toBeVisible();
   await shot(page, "14-backups");
   await openMoreTools(page);
@@ -213,7 +213,7 @@ test("cashier: no admin access; over-limit discount needs manager approval", asy
   await page.getByRole("button", { name: /Sara/ }).click();
   await page.getByLabel("PIN").fill("7391");
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Admin" })).toHaveCount(0);
   await page.getByLabel("Opening float (cash in drawer)").fill("10.000");
   await page.getByRole("button", { name: "Open Shift" }).click();
@@ -341,7 +341,7 @@ test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and
   await page.getByRole("button", { name: /Zana/ }).click();
   await page.getByLabel("PIN").fill("4826");
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
   const token = await page.evaluate(() => sessionStorage.getItem("amwapos.session"));
   const features = await rpc(page, "settings.get", { key: "features" }, token);
   await rpc(page, "settings.save", { key: "features", value: { ...features, "ai.enabled": true } }, token);
@@ -354,7 +354,7 @@ test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and
     { role_id: "role_cashier", name: cashier.name, permissions: [...cashier.permissions, "ai.use"] },
     token,
   );
-  await page.getByRole("button", { name: "Logout" }).click();
+  await page.getByRole("button", { name: "Log out" }).click();
 
   // Till (Sara's open shift): the assistant in a drawer, with the cart as context.
   await page.getByRole("button", { name: /Sara/ }).click();
@@ -370,7 +370,7 @@ test("AI assistant: live tool steps and thinking, slash commands, shortcuts, and
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /More/ }).click();
-  await page.getByRole("menuitem", { name: "Logout" }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
 
   // Owner → Admin → AI page.
   await page.getByRole("button", { name: /Zana/ }).click();
@@ -436,7 +436,7 @@ test("product pictures: upload in the editor, shown in the catalogue and at the 
   await page.getByRole("button", { name: /Zana/ }).click();
   await page.getByLabel("PIN").fill("4826");
   await page.getByRole("button", { name: "Log in" }).click();
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
   await page.getByRole("button", { name: "Admin" }).click();
   await page.goto("/#/admin/products/new");
 
@@ -508,7 +508,9 @@ test("product pictures: upload in the editor, shown in the catalogue and at the 
   );
 
   // Till search results carry the same picture (nothing is added: the next spec closes this shift).
+  // A reload keeps the owner in Admin; the POS button goes back to the till.
   await page.goto("/");
+  await page.getByTestId("back-to-pos").click();
   await page
     .getByRole("button", { name: /Logout|Log out/ })
     .first()

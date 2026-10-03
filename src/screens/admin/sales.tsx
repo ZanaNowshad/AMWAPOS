@@ -198,7 +198,7 @@ export function SalesPage() {
     <div>
       <PageHeader
         title={t("Sales")}
-        subtitle={t("Completed sales. Records are immutable; corrections are made with refunds.")}
+        subtitle={t("Completed sales. A sale is never edited; to correct one, make a refund.")}
       />
       <div className="filters">
         <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b), setOffset(0))} />

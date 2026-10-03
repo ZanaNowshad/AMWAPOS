@@ -72,7 +72,7 @@ export function BackupAlert() {
       </div>
       {has("backup.manage") ? (
         <Button variant="primary" icon={<DatabaseBackup size={18} />} loading={now.busy} onClick={() => void now.run()}>
-          {t("Backup Now")}
+          {t("Back up now")}
         </Button>
       ) : null}
     </div>
@@ -97,7 +97,7 @@ export function BackupPill() {
       type="button"
       className="status-pill err"
       data-testid="backup-pill"
-      aria-label={`${label}. ${tb(health.summary)}. ${t("Backup Now")}`}
+      aria-label={`${label}. ${tb(health.summary)}. ${t("Back up now")}`}
       disabled={now.busy}
       onClick={() => void now.run()}
     >

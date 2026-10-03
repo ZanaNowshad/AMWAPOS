@@ -161,7 +161,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { path: "pricing", label: t("Pricing"), icon: Tags, perm: "prices.manage", element: PricingPage },
       {
         path: "unknown-barcodes",
-        label: t("Unknown Barcodes"),
+        label: t("Unknown barcodes"),
         icon: Barcode,
         perm: ["barcodes.resolve", "products.manage"],
         element: UnknownBarcodesPage,
@@ -172,7 +172,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: t("INVENTORY"),
     items: [
       { path: "inventory", label: t("Inventory"), icon: Warehouse, perm: "inventory.view", element: InventoryPage },
-      { path: "movements", label: t("Stock Movements"), icon: History, perm: "inventory.view", element: MovementsPage },
+      { path: "movements", label: t("Stock movements"), icon: History, perm: "inventory.view", element: MovementsPage },
       {
         path: "stocktake",
         label: t("Stocktake"),
@@ -196,7 +196,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { path: "suppliers", label: t("Suppliers"), icon: Building2, perm: "suppliers.manage", element: SuppliersPage },
       {
         path: "purchase-orders",
-        label: t("Purchase Orders"),
+        label: t("Purchase orders"),
         icon: FileText,
         perm: ["purchasing.manage", "inventory.receive"],
         element: PurchaseOrdersPage,
@@ -329,7 +329,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
   },
 ];
 
-const EXTRA: { path: string; perm?: string | string[]; element: ComponentType }[] = [
+const EXTRA: { path: string; perm?: string | string[]; element: ComponentType; label?: string }[] = [
   { path: "products/new", perm: "products.manage", element: ProductEditorPage },
   { path: "products/:id", perm: "products.view", element: ProductEditorPage },
   { path: "stocktake/:id", perm: "stocktake.manage", element: StocktakeDetailPage },
@@ -338,8 +338,8 @@ const EXTRA: { path: string; perm?: string | string[]; element: ComponentType }[
   { path: "invoice-scan/:id", perm: ["ocr.scan", "purchasing.manage"], element: DocumentReviewPage },
   { path: "customers/:id", perm: "customers.view", element: CustomerDetailPage },
   { path: "reports/:key", perm: undefined, element: ReportViewer },
-  { path: "roles", perm: "users.manage", element: RolesPage },
-  { path: "profile", perm: undefined, element: ProfilePage },
+  { path: "roles", perm: "users.manage", element: RolesPage, label: t("Roles & Permissions") },
+  { path: "profile", perm: undefined, element: ProfilePage, label: t("My profile") },
 ];
 
 function CommandPalette({
@@ -528,7 +528,8 @@ function Shell() {
             <Menu size={22} />
           </button>
           <div className="crumb ellipsis">
-            <span className="muted">{t("Admin /")}</span> <strong>{current?.label ?? "…"}</strong>
+            <span className="muted">{t("Admin /")}</span>{" "}
+            <strong>{current?.label ?? EXTRA.find((x) => loc.pathname === `/admin/${x.path}`)?.label ?? "…"}</strong>
           </div>
           <div className="grow" />
           <button className="btn ghost" onClick={() => setPalette(true)} aria-label={t("Go to… (Ctrl+K)")}>
@@ -537,7 +538,7 @@ function Shell() {
           <span className="small muted row store-name">
             <Store size={16} /> {config?.business_name} · {status.device?.name}
           </span>
-          <span style={{ filter: "invert(0)" }}>
+          <span className="admin-pill">
             <ConnectionPill />
           </span>
           <BranchSwitcher />
@@ -570,7 +571,7 @@ function Shell() {
                   <Lock size={20} /> {t("Lock")}
                 </button>
                 <button role="menuitem" onClick={() => void logout()}>
-                  <LogOut size={20} /> {t("Logout")}
+                  <LogOut size={20} /> {t("Log out")}
                 </button>
               </div>
             ) : null}

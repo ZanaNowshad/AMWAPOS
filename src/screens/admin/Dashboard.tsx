@@ -22,7 +22,9 @@ type Dash = {
 
 function Delta({ now, prev }: { now: number | null; prev: number | null; money?: boolean }) {
   if (now === null || prev === null || prev === undefined) return null;
-  if (prev === 0) return <div className="k-delta muted">{t("No data for the same day last week")}</div>;
+  // A new store has no last week to compare with; say nothing rather than repeat
+  // the same "no data" line under every figure.
+  if (prev === 0) return null;
   const pct = Math.round(((now - prev) * 1000) / Math.abs(prev)) / 10;
   return (
     <div className={`k-delta ${pct >= 0 ? "pos-num" : "neg-num"}`}>

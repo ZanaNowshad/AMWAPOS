@@ -313,4 +313,35 @@ test("payables: a supplier invoice is reviewed, posted and paid; the balance fol
   await shot(page, "payables-supplier");
   const ov = await rpc(page, "ap.supplier", { supplier_id: sup }, t);
   expect(ov.balance_minor).toBe(7_000);
+  await page.keyboard.press("Escape");
+
+  // A duplicate that was never posted is voided from Payables, its only home;
+  // the money owed does not change.
+  const dup = await rpc(
+    page,
+    "ap.invoice_create",
+    {
+      invoice: {
+        supplier_id: sup,
+        doc_type: "invoice",
+        invoice_number: `BPC-DUP-${Date.now()}`,
+        invoice_date: new Date().toISOString().slice(0, 10),
+        subtotal_minor: 5_000,
+        vat_minor: 500,
+        total_minor: 5_500,
+      },
+    },
+    t,
+  );
+  await page.reload();
+  await page.getByRole("tab", { name: "Invoices" }).click();
+  await page.getByRole("row", { name: new RegExp(dup.invoice_number) }).click();
+  await drawer.getByTestId("ap-void").click();
+  await page
+    .getByRole("dialog", { name: /^Void .*\?$/ })
+    .getByRole("button", { name: "Void record" })
+    .click();
+  await expect(drawer).toContainText("Void");
+  await expect(drawer.getByTestId("ap-void")).toHaveCount(0);
+  expect((await rpc(page, "ap.supplier", { supplier_id: sup }, t)).balance_minor).toBe(7_000);
 });

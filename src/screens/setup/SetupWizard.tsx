@@ -237,7 +237,7 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
       <aside className="wizard-steps" aria-label={t("Setup steps")}>
         <div className="row" style={{ marginBottom: 20 }}>
           <Logo size={30} />
-          <strong>{t("AMWAPOS Setup")}</strong>
+          <strong>{t("AMWAPOS setup")}</strong>
           <span className="grow" />
           <LanguageToggle />
         </div>
@@ -255,6 +255,8 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
       <main className="wizard-main">
         <div className="wizard-body">
           <div className="inner stack-24">
+            {/* Every step has a page heading; the welcome step shows its own. */}
+            {name !== "Welcome" ? <h1 className="sr-only">{t("AMWAPOS setup")}</h1> : null}
             {name === "Welcome" ? (
               <>
                 <div>
@@ -631,7 +633,7 @@ export function SetupWizard({ onDone }: { onDone: () => Promise<void> }) {
             {t("Back")}
           </Button>
           <Button variant="primary" className="right" onClick={next} loading={busy}>
-            {step === steps.length - 1 ? (d.path === "join" ? t("Pair terminal") : t("Finish Setup")) : t("Continue")}
+            {step === steps.length - 1 ? (d.path === "join" ? t("Pair terminal") : t("Finish setup")) : t("Continue")}
           </Button>
         </div>
       </main>

@@ -366,11 +366,11 @@ export function Tabs<T extends string>({
 export function StockStatus({ status }: { status: string }) {
   switch (status) {
     case "in_stock":
-      return <Chip tone="success">{t("In Stock")}</Chip>;
+      return <Chip tone="success">{t("In stock")}</Chip>;
     case "low_stock":
-      return <Chip tone="warning">{t("Low Stock")}</Chip>;
+      return <Chip tone="warning">{t("Low stock")}</Chip>;
     case "out_of_stock":
-      return <Chip tone="danger">{t("Out of Stock")}</Chip>;
+      return <Chip tone="danger">{t("Out of stock")}</Chip>;
     case "negative":
       return <Chip tone="danger">{t("Negative")}</Chip>;
     default:

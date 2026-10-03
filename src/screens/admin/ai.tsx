@@ -319,7 +319,7 @@ const PAGE_LABEL: Record<string, () => string> = {
   products: () => t("Products"),
   customers: () => t("Customers"),
   suppliers: () => t("Suppliers"),
-  "purchase-orders": () => t("Purchase Orders"),
+  "purchase-orders": () => t("Purchase orders"),
   inventory: () => t("Inventory"),
   sales: () => t("Sales"),
   cash: () => t("Cash Events"),

@@ -226,7 +226,7 @@ export function PaymentModal({
             loading={busy}
             data-testid="complete-sale"
           >
-            {pod ? t("Send, pay on delivery") : sending ? t("Complete and send") : t("Complete Sale")}{" "}
+            {pod ? t("Send, pay on delivery") : sending ? t("Complete and send") : t("Complete sale")}{" "}
             <span className="money">{formatMoney(due)}</span> <kbd>{t("Enter")}</kbd>
           </Button>
         </div>
@@ -238,7 +238,7 @@ export function PaymentModal({
       >
         <div className="pay-due">
           <div>
-            <div className="label">{t("Amount Due")}</div>
+            <div className="label">{t("Amount due")}</div>
             <div className="due money" data-testid="amount-due">
               {formatMoney(due)}
             </div>

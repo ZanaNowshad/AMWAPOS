@@ -38,6 +38,7 @@ export const CODE_LABELS: Record<string, string> = {
   transfer_out: "Transfer out",
   manual: "Manual",
   automatic: "Automatic",
+  external: "Other file",
   safety: "Safety",
   standalone: "Standalone",
   hub: "Hub",

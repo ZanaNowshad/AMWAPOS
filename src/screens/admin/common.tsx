@@ -214,7 +214,7 @@ export function Pager({
       {onLimit ? (
         <select
           className="select"
-          style={{ width: 90, height: 30 }}
+          style={{ width: "auto", minWidth: 120, height: 30 }}
           value={limit}
           onChange={(e) => onLimit(Number(e.target.value))}
           aria-label={t("Rows per page")}
@@ -339,10 +339,17 @@ export function DateRange({
   const presets: [string, () => [string, string]][] = [
     [t("Today"), () => [todayLocal(), todayLocal()]],
     [t("Yesterday"), () => [todayLocal(-1), todayLocal(-1)]],
-    ["7 days", () => [todayLocal(-6), todayLocal()]],
-    ["30 days", () => [todayLocal(-29), todayLocal()]],
+    [t("Last 7 days"), () => [todayLocal(-6), todayLocal()]],
+    [t("Last 30 days"), () => [todayLocal(-29), todayLocal()]],
     [t("This month"), () => [todayLocal().slice(0, 8) + "01", todayLocal()]],
   ];
+  // One tap covers almost every question; exact dates stay one tap further away.
+  const matched = presets.some(([, f]) => {
+    const [a, b] = f();
+    return a === from && b === to;
+  });
+  const [custom, setCustom] = useState(!matched);
+  const showDates = custom || !matched;
   return (
     <div className="row wrap">
       {presets.map(([label, f]) => {
@@ -350,32 +357,48 @@ export function DateRange({
         return (
           <button
             key={label}
-            className={`filter-chip ${a === from && b === to ? "active" : ""}`}
-            onClick={() => onChange(a, b)}
+            className={`filter-chip ${!custom && a === from && b === to ? "active" : ""}`}
+            aria-pressed={!custom && a === from && b === to}
+            onClick={() => {
+              setCustom(false);
+              onChange(a, b);
+            }}
           >
             {label}
           </button>
         );
       })}
-      <input
-        type="date"
-        className="input"
-        style={{ width: 150 }}
-        value={from}
-        max={to}
-        onChange={(e) => onChange(e.target.value, to)}
-        aria-label={t("From date")}
-      />
-      <span className="muted">to</span>
-      <input
-        type="date"
-        className="input"
-        style={{ width: 150 }}
-        value={to}
-        min={from}
-        onChange={(e) => onChange(from, e.target.value)}
-        aria-label={t("To date")}
-      />
+      <button
+        className={`filter-chip ${showDates ? "active" : ""}`}
+        aria-pressed={showDates}
+        aria-expanded={showDates}
+        onClick={() => setCustom(true)}
+      >
+        {t("Custom dates")}
+      </button>
+      {showDates ? (
+        <>
+          <input
+            type="date"
+            className="input"
+            style={{ width: 150 }}
+            value={from}
+            max={to}
+            onChange={(e) => onChange(e.target.value, to)}
+            aria-label={t("From date")}
+          />
+          <span className="muted">{t("to")}</span>
+          <input
+            type="date"
+            className="input"
+            style={{ width: 150 }}
+            value={to}
+            min={from}
+            onChange={(e) => onChange(from, e.target.value)}
+            aria-label={t("To date")}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

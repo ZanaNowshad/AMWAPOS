@@ -77,6 +77,9 @@ Admin → Purchasing → Payables, on the hub computer.
    invoices first; change the amounts if the supplier was paid for specific invoices. What is
    not applied stays on the supplier's account.
 The Dashboard lists overdue supplier invoices and invoices ready to post.
+A record that was never posted (a duplicate, a wrong scan) is removed from the list with **Void
+record** in its drawer; a posted one is undone with **Reverse** instead. Supplier documents only
+reads paper into drafts; every supplier invoice is reviewed, posted, voided and paid here.
 
 ## Restore
 

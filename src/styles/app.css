@@ -105,6 +105,10 @@ h3 {
   font-family: var(--mono);
   font-size: 13px;
 }
+/* Receipt numbers, codes and barcodes stay on one line in tables. */
+.table .mono {
+  white-space: nowrap;
+}
 .row {
   display: flex;
   align-items: center;

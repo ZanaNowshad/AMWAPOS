@@ -69,6 +69,15 @@ the till assistant open over the cart, never over the checkout column.
 - Amounts typed back into a field use the plain amount (`formatAmount`), never a piece of a
   formatted money string (in Arabic that carries invisible direction marks; a test forbids it).
 - Settings fields have translated labels; rates are typed as %, money as amounts.
+- Labels are sentence case ("Add product", "Back up now", "Log out"); a primary button is a verb
+  ("Add customer", not "+ Customer"). Subtitles say what the page is for in shop words, never
+  "immutable", "ledger" or "SKU".
+- Table dates use no-break spaces and codes (`.mono`) never wrap, so a row stays on one line.
+- Date ranges show presets first; exact dates appear behind "Custom dates".
+- Every screen has exactly one `h1` (screen-reader only on the till, setup steps and AI).
+- Settings sections live in the address (`?section=`): every "Open Settings → …" link lands on
+  its section. Admin mode is kept across a reload for the session.
+- The full per-screen inventory is [PRODUCT_UX_FORENSIC_AUDIT.md](PRODUCT_UX_FORENSIC_AUDIT.md).
 
 ## Payment sheet
 

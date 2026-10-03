@@ -34,7 +34,7 @@ import { t, tb } from "../../i18n";
 import { OrderEditor } from "../orders";
 import { AreaPicker, PayChip, TicketRowButton, TicketSheet } from "../pos/SendLoop";
 import { WaCatalog } from "./waCatalog";
-import { DocMetricsStrip, ReceivingDraftsPanel, SupplierInvoicesPanel } from "./documents";
+import { DocMetricsStrip, ReceivingDraftsPanel } from "./documents";
 import type { DigitalOrder, WaTriageItem } from "../../api/types";
 
 // ---------------------------------------------------------------- helpers
@@ -1779,7 +1779,7 @@ const SCAN_STATUS: Record<string, () => string> = {
   failed: () => t("OCR failed"),
 };
 
-type DocTab = "documents" | "drafts" | "invoices";
+type DocTab = "documents" | "drafts";
 
 export function InvoiceScanPage() {
   const navigate = useNavigate();
@@ -1816,9 +1816,13 @@ export function InvoiceScanPage() {
             tabs={[
               { key: "documents", label: t("Documents") },
               { key: "drafts", label: t("Receiving drafts") },
-              { key: "invoices", label: t("Supplier invoices") },
             ]}
           />
+          {/* Supplier invoices have one home: Payables, where they are reviewed, posted and paid. */}
+          <div className="tiny">
+            {t("Invoices read from these documents are reviewed, posted and paid in")}{" "}
+            <Link to="/admin/payables">{t("Payables")}</Link>
+          </div>
           {tab === "documents" ? (
             <>
               <DocMetricsStrip />
@@ -1867,10 +1871,8 @@ export function InvoiceScanPage() {
                 ]}
               />
             </>
-          ) : tab === "drafts" ? (
-            <ReceivingDraftsPanel />
           ) : (
-            <SupplierInvoicesPanel />
+            <ReceivingDraftsPanel />
           )}
         </div>
         {upload ? (

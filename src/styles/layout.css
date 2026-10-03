@@ -76,9 +76,12 @@
   display: flex;
   flex-direction: column;
 }
-.login-brand h1 {
+.login-brand .tagline {
   font-size: 34px;
   line-height: 42px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  margin-bottom: 0;
   margin-top: auto;
   max-width: 360px;
 }
@@ -3906,7 +3909,7 @@ table.diff tr.changed {
   position: relative;
   z-index: 1;
 }
-.login-brand h1 {
+.login-brand .tagline {
   font-size: 38px;
   line-height: 46px;
   letter-spacing: -0.03em;
@@ -4334,4 +4337,16 @@ table.diff tr.changed {
 .sb-link.sb-more:focus-visible {
   outline: none;
   box-shadow: var(--focus);
+}
+
+/* The connection pill is built for the dark till header; on the light Admin
+   bar it needs dark text to stay readable (it was light grey on white). */
+.admin-pill .status-pill {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-2);
+}
+.admin-pill .status-pill.err {
+  background: var(--danger-soft);
+  color: var(--danger);
 }

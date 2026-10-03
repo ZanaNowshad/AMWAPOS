@@ -1276,7 +1276,9 @@ export function AiChat({
     }
   };
   const storeLang = status.settings?.answer_language ?? "ui";
-  const langLabel = storeLang !== "ui" ? storeLang.toUpperCase() : lang === "ui" ? t("UI") : lang.toUpperCase();
+  // Language names a person recognises, not codes: "Same as screen", "English", "العربية".
+  const langName = (l: string) => (l === "ar" ? "العربية" : l === "en" ? "English" : t("Same as screen"));
+  const langLabel = langName(storeLang !== "ui" ? storeLang : lang);
   const modelName = status.active_provider === "fake" ? t("Offline test model") : providerLabel(status.active_provider);
   const cartCtx = context ? context() : null;
   const openProposals = (conv?.proposals ?? []).filter((p) => p.status === "proposed");
@@ -1336,7 +1338,9 @@ export function AiChat({
             className={`ai-conv ${cid === c.conversation_id ? "on" : ""}`}
             onClick={() => openChat(c.conversation_id)}
           >
-            <span className="ellipsis c-title">{c.title}</span>
+            <span className="ellipsis c-title" dir="auto">
+              {c.title}
+            </span>
             <span className="tiny">
               {relative(c.updated_at)}
               {c.open_proposals ? (
@@ -1700,7 +1704,7 @@ export function AiChat({
               <dt>{t("Fallback")}</dt>
               <dd>{status.fallback_ready ? t("Ready (OpenRouter free model)") : t("Off")}</dd>
               <dt>{t("Answer language")}</dt>
-              <dd>{storeLang !== "ui" ? t("Set by the store: {0}", storeLang.toUpperCase()) : langLabel}</dd>
+              <dd>{storeLang !== "ui" ? t("Set by the store: {0}", langName(storeLang)) : langLabel}</dd>
             </dl>
             <Button size="lg" icon={<Keyboard size={20} />} onClick={() => (setSheet(null), setShortcuts(true))}>
               {t("Keyboard shortcuts")}
@@ -1967,5 +1971,11 @@ export function AiAssistantPage() {
   const [search] = useSearchParams();
   const on = useFeature("ai.enabled");
   if (!on) return <AiOff />;
-  return <AiReady>{(s) => <AiChat status={s} initialText={search.get("q") ?? ""} />}</AiReady>;
+  return (
+    <>
+      {/* The workspace fills the page; the heading is for screen readers and the page outline. */}
+      <h1 className="sr-only">{t("AI Assistant")}</h1>
+      <AiReady>{(s) => <AiChat status={s} initialText={search.get("q") ?? ""} />}</AiReady>
+    </>
+  );
 }

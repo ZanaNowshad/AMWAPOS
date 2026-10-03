@@ -44,14 +44,18 @@ function parts(iso: string) {
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   const p = parts(iso);
-  return `${p.d} ${month(p.m - 1)} ${p.y}, ${p.hh}:${p.mm}`;
+  return `${p.d}${NB}${month(p.m - 1)}${NB}${p.y}, ${p.hh}:${p.mm}`;
 }
+
+// Dates in table cells must not break across lines ("24 / Sep / 19:42"), so
+// the short and full forms join their parts with no-break spaces.
+const NB = "\u00a0";
 
 /** "24 Sep 19:42" */
 export function formatShort(iso: string | null | undefined): string {
   if (!iso) return "—";
   const p = parts(iso);
-  return `${p.d} ${month(p.m - 1)} ${p.hh}:${p.mm}`;
+  return `${p.d}${NB}${month(p.m - 1)}${NB}${p.hh}:${p.mm}`;
 }
 
 /** "24 Sep 2026" */

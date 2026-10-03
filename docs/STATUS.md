@@ -538,3 +538,24 @@ are on the same branch.
 | Admin menu: modules that are off are not listed (their pages still say "Not enabled"); rarely used system pages under "More tools" | Complete | e2e flows open "More tools" before Audit / Diagnostics | — |
 | Product pictures: default source is barcode + name on Bing's thumbnail address | Complete in code | unit + fixture-server tests | Live check (Bing was not reachable from this environment) |
 | Stocktake cancel and supplier-record void ask first and say they cannot be undone | Complete | — | — |
+
+## Product / UX forensic pass, 2026-10-03
+
+Every user-facing surface is inventoried in [PRODUCT_UX_FORENSIC_AUDIT.md](PRODUCT_UX_FORENSIC_AUDIT.md):
+92 screens with the 15 audit fields (setup and sign-in, cashier, 48 Admin destinations and record
+pages, 18 Settings sections) and 73 grouped rows for the 151 dialogs, drawers and confirmations.
+
+Evidence (this environment, Linux): `cargo fmt --check`, `clippy -D warnings`, `cargo test --workspace`
+(376 passed, 0 failed, 4 ignored), `tsc`, `eslint`, `prettier --check`, vitest (49), `vite build`,
+Playwright (15 flows, including the new English/Arabic sweep of every Admin page and Settings section
+and the role sweep), and the 100k-product benchmark (release build: P95 scan 0.80 ms, search 4.10 ms,
+cart 0.55 ms, sale commit 6.37 ms).
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| Every Admin page and Settings section: heading, loads, no error, no sideways scroll, no English in Arabic, deep links open their section | Complete | e2e `surfaces.spec.ts` (0 findings, EN + AR) | — |
+| Manager, accountant and inventory roles: every link shown opens without a permission error | Complete | e2e role sweep | — |
+| Settings deep links (`?section=`) work while Settings is open | Complete (fixed) | e2e sweep asserts the active section | — |
+| Admin mode survives a reload / language switch for the session | Complete (fixed) | e2e product-pictures flow | — |
+| Supplier invoices have one home (Payables, with Void for unposted records) | Complete | e2e payables flow | — |
+| Plain, sentence-case labels; no-break table dates; date-range "Custom dates"; readable Admin connection pill; one page heading per screen | Complete | vitest `time.test.ts`; sweep | Visual check on the till panel |

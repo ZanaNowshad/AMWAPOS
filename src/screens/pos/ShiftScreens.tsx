@@ -46,7 +46,7 @@ export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void })
     <div className="splash failure">
       <div className="failure-card" style={{ width: 460 }}>
         <Logo size={40} />
-        <h1>{t("Start Shift")}</h1>
+        <h1>{t("Start shift")}</h1>
         <dl className="kv" style={{ width: "100%" }}>
           <dt>{t("Cashier")}</dt>
           <dd>{session?.display_name}</dd>
@@ -88,7 +88,7 @@ export function ShiftOpen({ onOpened }: { onOpened: (s: ShiftSummary) => void })
             </Button>
           ) : null}
           <Button className="right" icon={<LogOut size={16} />} onClick={() => void logout()}>
-            {t("Logout")}
+            {t("Log out")}
           </Button>
         </div>
       </div>

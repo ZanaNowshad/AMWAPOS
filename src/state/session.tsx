@@ -37,6 +37,8 @@ export function useSession(): SessionCtx {
 }
 
 const TOKEN_KEY = "amwapos.session";
+/** Admin or till, kept across a reload (a language switch reloads the screen). */
+const MODE_KEY = "amwapos.mode";
 
 export function SessionProvider({ initialStatus, children }: { initialStatus: SetupStatus; children: ReactNode }) {
   const [status, setStatus] = useState(initialStatus);
@@ -68,6 +70,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
   const clear = useCallback(() => {
     setToken(null);
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(MODE_KEY);
     setSession(null);
     setLocked(false);
     setModeState("cashier");
@@ -84,6 +87,9 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
         setSession(s);
         setLocked(s.locked);
         await reloadConfig();
+        // Back where the person was; Admin only while they still may open it.
+        if (sessionStorage.getItem(MODE_KEY) === "admin" && s.permissions.includes("admin.access"))
+          setModeState("admin");
       })
       .catch(() => clear());
   }, [clear, reloadConfig]);
@@ -98,6 +104,7 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
       lastActivity.current = Date.now();
       await reloadConfig();
       setModeState("cashier");
+      sessionStorage.setItem(MODE_KEY, "cashier");
     },
     [reloadConfig],
   );
@@ -136,6 +143,11 @@ export function SessionProvider({ initialStatus, children }: { initialStatus: Se
     (m: Mode) => {
       if (m === "admin" && !session?.permissions.includes("admin.access")) return;
       setModeState(m);
+      try {
+        sessionStorage.setItem(MODE_KEY, m);
+      } catch {
+        /* storage unavailable: the till is the safe default after a reload */
+      }
     },
     [session],
   );

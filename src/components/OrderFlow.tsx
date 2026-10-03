@@ -92,12 +92,15 @@ export function OrderFlowBar() {
                 to={`/admin/${s.path}`}
                 className={`flow-step ${active ? "active" : ""} ${n ? "busy" : ""}`}
                 aria-current={active ? "page" : undefined}
-                title={s.hint}
+                // On narrow screens only the active step shows its words, so the
+                // name is spelled out for screen readers and as a tooltip.
+                aria-label={`${s.label}: ${t("{0} waiting", n)}`}
+                title={`${s.label} — ${s.hint}`}
                 data-testid={`flow-${s.key}`}
               >
                 <s.icon size={18} aria-hidden />
                 <span className="flow-label">{s.label}</span>
-                <span className="flow-n num" aria-label={t("{0} waiting", n)}>
+                <span className="flow-n num" aria-hidden>
                   {n}
                 </span>
               </NavLink>

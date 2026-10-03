@@ -31,6 +31,7 @@ import {
   TextInput,
 } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
+import { codeLabel } from "../../i18n/codes";
 import { t } from "../../i18n";
 
 const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = {
@@ -40,7 +41,7 @@ const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = {
   received: "success",
   cancelled: "default",
 };
-const poLabel = (s: string) => s.replace("_", " ").replace(/^\w/, (c) => c.toUpperCase());
+const poLabel = (s: string) => codeLabel(s);
 
 function SupplierForm({
   initial,
@@ -146,7 +147,7 @@ export function SuppliersPage() {
         title={t("Suppliers")}
         actions={
           <Button variant="primary" icon={<Plus size={16} />} onClick={() => setCreating(true)}>
-            {t("Supplier")}
+            {t("Add supplier")}
           </Button>
         }
       />
@@ -174,7 +175,7 @@ export function SuppliersPage() {
           { key: "p", label: t("Phone"), render: (r) => r.phone ?? "—" },
           { key: "c", label: t("Contact"), render: (r) => r.contact_name ?? "—" },
           { key: "t", label: t("Payment Terms"), render: (r) => r.payment_terms ?? "—" },
-          { key: "o", label: t("Open POs"), num: true, render: (r) => r.open_po_count },
+          { key: "o", label: t("Open orders"), num: true, render: (r) => r.open_po_count },
           { key: "l", label: t("Last Purchase"), render: (r) => formatShort(r.last_purchase_at) },
           {
             key: "s",
@@ -216,7 +217,7 @@ export function SupplierDetailPage() {
         />
         <div className="grow">
           <div className="tiny">{t("Supplier")}</div>
-          <h1>{s.name}</h1>
+          <h1 dir="auto">{s.name}</h1>
         </div>
         <Button onClick={() => setEditing(true)}>{t("Edit")}</Button>
         <Button
@@ -230,7 +231,7 @@ export function SupplierDetailPage() {
       <Tabs
         tabs={[
           { key: "overview", label: t("Overview") },
-          { key: "pos", label: t("Purchase Orders") },
+          { key: "pos", label: t("Purchase orders") },
           { key: "products", label: t("Products") },
         ]}
         value={tab}
@@ -266,7 +267,7 @@ export function SupplierDetailPage() {
           rowKey={(r) => r.po_id}
           onRowClick={(r) => nav(`/admin/purchase-orders/${r.po_id}`)}
           columns={[
-            { key: "n", label: t("PO"), render: (r) => <span className="mono">{r.po_number}</span> },
+            { key: "n", label: t("Order no."), render: (r) => <span className="mono">{r.po_number}</span> },
             { key: "d", label: t("Date"), render: (r) => formatShort(r.created_at) },
             { key: "t", label: t("Total"), num: true, render: (r) => <Money minor={r.total_minor} /> },
             { key: "s", label: t("Status"), render: (r) => <Chip tone={PO_TONE[r.status]}>{poLabel(r.status)}</Chip> },
@@ -313,11 +314,11 @@ export function PurchaseOrdersPage() {
   return (
     <div>
       <PageHeader
-        title={t("Purchase Orders")}
+        title={t("Purchase orders")}
         actions={
           has("purchasing.manage") ? (
             <Button variant="primary" icon={<Plus size={16} />} onClick={() => nav("/admin/purchase-orders/new")}>
-              {t("Purchase Order")}
+              {t("New purchase order")}
             </Button>
           ) : null
         }
@@ -341,7 +342,7 @@ export function PurchaseOrdersPage() {
         columns={[
           {
             key: "n",
-            label: t("PO"),
+            label: t("Order no."),
             render: (r) => <span className="mono">{r.po_number}</span>,
             sort: (r) => r.po_number,
           },
@@ -525,7 +526,7 @@ export function PoEditorPage() {
         ) : null}
         {po && (po.status === "ordered" || po.status === "partially_received") && has("inventory.receive") ? (
           <Button variant="primary" icon={<PackageCheck size={16} />} onClick={() => setReceiving(true)}>
-            {t("Receive Goods")}
+            {t("Receive goods")}
           </Button>
         ) : null}
         {po &&
@@ -637,7 +638,7 @@ export function PoEditorPage() {
           <div className="card-body row">
             <Button onClick={() => setReceiving(false)}>{t("Cancel")}</Button>
             <Button variant="primary" className="right" onClick={doReceive} loading={act.busy}>
-              {t("Receive Goods")}
+              {t("Receive goods")}
             </Button>
           </div>
         </div>

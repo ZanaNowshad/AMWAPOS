@@ -42,7 +42,7 @@ export function CartPanel({
   return (
     <div className="pos-panel cart">
       <div className="cart-head">
-        <h3>{t("Current Sale")}</h3>
+        <h3>{t("Current sale")}</h3>
         {cart.customer ? (
           <button type="button" className="customer-pill" onClick={onCustomer}>
             <UserRound size={16} aria-hidden />

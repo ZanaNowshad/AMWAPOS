@@ -542,6 +542,7 @@ function InvoiceDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
   const act = useAction();
   const [posting, setPosting] = useState(false);
   const [reversing, setReversing] = useState(false);
+  const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const [op] = useState(newOperationId);
   const done = (r: ApInvoice | undefined) => {
@@ -625,6 +626,13 @@ function InvoiceDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
                 {t("Reverse")}
               </Button>
             ) : null}
+            {data.status !== "void" &&
+            data.posting === "not_posted" &&
+            (has("payables.review") || has("purchasing.manage")) ? (
+              <Button variant="danger-outline" className="right" onClick={() => setVoiding(true)} data-testid="ap-void">
+                {t("Void record")}
+              </Button>
+            ) : null}
           </div>
         </div>
       )}
@@ -653,6 +661,26 @@ function InvoiceDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
                 formatMoney(data.total_minor),
                 data.supplier_name,
               )}
+        </Confirm>
+      ) : null}
+      {voiding && data ? (
+        <Confirm
+          title={t("Void {0}?", data.invoice_number ?? data.number)}
+          confirmLabel={t("Void record")}
+          danger
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => setVoiding(false)}
+          onConfirm={async () => {
+            if (await act.run(() => api.supplierInvoices.setStatus(id, "void"))) {
+              setVoiding(false);
+              toast("success", t("Void"));
+              await reload();
+              onChanged();
+            }
+          }}
+        >
+          {t("The record is kept for the history but can no longer be approved or posted. This cannot be undone.")}
         </Confirm>
       ) : null}
       {reversing && data ? (

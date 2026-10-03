@@ -62,9 +62,16 @@ export function ConnectionPill() {
     );
   }
   return (
-    <span className="status-pill" title={t("Local checkout is available. Online services will resume automatically.")}>
+    <span
+      className="status-pill"
+      title={
+        mode === "hub"
+          ? t("This computer is the store hub. Other tills sync with it.")
+          : t("This till works on its own. Selling never needs the internet.")
+      }
+    >
       <span className="dot" aria-hidden style={{ color: online ? "#22c55e" : "#94a3b8" }} />{" "}
-      {online ? (mode === "hub" ? t("Hub") : t("Local")) : t("Offline")}
+      {online ? (mode === "hub" ? t("Store hub") : t("This till")) : t("Offline")}
     </span>
   );
 }

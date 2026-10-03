@@ -165,7 +165,7 @@ test("1024×768: POS, payment, shift close, refund", async ({ page }) => {
 
   await page.reload();
   await login(page, "Zana", "4826");
-  const gate = page.getByRole("heading", { name: "Start Shift" });
+  const gate = page.getByRole("heading", { name: "Start shift" });
   await expect(gate.or(page.getByTestId("pos"))).toBeVisible();
   if (await gate.isVisible()) {
     await page.getByLabel("Opening float (cash in drawer)").fill("20.000");

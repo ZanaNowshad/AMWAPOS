@@ -592,7 +592,7 @@ export function PosScreen({
       icon: <DoorClosed size={20} />,
       run: () => setModal({ kind: "close_shift" }),
     },
-    { label: t("Logout"), show: true, icon: <LogOut size={20} />, run: () => void doLogout() },
+    { label: t("Log out"), show: true, icon: <LogOut size={20} />, run: () => void doLogout() },
   ];
 
   return (
@@ -685,6 +685,7 @@ export function PosScreen({
       </header>
       <div className="pos-body">
         <main className="pos-main">
+          <h1 className="sr-only">{t("Checkout")}</h1>
           <div className="pos-toolbar">
             <div className="scan-box">
               <ScanBarcode size={22} className="scan-icon" aria-hidden />

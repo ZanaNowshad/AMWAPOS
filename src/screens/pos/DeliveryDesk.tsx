@@ -70,7 +70,7 @@ export function DeliveryDesk() {
           {t("Refresh")}
         </Button>
         <Button size="sm" icon={<LogOut size={15} />} onClick={() => void logout()}>
-          {t("Logout")}
+          {t("Log out")}
         </Button>
       </header>
       <div className="content">
