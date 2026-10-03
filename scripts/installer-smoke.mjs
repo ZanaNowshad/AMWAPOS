@@ -126,10 +126,10 @@ async function first(page) {
   await page.getByLabel("Confirm PIN").fill("4826");
   await page.getByRole("button", { name: /Continue/ }).click();
   for (let i = 0; i < 4; i++) await page.getByRole("button", { name: /Continue/ }).click();
-  await page.getByRole("button", { name: "Finish Setup" }).click();
+  await page.getByRole("button", { name: "Finish setup" }).click();
   await expect(page.getByRole("heading", { name: "Who is signing in?" })).toBeVisible();
   await login(page);
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
   await shot(page, "02-start-shift");
 
   // Product with a picture (product-image pipeline on Windows).
@@ -157,9 +157,9 @@ async function first(page) {
   await shot(page, "04-product-images-settings");
   const features = await rpc(page, "settings.get", { key: "features" });
   await rpc(page, "settings.save", { key: "features", value: { ...features, "whatsapp.enabled": true } });
-  // Reload so the session picks up the module switch, then back to Admin.
+  // Reload so the session picks up the module switch; Admin stays open across it.
   await page.reload();
-  await page.getByRole("button", { name: "Admin" }).click();
+  await expect(page.getByTestId("admin")).toBeVisible();
   await page.evaluate(() => (location.hash = "#/admin/whatsapp"));
   await page.getByRole("tab", { name: "Catalogue" }).click();
   await expect(page.getByTestId("wa-catalog")).toHaveAttribute("data-capability", /disconnected|checking/);
@@ -169,7 +169,7 @@ async function first(page) {
 
   // Till and a cash sale.
   await page.getByTestId("back-to-pos").click();
-  await expect(page.getByRole("heading", { name: "Start Shift" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start shift" })).toBeVisible();
   await page.getByLabel("Opening float (cash in drawer)").fill("20.000");
   await page.getByRole("button", { name: "Open Shift" }).click();
   await expect(page.getByTestId("pos")).toBeVisible();
