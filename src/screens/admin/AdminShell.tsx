@@ -48,6 +48,8 @@ import {
   Smartphone,
   ShoppingBag,
   Landmark,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, EndOfDayPage, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
@@ -93,6 +95,8 @@ interface NavItem {
   element: ComponentType;
   /** Optional module: hidden from the menu while its feature flag is off. */
   feature?: FeatureName;
+  /** Rarely needed: listed under "More tools" in its group until opened. */
+  advanced?: boolean;
 }
 
 const NAV: { group: string; items: NavItem[] }[] = [
@@ -135,6 +139,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: BadgeCheck,
         perm: "whatsapp.manage",
         element: PaymentReviewsPage,
+        feature: "ocr.payment_screenshots",
       },
       { path: "customers", label: t("Customers"), icon: Users, perm: "customers.view", element: CustomersPage },
     ],
@@ -216,6 +221,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: FileScan,
         perm: ["ocr.scan", "purchasing.manage"],
         element: InvoiceScanPage,
+        feature: "ocr.supplier_invoices",
       },
     ],
   },
@@ -244,8 +250,22 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: t("AUTOMATION"),
     items: [
-      { path: "whatsapp", label: t("WhatsApp"), icon: MessageCircle, perm: "whatsapp.manage", element: WhatsAppPage },
-      { path: "ai", label: t("AI Assistant"), icon: Bot, perm: "ai.use", element: AiAssistantPage },
+      {
+        path: "whatsapp",
+        label: t("WhatsApp"),
+        icon: MessageCircle,
+        perm: "whatsapp.manage",
+        element: WhatsAppPage,
+        feature: "whatsapp.enabled",
+      },
+      {
+        path: "ai",
+        label: t("AI Assistant"),
+        icon: Bot,
+        perm: "ai.use",
+        element: AiAssistantPage,
+        feature: "ai.enabled",
+      },
     ],
   },
   {
@@ -259,6 +279,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         perm: ["branches.manage", "branches.all"],
         element: BranchesPage,
         feature: "org.multi_branch",
+        advanced: true,
       },
       {
         path: "devices",
@@ -266,12 +287,27 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: Monitor,
         perm: ["devices.manage", "diagnostics.view"],
         element: DevicesPage,
+        advanced: true,
       },
-      { path: "sync", label: t("Sync / Hub"), icon: Cloud, perm: ["sync.manage", "devices.manage"], element: SyncPage },
-      { path: "import", label: t("Import"), icon: FileInput, perm: "import.run", element: ImportPage },
-      { path: "migration", label: t("Migration"), icon: FolderInput, perm: "import.run", element: MigrationPage },
+      {
+        path: "sync",
+        label: t("Sync / Hub"),
+        icon: Cloud,
+        perm: ["sync.manage", "devices.manage"],
+        element: SyncPage,
+        advanced: true,
+      },
+      { path: "import", label: t("Import"), icon: FileInput, perm: "import.run", element: ImportPage, advanced: true },
+      {
+        path: "migration",
+        label: t("Migration"),
+        icon: FolderInput,
+        perm: "import.run",
+        element: MigrationPage,
+        advanced: true,
+      },
       { path: "backups", label: t("Backups"), icon: HardDriveDownload, perm: "backup.manage", element: BackupsPage },
-      { path: "audit", label: t("Audit"), icon: Activity, perm: "audit.view", element: AuditPage },
+      { path: "audit", label: t("Audit"), icon: Activity, perm: "audit.view", element: AuditPage, advanced: true },
       { path: "settings", label: t("Settings"), icon: Settings, perm: "settings.manage", element: SettingsPage },
       {
         path: "diagnostics",
@@ -279,8 +315,16 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: Stethoscope,
         perm: "diagnostics.view",
         element: DiagnosticsPage,
+        advanced: true,
       },
-      { path: "updates", label: t("Updates"), icon: Database, perm: "settings.manage", element: UpdatesPage },
+      {
+        path: "updates",
+        label: t("Updates"),
+        icon: Database,
+        perm: "settings.manage",
+        element: UpdatesPage,
+        advanced: true,
+      },
     ],
   },
 ];
@@ -393,6 +437,22 @@ function Shell() {
     return () => window.removeEventListener("mousedown", close);
   }, []);
   const firstAllowed = NAV.flatMap((g) => g.items).find((i) => allowed(i.perm));
+  // "More tools" stays as the person left it on this computer.
+  const [moreOpen, setMoreOpen] = useState(() => {
+    try {
+      return localStorage.getItem("amwapos.nav.more") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleMore = (open: boolean) => {
+    setMoreOpen(open);
+    try {
+      localStorage.setItem("amwapos.nav.more", open ? "1" : "0");
+    } catch {
+      /* storage unavailable: the choice lasts for this session */
+    }
+  };
   const [palette, setPalette] = useState(false);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
@@ -416,21 +476,42 @@ function Shell() {
           {NAV.map((g) => {
             const items = g.items.filter(visible);
             if (!items.length) return null;
+            const link = (i: NavItem) => (
+              <NavLink
+                key={i.path}
+                to={`/admin/${i.path}`}
+                className={({ isActive }) => `sb-link ${isActive ? "active" : ""}`}
+                aria-label={i.label}
+                onClick={() => setFly(false)}
+              >
+                <i.icon size={20} aria-hidden />
+                <span className="sb-label">{i.label}</span>
+              </NavLink>
+            );
+            const basic = items.filter((i) => !i.advanced);
+            const extra = items.filter((i) => i.advanced);
+            // Open while the current page is one of them, or once someone opened it.
+            const showExtra = moreOpen || extra.some((i) => i === current);
             return (
               <div key={g.group}>
                 <div className="sb-group">{g.group}</div>
-                {items.map((i) => (
-                  <NavLink
-                    key={i.path}
-                    to={`/admin/${i.path}`}
-                    className={({ isActive }) => `sb-link ${isActive ? "active" : ""}`}
-                    aria-label={i.label}
-                    onClick={() => setFly(false)}
-                  >
-                    <i.icon size={20} aria-hidden />
-                    <span className="sb-label">{i.label}</span>
-                  </NavLink>
-                ))}
+                {basic.map(link)}
+                {extra.length ? (
+                  <>
+                    <button
+                      type="button"
+                      className="sb-link sb-more"
+                      aria-expanded={showExtra}
+                      aria-label={showExtra ? t("Fewer tools") : t("More tools")}
+                      onClick={() => toggleMore(!showExtra)}
+                      data-testid="nav-more"
+                    >
+                      {showExtra ? <ChevronUp size={20} aria-hidden /> : <ChevronDown size={20} aria-hidden />}
+                      <span className="sb-label">{showExtra ? t("Fewer tools") : t("More tools")}</span>
+                    </button>
+                    {showExtra ? extra.map(link) : null}
+                  </>
+                ) : null}
               </div>
             );
           })}

@@ -1155,7 +1155,7 @@ export const AR: Record<string, string> = {
   "Low Stock": "مخزون منخفض",
   "Low risk": "مخاطرة منخفضة",
   "Low stock": "مخزون منخفض",
-  "Low stock: {0} left": "مخزون منخفض: تبقى {0}",
+  "Low stock: {0} left": "باقٍ {0} فقط",
   "Low — may reflect shift patterns rather than a problem.": "منخفضة — قد تعكس أنماط الورديات لا مشكلة فعلية.",
   Loyalty: "الولاء",
   "Loyalty points": "نقاط الولاء",
@@ -4290,4 +4290,12 @@ export const AR: Record<string, string> = {
   "{0} payment screenshot(s) to check": "{0} لقطة دفع بانتظار التحقق",
   "{0} supplier invoice(s) overdue": "{0} فاتورة مورد متأخرة السداد",
   "{0} supplier invoice(s) ready to post": "{0} فاتورة مورد جاهزة للترحيل",
+  "More tools": "أدوات أخرى",
+  "Fewer tools": "أدوات أقل",
+  "Cancel this stocktake?": "إلغاء هذا الجرد؟",
+  "The counts entered so far are discarded and stock is not changed. This cannot be undone.":
+    "تُحذف الكميات المعدودة حتى الآن ولا يتغير المخزون. لا يمكن التراجع عن ذلك.",
+  "Void {0}?": "إلغاء {0}؟",
+  "The record is kept for the history but can no longer be approved or posted. This cannot be undone.":
+    "يبقى السجل في التاريخ لكن لا يمكن اعتماده أو ترحيله بعد ذلك. لا يمكن التراجع عن ذلك.",
 };

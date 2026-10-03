@@ -81,6 +81,9 @@ The same id with a different payload fails with `idempotency_mismatch`.
     `crates/amwapos-core/src/channel.rs`.
 - **Policies:**
   - Hub-owned: the catalogue, prices, users and settings are edited only on the hub.
+  - Hub-local (not replicated): purchasing, receiving, supplier documents, supplier invoices and the
+    payables ledger, WhatsApp order conversations and stock holds. Their writes refuse on a
+    terminal (`require_back_office_writable`), so no till can start a second, private copy.
   - Append-only: sales, refunds, cash and stock movements are appended, and the hub checks that the
     device owns each row it pushes.
   - Shared: customers use last writer wins.

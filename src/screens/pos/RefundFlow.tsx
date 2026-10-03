@@ -214,7 +214,9 @@ export function RefundFlow({ onClose, onDone }: { onClose: () => void; onDone: (
               return (
                 <div key={i.sale_item_id} role="listitem" className={`refund-item ${avail <= 0 ? "spent" : ""}`}>
                   <div className="ri-info">
-                    <div className="ri-name ellipsis">{i.name}</div>
+                    <div className="ri-name ellipsis" dir="auto">
+                      {i.name}
+                    </div>
                     <div className="tiny">
                       <span className="money">{formatMoney(i.line_total_minor)}</span> ·{" "}
                       {t(

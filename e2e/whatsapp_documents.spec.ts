@@ -290,7 +290,10 @@ test("payables: a supplier invoice is reviewed, posted and paid; the balance fol
   await drawer.getByTestId("ap-approve").click();
   await expect(drawer).toContainText("Ready to post");
   await drawer.getByTestId("ap-post").click();
-  await page.getByRole("dialog", { name: /^Post .*\?$/ }).getByRole("button", { name: "Post", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: /^Post .*\?$/ })
+    .getByRole("button", { name: "Post", exact: true })
+    .click();
   await expect(drawer).toContainText("Posted");
   await expect(drawer).toContainText("Still owed BHD 11.000");
   await page.keyboard.press("Escape");

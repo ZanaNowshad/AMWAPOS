@@ -482,6 +482,7 @@ export function StocktakeDetailPage() {
   const [mode, setMode] = useState<"add" | "set">("add");
   const [onlyDiff, setOnlyDiff] = useState(false);
   const [filter, setFilter] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   const [finalize, setFinalize] = useState(false);
   const [last, setLast] = useState<string | null>(null);
   const [opId] = useState(newOperationId);
@@ -563,15 +564,27 @@ export function StocktakeDetailPage() {
           </>
         ) : null}
         {counting || data.status === "review" ? (
-          <Button
-            variant="danger-outline"
-            onClick={async () => (
-              await act.run(() => api.stocktake.setStatus(data.stocktake_id, "cancelled")),
-              void reload()
-            )}
-          >
+          <Button variant="danger-outline" onClick={() => setCancelling(true)}>
             {t("Cancel stocktake")}
           </Button>
+        ) : null}
+        {cancelling ? (
+          <Confirm
+            title={t("Cancel this stocktake?")}
+            confirmLabel={t("Cancel stocktake")}
+            danger
+            busy={act.busy}
+            error={act.error}
+            onCancel={() => setCancelling(false)}
+            onConfirm={async () => {
+              if ((await act.run(() => api.stocktake.setStatus(data.stocktake_id, "cancelled"))) !== undefined) {
+                setCancelling(false);
+                void reload();
+              }
+            }}
+          >
+            {t("The counts entered so far are discarded and stock is not changed. This cannot be undone.")}
+          </Confirm>
         ) : null}
       </div>
       <div className="kpis" style={{ marginBottom: 16 }}>

@@ -732,7 +732,16 @@ button.status-pill:active {
 .cart-line .l-code {
   max-width: 140px;
   flex: 0 1 auto;
+  /* The barcode gives way first: price and stock/discount chips stay whole. */
+  min-width: 0;
 }
+.cart-line .l-meta > .money,
+.cart-line .l-meta > .chip,
+.cart-line .l-meta > [data-testid="low-stock-hint"] {
+  flex: none;
+}
+/* Product and customer names carry dir="auto": a Latin name in the Arabic
+   till keeps its own direction, so it is cut at its end ("Basmati Rice 5kg…"). */
 .cart-line .l-total {
   font-weight: 750;
   font-size: 17px;
@@ -4309,4 +4318,20 @@ table.diff tr.changed {
 .ap-age.late {
   border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
   background: var(--warning-soft);
+}
+
+/* "More tools" disclosure in the admin sidebar */
+.sb-link.sb-more {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  color: var(--chrome-text-2);
+  cursor: pointer;
+  text-align: start;
+}
+.sb-link.sb-more:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
 }

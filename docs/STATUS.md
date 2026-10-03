@@ -23,7 +23,7 @@ Classes:
 | Signing | **Unsigned.** For internal soak only (SmartScreen will warn). |
 | Download | https://github.com/ZanaNowshad/AMWAPOS/actions/runs/36024872450 (artifact `amwapos-windows-unsigned`, id 10819612747, kept for 90 days) |
 
-Evidence was re-run on 2026-09-24:
+Evidence for that installer, re-run on 2026-09-24 (the latest evidence is in "Platform pass, 2026-10-03" at the end):
 - **Rust** (`cargo test --workspace`, Linux and Windows CI), 77 tests:
   - 38 core unit tests;
   - 7 back-office, 15 flow, 6 printing and 6 sync tests;
@@ -268,10 +268,10 @@ One record chain: person → channel → **ticket** (a sent sale, or a digital o
 | PAY: Here / Send | Complete | Here (the default) records the sale with no drop. Send needs a customer, and the drop is created in the same commit as the sale (one active drop per ticket). The address and area are prefilled from the customer and apply to this drop only, unless "Save on customer" is ticked. | — |
 | Pay on delivery | Complete | Allowed only with Send. The sale commits with a `pay_on_delivery` tender, which is not cash: the drawer expects nothing and the ticket stays unpaid. Recording the money later (`tickets.record_payment`, idempotent) adds cash to the collecting shift's expected drawer and never changes the sale. Customer credit is not used. | — |
 | One pay state | Complete | unpaid, recorded, screenshot_pending or paid, shown the same on the rail, board and WhatsApp header. A screenshot review in progress shows as screenshot_pending; a confirmed screenshot is recorded. No bank is settled. | — |
-| Send rail on the till | Complete | Top-bar Send button (48×48) with a badge counting open drops for this person or nobody. A 420 px drawer on the assistant's side, above the dock, never covering PAY. Tabs Now, Out and Done today, with 56 px rows. When empty: "No sends. On PAY, tap Send." | — |
+| Send rail on the till | Complete | Top-bar Send button (48×48) with a badge counting open drops for this person or nobody. A 420 px drawer on the assistant's side, above the dock, never covering PAY. Tabs To do, On the way and Done today, with 56 px rows. When empty: "Nothing to send. To deliver a sale, tap Send on the payment screen." | — |
 | Ticket sheet | Complete | Lines are read-only. Shows the address, area, phone and a WhatsApp link, plus the pay chip, Record payment and Attach screenshot. Only the legal next steps appear (cancel needs `deliveries.manage`). Marking a ticket Delivered while unpaid asks "Paid?": take payment, or leave it unpaid (it then shows under Problem). Rider chips appear for managers, and Undo steps back one move. Message uses the existing templates with a confirm. | — |
 | Cashier rights | Complete | With `pos.sell` a cashier can create a Send sale, open the rail, move their branch's drops forward and record payments. They cannot cancel, assign a rider, link chats or preview the phone's address book (tests). | — |
-| Admin board | Complete | Columns Now, Prep, Out, Done and Problem (out or delivered while unpaid, or a failed notice), using the same ticket sheet. Filter chips for pay state, channel, area and rider. The old table view stays. | — |
+| Admin board | Complete | Columns New, Packing, On the way, Done and Needs help (out or delivered while unpaid, or a failed notice), using the same ticket sheet. Filter chips for pay state, channel, area and rider. The list view opens the same ticket sheet (the old drawer, which could mark an unpaid drop delivered without asking, was removed). | — |
 | Digital orders (flag off by default) | Complete | Draft and confirmed orders wait in Now. Ring up uses the existing idempotent convert (stock moves once), and PAY prefills Send from the order. | — |
 | WhatsApp header | Complete | Shows the customer's name, area, last ticket and pay chip, never the raw chat id. Tabs Chat, Tickets and Customer. A chat is linked by number first, then by hand (unmatched stays unmatched; test). New ticket needs a confirm and creates a draft only. With digital orders off: link the chat, then Start till sale. "Create order" is now "New ticket", and triage says "New ticket". A payment screenshot attaches by itself only when the person has exactly one open unpaid ticket. | Live WhatsApp soak |
 | Area lexicon | Complete | 22 Bahrain places (English and Arabic spellings). Used on WhatsApp import, customer save and drops. "Maryam 1203/45 Riffa" gives address `1203/45` and area Riffa; with no match the area stays empty. | — |
@@ -511,5 +511,30 @@ Architecture, flows, permissions, AI boundary and limits: `docs/DOCUMENTS_AND_OR
 - JBIG2 and CCITT images inside PDFs are not decoded.
 - Handwriting is best-effort.
 - Image barcodes are not decoded.
-- There is no payables ledger, so no supplier liability is posted.
-- The cost-variance threshold has no screen field yet.
+- Supplier liabilities are posted only from the Payables page, by a person (see "Platform pass" below).
+
+## Platform pass, 2026-10-03
+
+Evidence (this environment, Linux): `cargo fmt --check`, `clippy -D warnings`, `cargo test --workspace` (376 passed, 0 failed, 4 ignored: the benchmark and live-network checks),
+`tsc`, `eslint`, `prettier --check`, vitest (48), `vite build`, Playwright (13 flows), and the 100k-product
+benchmark (release build: P95 scan 0.74 ms, search 4.6 ms, cart 0.93 ms, sale commit 6.8 ms). CI
+(Linux + Windows build + installer smoke) was green on `c94a9ab` before this pass; later commits
+are on the same branch.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| AI action classes (read … financial / external) enforced in the backend; automated workflows capped at Draft | Complete | `ai_actions.rs`; `ai_hardening.rs` "action classes are enforced in the backend" | — |
+| WhatsApp orders forensic pass (negation, cancels, stale sessions, late messages, AI limits, confirm re-checks stock and quoted total) | Complete | `tests/waorders_forensic.rs` (16), `tests/waorders.rs` | Live WhatsApp soak |
+| Stock holds for confirmed orders (migration 0025): free stock only, released on cancel, converted on sale, expire after 48 h | Complete | `waorders_forensic.rs` expiry test; `orders.rs` | Holds are kept on the computer that confirmed the order; they are advisory and never block a till sale |
+| Accounts payable (migration 0026): post supplier invoices / credit notes, payments, allocations, derived balances, ageing, reversal, immutability, idempotency, `payables.*` permissions | Complete | `tests/payables.rs` (10) | — |
+| Payables page (Purchasing → Payables): owed / overdue / due in 7 days, ageing, suppliers, invoices waiting, supplier account + statement, payment filled oldest first, post and reverse with confirmations, manual invoice entry | Complete | e2e "payables: … reviewed, posted and paid" | — |
+| Back office stays on the hub: payables and supplier-document writes refuse on a terminal (their tables do not sync) | Complete | `tests/sync.rs` "payables and supplier documents are hub only" | — |
+| Order journey UI: one "Orders & delivery" menu group, journey bar (`orders.flow`), next-step card on WhatsApp orders, "Confirm anyway" for a shortage or a changed total, plain status words, rider next-step button | Complete | vitest `orderJourney.test.ts`; e2e WhatsApp order; `waorders_forensic.rs` guide-bar test | — |
+| Dashboard "Needs attention": orders to confirm, payment screenshots, overdue supplier invoices, invoices ready to post (only for people who may act) | Complete | `tests/payables.rs` dashboard test | — |
+| Arabic: every backend error message translated | Complete | vitest `backendErrors.test.ts` scans every `AppError` in the Rust sources (> 500 messages) | — |
+| Arabic: money fields kept their value (an invisible direction mark made the parser fail; a delivery-zone fee became 0) | Complete (fixed) | vitest money tests, including a source scan that forbids cutting numbers out of formatted money | — |
+| Settings forms: plain translated labels, % for rates, money as amounts; supplier price-variance threshold named | Complete | vitest i18n coverage | — |
+| Till: quick-cash buttons offer amounts that cover the bill; Latin names in the Arabic cart cut at their end; stock chip never clipped | Complete | vitest `quickCash`; 1024×768 Arabic screenshot (layout spec) | Visual check on the till panel |
+| Admin menu: modules that are off are not listed (their pages still say "Not enabled"); rarely used system pages under "More tools" | Complete | e2e flows open "More tools" before Audit / Diagnostics | — |
+| Product pictures: default source is barcode + name on Bing's thumbnail address | Complete in code | unit + fixture-server tests | Live check (Bing was not reachable from this environment) |
+| Stocktake cancel and supplier-record void ask first and say they cannot be undone | Complete | — | — |

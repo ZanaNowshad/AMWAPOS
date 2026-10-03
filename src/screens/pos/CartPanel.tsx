@@ -46,7 +46,9 @@ export function CartPanel({
         {cart.customer ? (
           <button type="button" className="customer-pill" onClick={onCustomer}>
             <UserRound size={16} aria-hidden />
-            <span className="ellipsis">{cart.customer.name}</span>
+            <span className="ellipsis" dir="auto">
+              {cart.customer.name}
+            </span>
           </button>
         ) : null}
         <span className="grow" />
@@ -82,7 +84,9 @@ export function CartPanel({
               <div className="l-main">
                 <ProductImage hash={l.image_hash} name={l.name} size="sm" />
                 <div className="l-info">
-                  <span className="l-name ellipsis">{l.name}</span>
+                  <span className="l-name ellipsis" dir="auto">
+                    {l.name}
+                  </span>
                   <span className="l-meta">
                     <span className="ellipsis l-code">
                       {l.barcode ?? l.sku ?? (l.is_custom ? t("Custom item") : "")}

@@ -60,6 +60,34 @@ folds into the 88 px dock (sums · TOTAL · PAY 224×64) and Customer, Hold,
 Sale discount and Refund move back beside the scan field. The Send rail and
 the till assistant open over the cart, never over the checkout column.
 
+## Words and names
+
+- Status words are plain: New, Packing, On the way, Delivered; To review, Ready to post, Posted.
+- Product and customer names carry `dir="auto"`: a Latin name in the Arabic till keeps its own
+  direction, so it is cut at its end. In the cart line the barcode gives way first; the price and
+  the stock/discount chips are never clipped.
+- Amounts typed back into a field use the plain amount (`formatAmount`), never a piece of a
+  formatted money string (in Arabic that carries invisible direction marks; a test forbids it).
+- Settings fields have translated labels; rates are typed as %, money as amounts.
+
+## Payment sheet
+
+Quick-cash buttons offer the bill rounded up to the next 1, 5, 10, 20, 50 and 100 (at most four,
+all covering the bill). The change is shown large above the keypad and again next to the Complete
+button, because at 1024×700 the change panel can be below the fold.
+
+## Admin navigation
+
+- Groups follow the work: Overview, Orders & delivery (WhatsApp orders → Orders → Deliveries →
+  Payment checks → Customers), Sales, Catalog, Inventory, Purchasing (incl. Payables), Business,
+  Automation, System.
+- A module that is off is not listed; its page still says "Not enabled" for direct links, and it is
+  turned on in Settings → Features.
+- System shows Users & Roles, Backups and Settings; the rest is under "More tools", which opens by
+  itself on those pages and remembers its state on this computer.
+- Every order page starts with the journey bar (Messages → To confirm → To pack & send → On the way →
+  Payments to check), showing only the steps this person can act on.
+
 ## Display size
 
 Settings → Appearance → Display size (90, 100, 110, 125, 150 %) zooms the whole

@@ -88,3 +88,15 @@ describe("amounts typed back into a field", () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe("quick cash suggestions", () => {
+  it("offer the notes a customer hands over, all covering the bill", async () => {
+    const { quickCash } = await import("../../screens/pos/PaymentModal");
+    expect(quickCash(88_350, 1000)).toEqual([89_000, 90_000, 100_000]);
+    expect(quickCash(3_250, 1000)).toEqual([4_000, 5_000, 10_000, 20_000]);
+    expect(quickCash(5_000, 1000)).toEqual([5_000, 10_000, 20_000, 50_000]);
+    expect(quickCash(250, 1000)).toEqual([1_000, 5_000, 10_000, 20_000]);
+    for (const due of [1, 999, 12_345, 150_001])
+      for (const v of quickCash(due, 1000)) expect(v).toBeGreaterThanOrEqual(due);
+  });
+});

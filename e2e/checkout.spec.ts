@@ -16,6 +16,12 @@ async function rpc(page: Page, cmd: string, args: Record<string, unknown> = {}, 
 // The tests share one backend and run in order: the second builds on the store set up by the first.
 test.describe.configure({ mode: "serial" });
 
+/** Rarely used admin pages sit under "More tools" in the sidebar. */
+async function openMoreTools(page: Page) {
+  const more = page.getByTestId("nav-more");
+  if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+}
+
 test("first run → products → offline checkout → refund → shift close", async ({ page }) => {
   await page.goto("/");
   // ---- Setup wizard ----
@@ -180,12 +186,14 @@ test("first run → products → offline checkout → refund → shift close", a
   await page.getByRole("button", { name: /VAT/ }).click();
   await expect(page.getByRole("heading", { name: "VAT" })).toBeVisible();
   await shot(page, "13-vat");
+  await openMoreTools(page);
   await page.getByRole("link", { name: "Audit" }).click();
   await expect(page.getByText("Audit chain verified")).toBeVisible();
   await page.getByRole("link", { name: "Backups" }).click();
   await page.getByRole("button", { name: "Backup Now" }).click();
   await expect(page.getByText("Backup created and verified").first()).toBeVisible();
   await shot(page, "14-backups");
+  await openMoreTools(page);
   await page.getByRole("link", { name: "Diagnostics" }).click();
   await expect(page.getByText("SQLite integrity: OK")).toBeVisible();
   await shot(page, "15-diagnostics");

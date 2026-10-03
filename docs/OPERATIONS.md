@@ -66,6 +66,18 @@ from a second process under another Windows account, which conflicts with the pe
 store and the data-folder ACLs, and it cannot be verified without Windows hardware. This will be
 revisited after the Windows soak.
 
+## Paying suppliers (Payables)
+
+Admin → Purchasing → Payables, on the hub computer.
+1. A supplier invoice arrives: scan it (Supplier documents) or press **Add supplier invoice**.
+2. Check it against the paper and press **Mark reviewed**.
+3. Press **Post**: only posted invoices count as owed. A posted invoice is never edited; a
+   mistake is undone with **Reverse** (after removing payments applied to it).
+4. To pay, open the supplier and press **Record payment**. The amount is applied to the oldest
+   invoices first; change the amounts if the supplier was paid for specific invoices. What is
+   not applied stays on the supplier's account.
+The Dashboard lists overdue supplier invoices and invoices ready to post.
+
 ## Restore
 
 Admin → Backups → Restore does the following:
@@ -127,4 +139,5 @@ Read each line and tick it on the store computer. Nothing here is automatic.
 - ☐ **A payment screenshot is not a settlement.** Check the BenefitPay/bank statement before marking an order paid. The review screen is a helper only.
 - ☐ **Credit, loyalty, digital orders, multi-branch and the phone companion (PWA) stay off** until the owner turns each one on and trains staff.
 - ☐ **AI dual control (`ai.dual_control`) is off.** Turn it on if high-risk AI proposals must be confirmed by a second person.
+- ☐ **Product pictures look right.** The default source asks Bing for one picture per barcode + name. Open a few new products and replace any wrong picture by uploading one.
 - ☐ **Delivery riders get `orders.manage`** with the Delivery role (to move digital orders to "out for delivery"). Remove it in Users → Roles if riders should not see orders.

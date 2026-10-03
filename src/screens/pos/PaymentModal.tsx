@@ -179,7 +179,7 @@ export function PaymentModal({
     setReference("");
   };
 
-  const denoms = [5, 10, 20, 50].map((d) => d * unit);
+  const denoms = quickCash(due, unit);
   // The numpad writes to the single amount, or to the split row last touched.
   const [activeRow, setActiveRow] = useState(0);
   const editValue = (fn: (v: string) => string) => {
@@ -214,6 +214,7 @@ export function PaymentModal({
       footer={
         <div className="pay-foot">
           <div className={`pay-status ${validation ? "" : "ok"}`} role="status">
+            {/* Repeated next to the button: at 700 px the change panel can be below the fold. */}
             {validation ?? (change > 0 ? t("Give change {0}", formatMoney(change)) : t("Ready"))}
           </div>
           <Button
@@ -279,13 +280,7 @@ export function PaymentModal({
             {!split && method === "cash" ? (
               <div className="denoms" aria-label={t("Quick cash")}>
                 {denoms.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    className="denom money"
-                    onClick={() => setAmount(formatAmount(d))}
-                    disabled={d < due}
-                  >
+                  <button key={d} type="button" className="denom money" onClick={() => setAmount(formatAmount(d))}>
                     {formatAmount(d).replace(/\.0+$/, "")}
                   </button>
                 ))}
@@ -443,7 +438,9 @@ export function PaymentModal({
           <div className="pay-lines">
             {cart.lines.map((l) => (
               <div key={l.line_id} className="row small">
-                <span className="grow ellipsis">{l.name}</span>
+                <span className="grow ellipsis" dir="auto">
+                  {l.name}
+                </span>
                 <span className="num muted">{formatQty(l.qty_milli)}×</span>
                 <span className="money" style={{ minWidth: 96, textAlign: "end" }}>
                   {formatMoney(l.line_total_minor)}
@@ -561,4 +558,19 @@ export function SaleSuccess({
       </div>
     </Modal>
   );
+}
+
+/**
+ * Amounts a customer is likely to hand over for `due` (integer minor units):
+ * the bill rounded up to the next 1, 5, 10, 20, 50 and 100 of the currency,
+ * without repeats, at most four. Every suggestion covers the bill.
+ */
+export function quickCash(due: number, unit: number): number[] {
+  const out: number[] = [];
+  for (const k of [1, 5, 10, 20, 50, 100]) {
+    const step = k * unit;
+    const v = Math.max(step, Math.ceil(due / step) * step);
+    if (!out.includes(v)) out.push(v);
+  }
+  return out.slice(0, 4);
 }

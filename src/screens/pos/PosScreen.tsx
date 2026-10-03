@@ -727,7 +727,9 @@ export function PosScreen({
                       >
                         <ProductImage hash={r.image_hash} name={r.name} size="sm" />
                         <div className="grow">
-                          <div className="r-name ellipsis">{r.name}</div>
+                          <div className="r-name ellipsis" dir="auto">
+                            {r.name}
+                          </div>
                           <div className="tiny ellipsis">
                             {r.primary_barcode ?? r.sku}
                             {r.track_inventory ? ` · ${t("Stock {0}", formatQty(r.stock_milli))}` : ""}

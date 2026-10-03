@@ -1094,6 +1094,7 @@ function SupplierInvoiceDrawer({ id, onClose, onChanged }: { id: string; onClose
   const { has } = useSession();
   const { data, error, setData } = useLoad(() => api.supplierInvoices.get(id), [id]);
   const act = useAction();
+  const [voiding, setVoiding] = useState(false);
   const set = async (st: "approved" | "void") => {
     const r = await act.run(() => api.supplierInvoices.setStatus(id, st));
     if (r) {
@@ -1158,13 +1159,29 @@ function SupplierInvoiceDrawer({ id, onClose, onChanged }: { id: string; onClose
               <Button variant="primary" onClick={() => void set("approved")} loading={act.busy}>
                 {t("Mark reviewed and approved")}
               </Button>
-              <Button variant="danger" className="right" onClick={() => void set("void")} loading={act.busy}>
+              <Button variant="danger-outline" className="right" onClick={() => setVoiding(true)}>
                 {t("Void record")}
               </Button>
             </div>
           ) : null}
         </div>
       )}
+      {voiding && data ? (
+        <Confirm
+          title={t("Void {0}?", data.number)}
+          confirmLabel={t("Void record")}
+          danger
+          busy={act.busy}
+          error={act.error}
+          onCancel={() => setVoiding(false)}
+          onConfirm={async () => {
+            await set("void");
+            setVoiding(false);
+          }}
+        >
+          {t("The record is kept for the history but can no longer be approved or posted. This cannot be undone.")}
+        </Confirm>
+      ) : null}
     </Drawer>
   );
 }
