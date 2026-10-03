@@ -302,3 +302,40 @@ fn lost_hub_credential_is_reported_not_silently_replaced() {
     let audit = count(&core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='sync.hub_credentials_reset'");
     assert_eq!(audit, 1);
 }
+
+#[test]
+fn payables_and_supplier_documents_are_hub_only_because_they_do_not_sync() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let sup = hub
+        .core
+        .supplier_save(&ht, None, serde_json::from_value(serde_json::json!({ "name": "Gulf Fresh" })).unwrap())
+        .unwrap()
+        .supplier_id;
+    let t1 = pair(&hub, "Till 2", "T02");
+    let input = || amwapos_core::payables::ManualInvoice {
+        supplier_id: sup.clone(),
+        doc_type: "invoice".into(),
+        invoice_number: "INV-1".into(),
+        invoice_date: "2026-10-01".into(),
+        due_date: None,
+        subtotal_minor: 1000,
+        vat_minor: 100,
+        total_minor: 1100,
+        applies_to_invoice_id: None,
+        notes: None,
+        lines: vec![],
+    };
+    // A terminal never starts a private supplier ledger…
+    let err = t1.core.ap_invoice_create_manual(&t1.token, input()).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict, "{}", err.message);
+    assert!(err.message.contains("hub"));
+    let err = t1.core.doc_import(&t1.token, "inv.png", "aGVsbG8=", None).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict, "{}", err.message);
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM supplier_invoices"), 0);
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM invoice_scans"), 0);
+    // …while it can still read (empty) and the hub records it normally.
+    t1.core.ap_overview(&t1.token).unwrap();
+    hub.core.ap_invoice_create_manual(&ht, input()).unwrap();
+}

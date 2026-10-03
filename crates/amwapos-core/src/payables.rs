@@ -234,6 +234,9 @@ impl AppCore {
             return Ok(s);
         }
         s.require(perm)?;
+        // Every payables write: the ledger lives on the hub (its tables do not
+        // sync), so a terminal must not start a second, private one.
+        self.require_back_office_writable()?;
         Ok(s)
     }
 

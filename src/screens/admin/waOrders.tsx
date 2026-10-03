@@ -22,7 +22,7 @@ import {
 } from "../../components/AddressFields";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, Tabs } from "../../components/ui";
 import { Confirm, useAction, useLoad } from "./common";
-import { formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
+import { formatAmount, formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
 import { formatDateTime, relative } from "../../lib/time";
 import { t, tb } from "../../i18n";
 import { InlineNumber, ProductPick } from "./automation";
@@ -969,7 +969,7 @@ export function DeliveryZonesEditor({
   const set = (i: number, patch: Partial<DeliveryZone>) =>
     onChange(zones.map((z, j) => (j === i ? { ...z, ...patch } : z)));
   const money = (v: string) => parseMoney(v) ?? 0;
-  const plain = (minor: number) => formatMoney(minor).split(" ").pop() ?? "";
+  const plain = (minor: number) => formatAmount(minor);
   const ranges = (v: string) =>
     v
       .split(",")

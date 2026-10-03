@@ -251,3 +251,63 @@ test("WhatsApp order: chat → draft with a question → staff answer, reply, co
   await expect(zones.getByLabel("Blocks (for example 200-260, 301)")).toHaveValue("200-260");
   await shot(page, "delivery-zones");
 });
+
+test("payables: a supplier invoice is reviewed, posted and paid; the balance follows", async ({ page }) => {
+  const t = await owner(page);
+  let sup: string;
+  try {
+    sup = (await rpc(page, "suppliers.save", { supplier: { name: "Bahrain Paper Co", payment_terms: "net_30" } }, t))
+      .supplier_id;
+  } catch {
+    sup = (await rpc(page, "suppliers.list", { q: "Bahrain Paper Co" }, t))[0].supplier_id;
+  }
+  const inv = await rpc(
+    page,
+    "ap.invoice_create",
+    {
+      invoice: {
+        supplier_id: sup,
+        doc_type: "invoice",
+        invoice_number: `BPC-${Date.now()}`,
+        invoice_date: new Date().toISOString().slice(0, 10),
+        subtotal_minor: 10_000,
+        vat_minor: 1_000,
+        total_minor: 11_000,
+      },
+    },
+    t,
+  );
+
+  await signIn(page);
+  await page.evaluate(() => (location.hash = "#/admin/payables"));
+  await expect(page.getByRole("heading", { name: "Payables", level: 1 })).toBeVisible();
+  // Nothing is owed before posting.
+  await page.getByRole("tab", { name: "Invoices" }).click();
+  await page.getByRole("row", { name: new RegExp(inv.invoice_number) }).click();
+  const drawer = page.getByTestId("ap-invoice");
+  await expect(drawer).toContainText("To review");
+  await shot(page, "payables-invoice");
+  await drawer.getByTestId("ap-approve").click();
+  await expect(drawer).toContainText("Ready to post");
+  await drawer.getByTestId("ap-post").click();
+  await page.getByRole("dialog", { name: /^Post .*\?$/ }).getByRole("button", { name: "Post", exact: true }).click();
+  await expect(drawer).toContainText("Posted");
+  await expect(drawer).toContainText("Still owed BHD 11.000");
+  await page.keyboard.press("Escape");
+
+  // The supplier now owes 11.000; pay 4.000 of it.
+  await page.getByRole("tab", { name: "Suppliers" }).click();
+  await page.getByRole("row", { name: /Bahrain Paper Co/ }).click();
+  const acct = page.getByTestId("ap-supplier");
+  await expect(acct).toContainText("BHD 11.000");
+  await page.getByTestId("ap-pay").click();
+  const pay = page.getByTestId("ap-payment-dialog");
+  await pay.getByTestId("ap-pay-amount").fill("4");
+  await expect(pay.getByRole("textbox", { name: new RegExp(`Amount for ${inv.invoice_number}`) })).toHaveValue("4.000");
+  await pay.getByRole("button", { name: /Record payment of BHD 4.000/ }).click();
+  await expect(page.getByText(/Payment SP-\d+ recorded/)).toBeVisible();
+  await expect(acct).toContainText("BHD 7.000");
+  await shot(page, "payables-supplier");
+  const ov = await rpc(page, "ap.supplier", { supplier_id: sup }, t);
+  expect(ov.balance_minor).toBe(7_000);
+});

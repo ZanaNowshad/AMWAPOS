@@ -13,7 +13,7 @@ import { useToast } from "../../components/toast";
 import { FeatureGate, useFeature } from "../../components/FeatureGate";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
-import { formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
+import { formatAmount, formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
 import { formatDateTime } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
@@ -554,9 +554,7 @@ export function DocumentReviewPage() {
                         <td className="num">
                           <InlineNumber
                             disabled={!editable}
-                            value={
-                              l.unit_cost_minor === null ? "" : (formatMoney(l.unit_cost_minor).split(" ").pop() ?? "")
-                            }
+                            value={l.unit_cost_minor === null ? "" : formatAmount(l.unit_cost_minor)}
                             onCommit={(x) => {
                               const c = parseMoney(x);
                               if (c !== null) void patchLine(l, { unit_cost_minor: c });
@@ -761,7 +759,7 @@ function FieldEditor({
     field.value === null || field.value === undefined
       ? ""
       : kind === "money" && typeof field.value === "number"
-        ? (formatMoney(field.value).split(" ").pop() ?? "")
+        ? formatAmount(field.value)
         : String(field.value);
   const [v, setV] = useState(initial);
   useEffect(() => setV(initial), [initial]);
@@ -944,7 +942,7 @@ function ReceivingDraftDrawer({ id, onClose, onChanged }: { id: string; onClose:
                     <td className="num">
                       <InlineNumber
                         disabled={!editable}
-                        value={formatMoney(l.unit_cost_minor).split(" ").pop() ?? ""}
+                        value={l.unit_cost_minor === null ? "" : formatAmount(l.unit_cost_minor)}
                         onCommit={async (x) => {
                           const c = parseMoney(x);
                           if (c === null) return;

@@ -35,7 +35,8 @@ export function formatMoney(minor: number | null | undefined): string {
 
 /** Parse "1.25" -> 1250 (3 digits). Returns null if invalid or too precise. */
 export function parseDecimal(input: string, d: number): number | null {
-  const s = input.trim();
+  // Direction marks and isolates (added around amounts in Arabic) are invisible: ignore them.
+  const s = input.replace(/[\u200e\u200f\u061c\u2066-\u2069]/g, "").trim();
   if (!/^-?\d*(\.\d*)?$/.test(s) || s === "" || s === "-" || s === "." || s === "-.") return null;
   const neg = s.startsWith("-");
   const body = neg ? s.slice(1) : s;

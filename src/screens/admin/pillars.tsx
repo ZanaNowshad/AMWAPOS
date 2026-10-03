@@ -34,7 +34,7 @@ import {
   TextInput,
 } from "../../components/ui";
 import { newOperationId } from "../../lib/ids";
-import { formatMoney, formatQty, parseMoney } from "../../lib/money";
+import { formatAmount, formatMoney, formatQty, parseMoney } from "../../lib/money";
 import { formatShort, todayLocal } from "../../lib/time";
 import { downloadBase64, useAction, useLoad } from "./common";
 import { fmtCell } from "./reports";
@@ -1252,7 +1252,7 @@ export function LoyaltySettingsSection() {
         <TextInput
           label={t("Amount paid for one point")}
           className="num"
-          value={formatMoney(data.earn_minor_per_point).split(" ")[1] ?? ""}
+          value={formatAmount(data.earn_minor_per_point)}
           hint={t("Customers earn one point for each of this amount paid, after discounts. Points are whole numbers.")}
           onChange={(e) => {
             const v = parseMoney(e.target.value);
@@ -1262,7 +1262,7 @@ export function LoyaltySettingsSection() {
         <TextInput
           label={t("Value of one point when redeemed")}
           className="num"
-          value={formatMoney(data.redeem_minor_per_point).split(" ")[1] ?? ""}
+          value={formatAmount(data.redeem_minor_per_point)}
           hint={t("Redeemed points become a discount on the sale, never cash.")}
           onChange={(e) => {
             const v = parseMoney(e.target.value);

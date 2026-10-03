@@ -1049,6 +1049,39 @@ impl AppCore {
             if backup.state != "ok" {
                 attention.push(json!({ "kind": "backup", "severity": "warning", "text": backup.summary, "link": "/admin/backups" }));
             }
+            // Work waiting for a person in the order and supplier flows, shown
+            // only to people who may act on it (and only with the module on).
+            let flags = self.features()?;
+            let count = |sql: &str| -> AppResult<i64> { Ok(c.query_row(sql, [], |r| r.get(0))?) };
+            if flags.is_on("orders.digital") && s.has("orders.manage") {
+                let k = count("SELECT COUNT(*) FROM digital_orders WHERE status='draft'")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "orders", "severity": "warning", "count": k, "text": format!("{k} order(s) waiting to be confirmed"), "link": "/admin/orders" }));
+                }
+            }
+            if flags.is_on("ocr.payment_screenshots") && (s.has("whatsapp.manage") || s.has("payments.review")) {
+                let k = count("SELECT COUNT(*) FROM payment_reviews WHERE status IN ('pending','matched','mismatch','needs_review')")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "payments", "severity": "warning", "count": k, "text": format!("{k} payment screenshot(s) to check"), "link": "/admin/payment-reviews" }));
+                }
+            }
+            if s.has("payables.view") {
+                let overdue: i64 = c.query_row(
+                    "SELECT COUNT(*) FROM ap_liabilities l WHERE l.status='open' AND l.due_date < ?1
+                       AND l.amount_minor > (SELECT COALESCE(SUM(a.amount_minor),0) FROM ap_allocations a WHERE a.liability_id=l.liability_id AND a.status='active')",
+                    [&today],
+                    |r| r.get(0),
+                )?;
+                if overdue > 0 {
+                    attention.push(json!({ "kind": "payables", "severity": "warning", "count": overdue, "text": format!("{overdue} supplier invoice(s) overdue"), "link": "/admin/payables" }));
+                }
+            }
+            if s.has("payables.post") {
+                let k = count("SELECT COUNT(*) FROM supplier_invoices WHERE status='approved' AND posting='not_posted'")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "payables_post", "severity": "info", "count": k, "text": format!("{k} supplier invoice(s) ready to post"), "link": "/admin/payables" }));
+                }
+            }
             let dead_letters: i64 = c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?;
             if dead_letters > 0 {
                 attention.push(json!({ "kind": "sync", "severity": "error", "count": dead_letters, "text": format!("{dead_letters} change(s) could not be synchronized"), "link": "/admin/sync" }));

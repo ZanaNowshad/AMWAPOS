@@ -535,6 +535,19 @@ export const api = {
     post: (draft_id: string, operation_id: string) =>
       call<T.ReceivingDraft>("receiving.draft_post", { draft_id, operation_id }),
   },
+  payables: {
+    overview: () => call<T.ApOverview>("ap.overview"),
+    supplier: (supplier_id: string) => call<T.ApSupplier>("ap.supplier", { supplier_id }),
+    invoice: (invoice_id: string) => call<T.ApInvoice>("ap.invoice_get", { invoice_id }),
+    createInvoice: (invoice: T.ApInvoiceInput) => call<T.ApInvoice>("ap.invoice_create", { invoice }),
+    approve: (invoice_id: string) => call<T.SupplierInvoice>("ap.invoice_approve", { invoice_id }),
+    post: (invoice_id: string, operation_id: string) =>
+      call<T.ApInvoice>("ap.invoice_post", { invoice_id, operation_id }),
+    reverse: (invoice_id: string, reason: string) => call<T.ApInvoice>("ap.invoice_reverse", { invoice_id, reason }),
+    recordPayment: (payment: T.ApPaymentInput) => call<T.ApPayment>("ap.payment_record", { payment }),
+    reversePayment: (payment_id: string, reason: string) =>
+      call<T.ApPayment>("ap.payment_reverse", { payment_id, reason }),
+  },
   supplierInvoices: {
     list: (status?: string | null) => call<T.SupplierInvoice[]>("supplier_invoices.list", { status }),
     get: (invoice_id: string) => call<T.SupplierInvoice>("supplier_invoices.get", { invoice_id }),

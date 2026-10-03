@@ -36,7 +36,7 @@ import { WaTemplates } from "./automation";
 import { useToast } from "../../components/toast";
 import { isDesktop } from "../../api/transport";
 import { newOperationId } from "../../lib/ids";
-import { formatMoney, formatPercent, parseMoney, parsePercent } from "../../lib/money";
+import { formatAmount, formatMoney, formatPercent, parseMoney, parsePercent } from "../../lib/money";
 import { formatDateTime, formatShort, relative, todayLocal } from "../../lib/time";
 import { Banner, Button, Checkbox, Chip, Field, Modal, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Drawer, Pager, download, useAction, useLoad } from "./common";
@@ -1495,15 +1495,85 @@ function TaxSettings() {
   );
 }
 
+/** Plain names for every setting field (the stored key is never shown). */
+const LABELS: Record<string, Record<string, () => string>> = {
+  pos: {
+    allow_negative_stock: () => t("Sell items that show no stock"),
+    allow_custom_item: () => t("Allow items that are not in the catalogue"),
+    cashier_max_discount_bp: () => t("Largest discount a cashier can give (%)"),
+    idle_lock_minutes: () => t("Lock the till after (minutes idle)"),
+    receipt_auto_print: () => t("Print a receipt after every sale"),
+    return_to_scan_seconds: () => t("Back to a new sale after (seconds)"),
+    scan_sound: () => t("Beep on scans"),
+    duplicate_scan_window_ms: () => t("Ignore a double scan within (milliseconds)"),
+  },
+  shift: {
+    blind_close: () => t("Count the drawer before seeing the expected amount"),
+    variance_approval_minor: () => t("Cash difference that needs a manager"),
+    paid_out_approval_minor: () => t("Paid-out that needs a manager"),
+  },
+  inventory: {
+    costing_method: () => t("How cost is kept"),
+    require_adjust_reason: () => t("Ask for a reason on stock adjustments"),
+    stocktake_blind_default: () => t("Hide expected quantities while counting"),
+    invoice_cost_variance_bp: () => t("Flag supplier prices that differ from the order by more than (%)"),
+  },
+  security: {
+    pin_min_length: () => t("Shortest PIN (digits)"),
+    pin_max_length: () => t("Longest PIN (digits)"),
+    max_failed_attempts: () => t("Wrong PINs before the account locks"),
+    lockout_minutes: () => t("Locked for (minutes)"),
+  },
+  "local.backup": {
+    directory: () => t("Backup folder"),
+    automatic: () => t("Back up automatically"),
+    interval_hours: () => t("Back up every (hours)"),
+    keep: () => t("Backups to keep"),
+  },
+};
+
+/** A number typed as text: the draft stays as typed; valid values are saved up. */
+function NumberSetting({
+  label,
+  hint,
+  value,
+  format,
+  parse,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  format: (v: number) => string;
+  parse: (s: string) => number | null;
+  onChange: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const bad = draft !== null && parse(draft) === null;
+  return (
+    <TextInput
+      label={label}
+      className="num"
+      inputMode="decimal"
+      value={draft ?? format(value)}
+      hint={bad ? t("Enter a number.") : hint}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const x = parse(e.target.value);
+        if (x !== null) onChange(x);
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
 const DESCRIPTIONS: Record<string, Record<string, string>> = {
   pos: {
     allow_negative_stock: t(
       "Allow selling tracked items when recorded stock is zero or below without manager approval.",
     ),
     allow_custom_item: t("Allow custom (non-catalogue) items at the till."),
-    cashier_max_discount_bp: t(
-      "Largest discount (basis points, 1000 = 10%) a cashier can give without manager approval.",
-    ),
+    cashier_max_discount_bp: t("A bigger discount needs a manager's PIN."),
     idle_lock_minutes: t("Lock the terminal after this many idle minutes (0 = never). The current sale is kept."),
     receipt_auto_print: t("Print a receipt automatically after every sale."),
     return_to_scan_seconds: t("Seconds before the success screen returns to a new sale (0 = wait for the cashier)."),
@@ -1512,8 +1582,8 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
   },
   shift: {
     blind_close: t("Hide the expected drawer amount from cashiers until they have counted."),
-    variance_approval_minor: t("Cash differences above this amount (minor units) need manager acknowledgement."),
-    paid_out_approval_minor: t("Paid-outs above this amount (minor units) need manager approval (0 = off)."),
+    variance_approval_minor: t("When the counted cash differs by more than this, a manager must accept the close."),
+    paid_out_approval_minor: t("Paying out more than this from the drawer needs a manager (0 = never)."),
   },
   inventory: {
     costing_method: t(
@@ -1521,6 +1591,9 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
     ),
     require_adjust_reason: t("Require a reason for manual stock adjustments."),
     stocktake_blind_default: t("New stocktakes hide expected quantities while counting."),
+    invoice_cost_variance_bp: t(
+      "On a supplier document matched to a purchase order, smaller differences are shown but not flagged.",
+    ),
   },
   security: {
     pin_min_length: t("Minimum PIN length."),
@@ -1547,11 +1620,12 @@ function JsonSettings({ k }: { k: string }) {
     <div className="card card-pad col gap-16">
       {Object.entries(data).map(([key, v]) => {
         const help = DESCRIPTIONS[k]?.[key];
-        const label = key
-          .replace(/_/g, " ")
-          .replace(/^\w/, (c) => c.toUpperCase())
-          .replace(" bp", " (bp)")
-          .replace(" minor", "");
+        const label =
+          LABELS[k]?.[key]?.() ??
+          key
+            .replace(/_/g, " ")
+            .replace(/^\w/, (c) => c.toUpperCase())
+            .replace(/ (bp|minor)$/, "");
         if (typeof v === "boolean") {
           return (
             <div key={key}>
@@ -1565,18 +1639,25 @@ function JsonSettings({ k }: { k: string }) {
           );
         }
         if (typeof v === "number") {
-          const isMoney = key.endsWith("_minor");
+          // Money in the store currency, percentages as %, everything else a whole number.
+          const kind = key.endsWith("_minor") ? "money" : key.endsWith("_bp") ? "percent" : "int";
           return (
-            <TextInput
+            <NumberSetting
               key={key}
               label={label}
-              className="num"
-              value={isMoney ? formatMoney(v).split(" ")[1] : String(v)}
               hint={help}
-              onChange={(e) => {
-                const x = isMoney ? parseMoney(e.target.value) : Number(e.target.value.replace(/[^\d]/g, ""));
-                if (x !== null && !Number.isNaN(x)) setData({ ...data, [key]: x });
-              }}
+              value={v}
+              format={
+                kind === "money" ? formatAmount : kind === "percent" ? (x) => formatPercent(x).replace("%", "") : String
+              }
+              parse={
+                kind === "money"
+                  ? parseMoney
+                  : kind === "percent"
+                    ? parsePercent
+                    : (x) => (/^\s*\d+\s*$/.test(x) ? Number(x.trim()) : null)
+              }
+              onChange={(x) => setData({ ...data, [key]: x })}
             />
           );
         }

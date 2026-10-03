@@ -69,3 +69,22 @@ describe("mulDivRound matches the backend (half away from zero)", () => {
     expect(mulDivRound(9_000_000_000_000, 10_000, 10_000)).toBe(9_000_000_000_000);
   });
 });
+
+describe("amounts typed back into a field", () => {
+  it("ignore the invisible direction marks Arabic puts around amounts", () => {
+    expect(parseMoney("\u20661.500\u2069")).toBe(1500);
+    expect(parseMoney("\u200f2.250\u200e")).toBe(2250);
+  });
+
+  it("are never cut out of a formatted money string (it differs by language)", () => {
+    const files = import.meta.glob(["../../**/*.tsx", "!../../**/__tests__/**"], {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+    const bad = Object.entries(files)
+      .filter(([, text]) => /formatMoney\([^)]*\)\.split\(/.test(text))
+      .map(([f]) => f);
+    expect(bad).toEqual([]);
+  });
+});

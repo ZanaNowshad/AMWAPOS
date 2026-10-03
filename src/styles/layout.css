@@ -4290,3 +4290,23 @@ table.diff tr.changed {
   text-align: start;
   cursor: pointer;
 }
+
+/* ---------- payables ageing strip ---------- */
+.ap-ageing {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+.ap-age {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.ap-age.late {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: var(--warning-soft);
+}

@@ -468,3 +468,40 @@ fn a_reused_number_a_year_later_posts_and_a_credit_note_quoting_the_invoice_is_n
     // A credit note that prints the invoice number it corrects is not that invoice.
     assert!(dups("INV77", "2026-09-20", "credit_note").is_empty());
 }
+
+#[test]
+fn overdue_and_ready_to_post_invoices_reach_the_dashboard_for_the_right_people() {
+    let e = env();
+    let sup = supplier(&e, "Late Supplies", None);
+    let id = invoice(&e, &sup, "L-1", &days_ago(60), Some(&days_ago(30)), 11_000);
+    approve_post(&e, &id);
+    let ready = invoice(&e, &sup, "L-2", &days_ago(1), None, 1_100);
+    e.core.ap_invoice_approve(&e.owner_token, &ready).unwrap();
+    let d = e.core.dashboard(&e.owner_token).unwrap();
+    let kinds: Vec<&str> = d["attention"].as_array().unwrap().iter().filter_map(|a| a["kind"].as_str()).collect();
+    assert!(kinds.contains(&"payables") && kinds.contains(&"payables_post"), "{kinds:?}");
+    // A manager without payables rights sees neither.
+    let (_, mgr) = e.user("Floor Manager", "role_manager", "7391");
+    let m = e.core.dashboard(&mgr).unwrap();
+    let kinds: Vec<&str> = m["attention"].as_array().unwrap().iter().filter_map(|a| a["kind"].as_str()).collect();
+    assert!(!kinds.contains(&"payables_post"), "{kinds:?}");
+    // Paying it clears the overdue line.
+    e.core
+        .ap_payment_record(
+            &e.owner_token,
+            PaymentInput {
+                supplier_id: sup.clone(),
+                paid_on: days_ago(0),
+                amount_minor: 11_000,
+                method: "bank_transfer".into(),
+                reference: None,
+                notes: None,
+                allocations: vec![AllocationInput { invoice_id: id, amount_minor: 11_000 }],
+                oldest_first: false,
+                operation_id: op(),
+            },
+        )
+        .unwrap();
+    let d = e.core.dashboard(&e.owner_token).unwrap();
+    assert!(!d["attention"].to_string().contains("\"payables\""), "{}", d["attention"]);
+}

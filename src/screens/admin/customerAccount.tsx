@@ -6,7 +6,7 @@ import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { Banner, Button, Checkbox, Chip, Field, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, DataTable, useAction, useLoad } from "./common";
-import { formatMoney, parseMoney } from "../../lib/money";
+import { formatAmount, formatMoney, parseMoney } from "../../lib/money";
 import { formatDateTime } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { methodLabel } from "../pos/labels";
@@ -167,7 +167,7 @@ export function AccountTab({ customerId }: { customerId: string }) {
           <TextInput
             label={t("Credit limit")}
             className="num"
-            value={limit ?? formatMoney(a.credit_limit_minor).split(" ").pop() ?? ""}
+            value={limit ?? (a.credit_limit_minor === null ? "" : formatAmount(a.credit_limit_minor))}
             onChange={(e) => setLimit(e.target.value)}
           />
           <Button

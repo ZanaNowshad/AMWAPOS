@@ -579,6 +579,8 @@ impl AppCore {
         supplier_id: Option<String>,
     ) -> AppResult<crate::ocrflow::InvoiceScan> {
         let s = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         self.require_feature("ocr.supplier_invoices")?;
         if data_b64.len() > 28 * 1024 * 1024 {
             return Err(AppError::validation("The file is larger than 20 MB."));
@@ -621,6 +623,8 @@ impl AppCore {
     /// existing WhatsApp link) into the same pipeline.
     pub fn doc_from_inbox(&self, token: &str, seq: i64) -> AppResult<crate::ocrflow::InvoiceScan> {
         let s = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         self.require_feature("ocr.supplier_invoices")?;
         let (path, mime, kind): (Option<String>, Option<String>, String) = self.db.read(|c| {
             c.query_row("SELECT media_path, media_mime, kind FROM wa_inbox WHERE seq=?1", [seq], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
@@ -893,6 +897,8 @@ impl AppCore {
     /// Correct header fields, the document type, the supplier or the PO.
     pub fn doc_update(&self, token: &str, id: &str, p: DocPatch) -> AppResult<Value> {
         let s = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         let id = validate::id(id, "Document")?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
@@ -1031,6 +1037,8 @@ impl AppCore {
     /// Correct one line: product, quantity, unit cost, pack size, include.
     pub fn doc_update_line(&self, token: &str, id: &str, p: DocLinePatch) -> AppResult<Value> {
         let s = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         let id = validate::id(id, "Document")?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
@@ -1145,6 +1153,8 @@ impl AppCore {
     /// with these values and a person saves it.
     pub fn doc_new_product_draft(&self, token: &str, id: &str, line_no: i64) -> AppResult<Value> {
         let _ = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         let id = validate::id(id, "Document")?;
         self.db.read(|c| {
             let (desc, barcode, valid, upc, supplier): (Option<String>, Option<String>, Option<i64>, Option<i64>, Option<String>) = c
@@ -1196,6 +1206,8 @@ impl AppCore {
     /// record for review only: no payable, payment or stock follows.
     pub fn doc_create_supplier_invoice(&self, token: &str, id: &str, revision: i64) -> AppResult<Value> {
         let s = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         s.require("purchasing.manage")?;
         let id = validate::id(id, "Document")?;
         let actor = self.actor(&s, None);
@@ -1258,6 +1270,8 @@ impl AppCore {
     /// move until someone with receiving rights posts it.
     pub fn doc_create_receiving(&self, token: &str, id: &str, revision: i64) -> AppResult<Value> {
         let s = self.doc_session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         s.require("purchasing.manage")?;
         let id = validate::id(id, "Document")?;
         let actor = self.actor(&s, None);
@@ -1419,6 +1433,8 @@ impl AppCore {
         remove: bool,
     ) -> AppResult<Value> {
         let s = self.session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         s.require("purchasing.manage")?;
         let id = validate::id(draft_id, "Receiving draft")?;
         self.db.write(|tx| {
@@ -1451,6 +1467,8 @@ impl AppCore {
 
     pub fn receiving_draft_cancel(&self, token: &str, draft_id: &str) -> AppResult<Value> {
         let s = self.session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         s.require("purchasing.manage")?;
         let id = validate::id(draft_id, "Receiving draft")?;
         let actor = self.actor(&s, None);
@@ -1475,6 +1493,8 @@ impl AppCore {
     /// Safe to retry with the same operation id.
     pub fn receiving_draft_post(&self, token: &str, draft_id: &str, operation_id: &str) -> AppResult<Value> {
         let s = self.session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         s.require("inventory.receive")?;
         let id = validate::id(draft_id, "Receiving draft")?;
         let op = operation_id.trim();
@@ -1639,6 +1659,8 @@ impl AppCore {
 
     pub fn supplier_invoice_set_status(&self, token: &str, invoice_id: &str, status: &str) -> AppResult<Value> {
         let s = self.session(token)?;
+        // Back-office records live on the hub; a terminal would keep them to itself.
+        self.require_back_office_writable()?;
         if !s.has("payables.review") {
             s.require("purchasing.manage")?;
         }

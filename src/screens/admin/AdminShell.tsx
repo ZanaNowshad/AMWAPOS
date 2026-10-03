@@ -47,6 +47,7 @@ import {
   CalendarCheck,
   Smartphone,
   ShoppingBag,
+  Landmark,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, EndOfDayPage, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
@@ -79,6 +80,7 @@ import { DocumentReviewPage } from "./documents";
 import { WhatsAppOrdersPage } from "./waOrders";
 import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
+import { PayablesPage } from "./payables";
 import { t } from "../../i18n";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { BackupAlert } from "../../components/BackupAlert";
@@ -200,6 +202,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: PackageCheck,
         perm: "inventory.receive",
         element: ReceivingPage,
+      },
+      {
+        path: "payables",
+        label: t("Payables"),
+        icon: Landmark,
+        perm: ["payables.view", "purchasing.manage"],
+        element: PayablesPage,
       },
       {
         path: "invoice-scan",

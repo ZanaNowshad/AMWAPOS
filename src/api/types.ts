@@ -2104,6 +2104,111 @@ export interface SupplierInvoice {
   lines?: SupplierInvoiceLine[];
 }
 
+// ---- Accounts payable (supplier invoices posted → what the shop owes)
+
+export type ApBucket = "current" | "1_30" | "31_60" | "61_90" | "90_plus";
+
+export interface ApOverview {
+  as_of: string;
+  outstanding_minor: number;
+  overdue_minor: number;
+  due_within_7_days_minor: number;
+  ageing: { bucket: ApBucket; amount_minor: number }[];
+  suppliers: {
+    supplier_id: string;
+    supplier_name: string;
+    open_invoices: number;
+    outstanding_minor: number;
+    overdue_minor: number;
+    balance_minor: number;
+  }[];
+  to_review: number;
+  to_post: number;
+  overdue_invoices: number;
+}
+
+export interface ApOpenInvoice {
+  invoice_id: string;
+  number: string;
+  invoice_number: string | null;
+  doc_date: string;
+  due_date: string;
+  amount_minor: number;
+  outstanding_minor: number;
+  days_overdue: number;
+  payment_status: string;
+  bucket: ApBucket;
+}
+
+export interface ApSupplier {
+  supplier_id: string;
+  supplier_name: string;
+  balance_minor: number;
+  as_of: string;
+  open_invoices: ApOpenInvoice[];
+  credits: {
+    credit_id: string;
+    invoice_id: string;
+    number: string;
+    invoice_number: string | null;
+    doc_date: string;
+    amount_minor: number;
+    status: string;
+    unapplied_minor: number;
+  }[];
+  payments: {
+    payment_id: string;
+    number: string;
+    paid_on: string;
+    amount_minor: number;
+    method: string;
+    reference: string | null;
+    status: string;
+    unallocated_minor: number;
+  }[];
+  ageing: { bucket: ApBucket; amount_minor: number }[];
+  statement: { date: string; kind: string; reference: string | null; amount_minor: number; balance_minor: number }[];
+}
+
+export interface ApInvoice extends SupplierInvoice {
+  lifecycle: string;
+  outstanding_minor: number | null;
+  liability: { liability_id: string; due_date: string; due_rule: string; amount_minor: number; status: string } | null;
+  credit: { credit_id: string; amount_minor: number; status: string } | null;
+}
+
+export interface ApInvoiceInput {
+  supplier_id: string;
+  doc_type: "invoice" | "credit_note";
+  invoice_number: string;
+  invoice_date: string;
+  due_date?: string | null;
+  subtotal_minor: number;
+  vat_minor: number;
+  total_minor: number;
+  notes?: string | null;
+}
+
+export type ApMethod = "cash" | "bank_transfer" | "cheque" | "card" | "benefitpay" | "other";
+
+export interface ApPaymentInput {
+  supplier_id: string;
+  paid_on: string;
+  amount_minor: number;
+  method: ApMethod;
+  reference?: string | null;
+  notes?: string | null;
+  allocations: { invoice_id: string; amount_minor: number }[];
+  operation_id: string;
+}
+
+export interface ApPayment {
+  payment_id: string;
+  number: string;
+  amount_minor: number;
+  status: string;
+}
+
 // ---- WhatsApp AI orders (conversation → draft digital order → staff review)
 
 export interface WaOrderRow {
