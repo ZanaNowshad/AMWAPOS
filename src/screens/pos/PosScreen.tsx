@@ -543,7 +543,7 @@ export function PosScreen({
       run: () => setModal({ kind: "delivery", saleId: lastSale?.sale_id ?? null }),
     },
     {
-      label: t("Digital orders"),
+      label: t("Orders"),
       show: ordersOn,
       icon: <ShoppingBag size={20} />,
       run: () => setModal({ kind: "orders" }),
@@ -1077,7 +1077,7 @@ export function PosScreen({
         />
       ) : null}
       {modal.kind === "orders" ? (
-        <Modal title={t("Digital orders")} size="xl" onClose={closeModal}>
+        <Modal title={t("Orders")} size="xl" onClose={closeModal}>
           {hasLines ? (
             <Banner tone="info">{t("Hold or finish the current sale before selling an order.")}</Banner>
           ) : null}

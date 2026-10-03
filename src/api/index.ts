@@ -566,8 +566,8 @@ export const api = {
       call<T.WaOrderDetail>("waorders.customer", { session_id, revision, customer_id }),
     flags: (session_id: string, a: { takeover?: boolean; handled?: boolean; assign_to_me?: boolean }) =>
       call<T.WaOrderDetail>("waorders.flags", { session_id, ...a }),
-    confirm: (session_id: string, revision: number) =>
-      call<T.WaOrderDetail>("waorders.confirm", { session_id, revision }),
+    confirm: (session_id: string, revision: number, ack: T.ConfirmAck = {}) =>
+      call<T.WaOrderDetail>("waorders.confirm", { session_id, revision, ...ack }),
     cancel: (session_id: string) => call<T.WaOrderDetail>("waorders.cancel", { session_id }),
     payment: (session_id: string, review_id: string, decision: "verified" | "rejected", note?: string | null) =>
       call<T.WaOrderDetail>("waorders.payment", { session_id, review_id, decision, note }),
@@ -696,7 +696,8 @@ export const api = {
       call<{ product_id: string; name: string; sku: string; price_minor: number | null }[]>("orders.products", { q }),
     save: (order_id: string | null, order: T.OrderInput) => call<T.DigitalOrder>("orders.save", { order_id, order }),
     fromInbox: (seq: number) => call<T.DigitalOrder>("orders.from_inbox", { seq }),
-    confirm: (order_id: string) => call<T.DigitalOrder>("orders.confirm", { order_id }),
+    confirm: (order_id: string, ack: T.ConfirmAck = {}) => call<T.DigitalOrder>("orders.confirm", { order_id, ...ack }),
+    flow: () => call<T.OrderFlow>("orders.flow"),
     cancel: (order_id: string, reason?: string | null) => call<T.DigitalOrder>("orders.cancel", { order_id, reason }),
     setPayment: (order_id: string, payment_state: T.OrderPaymentState) =>
       call<T.DigitalOrder>("orders.set_payment", { order_id, payment_state }),

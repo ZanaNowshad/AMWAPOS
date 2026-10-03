@@ -129,7 +129,8 @@ customer link, payment evidence, suggested reply
 
 - **Replies.** They are suggested, never sent by themselves. `waorders.send` needs `whatsapp.send` and goes through the normal idempotent outbox.
 - **A customer's "yes".** It is recorded as an event (`customer_confirmed`), but only a person with `orders.manage` confirms. `waorders.confirm` goes through `orders.confirm`, and out-of-stock lines block it.
-- **What a confirmed order is.** It is an ordinary confirmed digital order. A cashier loads it into a sale at the till (`orders.convert`) and takes payment as usual. Nothing is charged, no fiscal document is made, and stock does not move before that sale.
+- **What a confirmed order is.** It is an ordinary confirmed digital order. A cashier loads it into a sale at the till (`orders.convert`) and takes payment as usual. Nothing is charged, no fiscal document is made, and stock does not move before that sale. Confirming holds the free stock for the order (`stock_reservations`, 48 hours). A hold is released on cancel, converted on sale, and expired by the hub maintenance loop.
+- **Confirm re-checks.** At confirmation, stock is checked again. The total is also compared with the last total sent to the customer. Either difference is a `conflict` with `details.kind` = `stock_shortage` or `price_changed_since_quote`. The UI explains it in plain words and offers "Confirm anyway", which sends the matching `acknowledge_*` flag and records it in the audit log.
 - **Payment screenshots.** They are linked to the draft as evidence (`payment_state = screenshot_pending`). Only a person with `payments.review` marks them verified.
 - **Staff take over.** New messages are then shown, but they no longer change the draft.
 - **Staff corrections are locked.** A later reading, from the rules or the AI, never overwrites them. When "Remember my choices" is ticked, the correction teaches a product alias.
@@ -139,6 +140,41 @@ customer link, payment evidence, suggested reply
 - One processing row per inbound message. A redelivered message or a restart does nothing twice.
 - There is one open session per chat, enforced by a unique index.
 - Staff edits carry the session revision, and a stale revision is refused. The AI apply checks the revision too.
+
+### The order journey in the UI (first-time users)
+
+The admin menu has one group, **Orders & delivery**, ordered the way an order moves:
+
+1. WhatsApp orders
+2. Orders
+3. Deliveries
+4. Payment checks
+5. Customers
+
+Every one of these pages starts with the same journey bar, built from `orders.flow`:
+
+> Messages → To confirm → To pack & send → On the way → Payments to check
+
+Each step shows how many items are waiting and links to its page. Steps a person cannot act on (no permission, or the module is off) are left out.
+
+Each WhatsApp order opens with one **next step**: the single thing to do now (`waNextStep` in `waOrders.tsx`), in this order:
+
+1. choose the right product
+2. find unmatched products
+3. replace out-of-stock items
+4. delivery or pickup
+5. complete the address
+6. pick the customer
+7. confirm
+
+After confirming, the card says what happens next.
+
+Other screens:
+
+- **Deliveries.** Board and list open the same ticket sheet.
+- **Rider desk.** Each drop has one large next-step button (Start packing → Picked up, on the way → Delivered), plus Call and WhatsApp buttons. Marking an unpaid drop delivered opens the ticket sheet, which asks about the money.
+- **Status words.** They are plain: New, Packing, On the way, Delivered.
+- **Cancelling an order.** It always asks first.
 
 ## 3. AI use (both features)
 

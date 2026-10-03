@@ -39,6 +39,7 @@ import { formatShort, todayLocal } from "../../lib/time";
 import { downloadBase64, useAction, useLoad } from "./common";
 import { fmtCell } from "./reports";
 import { OrdersList } from "../orders";
+import { OrderFlowBar } from "../../components/OrderFlow";
 import { t, tb } from "../../i18n";
 import { codeLabel } from "../../i18n/codes";
 
@@ -48,10 +49,13 @@ export function OrdersPage() {
   return (
     <div>
       <PageHeader
-        title={t("Digital orders")}
-        subtitle={t("Phone, WhatsApp and web orders. A person confirms each one; a cashier sells it on a till.")}
+        title={t("Orders")}
+        subtitle={t(
+          "Orders from phone, WhatsApp and the website. Check each one and confirm it; a cashier then rings it up at the till.",
+        )}
       />
       <FeatureGate feature="orders.digital">
+        <OrderFlowBar />
         <OrdersList />
       </FeatureGate>
     </div>

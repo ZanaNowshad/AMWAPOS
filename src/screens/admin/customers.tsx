@@ -1,7 +1,6 @@
 import { AddressFields, type AddrValue, addrFrom, addrPayload, addrProblem } from "../../components/AddressFields";
 import { WhatsAppContactsButton } from "./waContacts";
 import { TicketRowButton, TicketSheet, channelLabel, payLabel as payStateLabel } from "../pos/SendLoop";
-import { WhatsAppSendButton } from "./automation";
 import { AccountTab, AddressesTab } from "./customerAccount";
 import { useFeature } from "../../components/FeatureGate";
 import { useEffect, useState } from "react";
@@ -19,7 +18,6 @@ import {
   Checkbox,
   Chip,
   Empty,
-  Field,
   Money,
   PageHeader,
   Skeleton,
@@ -28,9 +26,10 @@ import {
 } from "../../components/ui";
 import { DataTable, Drawer, useAction, useLoad } from "./common";
 import { SaleDrawer } from "./sales";
-import { t, tb } from "../../i18n";
+import { t } from "../../i18n";
 import { LoyaltyCard } from "./pillars";
 import { codeLabel } from "../../i18n/codes";
+import { OrderFlowBar } from "../../components/OrderFlow";
 
 function CustomerForm({
   initial,
@@ -378,38 +377,24 @@ function DeliveryTable({ rows, onOpen }: { rows: DeliveryRow[]; onOpen?: (d: Del
 }
 
 export function DeliveriesPage() {
-  const { has } = useSession();
-  const toast = useToast();
   const [view, setView] = useState<"board" | "table">("board");
   const [closed, setClosed] = useState(false);
-  const [open, setOpen] = useState<DeliveryRow | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const { data, loading, error, reload } = useLoad(() => api.deliveries.list(undefined, closed), [closed]);
-  const users = useLoad(() => (has("users.manage") ? api.users.list() : Promise.resolve([])), []);
-  const detail = useLoad(
-    () => (open ? api.deliveries.get(open.delivery_id) : Promise.resolve(null)),
-    [open?.delivery_id],
-  );
-  const act = useAction();
-  const update = async (a: Parameters<typeof api.deliveries.update>[0]) => {
-    const r = await act.run(() => api.deliveries.update(a));
-    if (r) {
-      toast("success", t("Delivery {0} updated", r.delivery_number));
-      setOpen(r);
-      void reload();
-      void detail.reload();
-    }
-  };
   return (
     <div>
       <PageHeader
         title={t("Deliveries")}
+        subtitle={t(
+          "Every order going out, from packing to the door. Tap one to move it on, take payment or message the customer.",
+        )}
         actions={
           <>
             <button className={`filter-chip ${view === "board" ? "active" : ""}`} onClick={() => setView("board")}>
               {t("Board")}
             </button>
             <button className={`filter-chip ${view === "table" ? "active" : ""}`} onClick={() => setView("table")}>
-              {t("Table")}
+              {t("List")}
             </button>
             {view === "table" ? (
               <Checkbox label={t("Include delivered / cancelled")} checked={closed} onChange={setClosed} />
@@ -417,136 +402,12 @@ export function DeliveriesPage() {
           </>
         }
       />
+      <OrderFlowBar />
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {loading && !data && view === "table" ? <Skeleton /> : null}
       {view === "board" ? <TicketBoard /> : null}
-      {view === "table" && data ? <DeliveryTable rows={data} onOpen={setOpen} /> : null}
-      {open ? (
-        <Drawer title={t("Delivery {0}", open.delivery_number)} onClose={() => setOpen(null)}>
-          <div className="stack-16">
-            <div className="row">
-              <Chip tone={DSTATUS[open.status]}>{codeLabel(open.status)}</Chip>
-              <Chip tone={open.payment_status === "paid" ? "success" : "warning"}>{payLabel(open.payment_status)}</Chip>
-            </div>
-            <dl className="kv">
-              <dt>{t("Customer")}</dt>
-              <dd>{open.customer_name ?? "—"}</dd>
-              <dt>{t("Phone")}</dt>
-              <dd>{open.phone ?? "—"}</dd>
-              <dt>{t("Address")}</dt>
-              <dd>{[open.area, open.address].filter(Boolean).join(", ") || "—"}</dd>
-              <dt>{t("Linked sale")}</dt>
-              <dd className="mono">{open.receipt_number ?? "—"}</dd>
-              <dt>{t("Amount")}</dt>
-              <dd>{formatMoney(open.amount_minor)}</dd>
-              <dt>{t("Rider")}</dt>
-              <dd>{open.assigned_name ?? t("Unassigned")}</dd>
-              <dt>{t("Notes")}</dt>
-              <dd>{open.notes ?? "—"}</dd>
-            </dl>
-            {has("deliveries.manage") ? (
-              <div className="col">
-                <Field label={t("Assign rider")}>
-                  <select
-                    className="select"
-                    value={open.assigned_user_id ?? ""}
-                    onChange={(e) => update({ delivery_id: open.delivery_id, assigned_user_id: e.target.value })}
-                  >
-                    <option value="">{t("Unassigned")}</option>
-                    {(users.data ?? [])
-                      .filter((u) => u.active)
-                      .map((u) => (
-                        <option key={u.user_id} value={u.user_id}>
-                          {u.display_name} ({tb(u.role_name)})
-                        </option>
-                      ))}
-                  </select>
-                </Field>
-                <Field label={t("Payment")}>
-                  <select
-                    className="select"
-                    value={open.payment_status}
-                    onChange={(e) => update({ delivery_id: open.delivery_id, payment_status: e.target.value })}
-                  >
-                    <option value="paid">{t("Paid")}</option>
-                    <option value="cod">{t("Cash on Delivery")}</option>
-                    <option value="pending">{t("Payment Pending")}</option>
-                  </select>
-                </Field>
-              </div>
-            ) : null}
-            <div className="row wrap">
-              {open.status === "pending" ? (
-                <Button onClick={() => update({ delivery_id: open.delivery_id, status: "preparing" })}>
-                  {t("Preparing")}
-                </Button>
-              ) : null}
-              {open.status === "pending" || open.status === "preparing" ? (
-                <Button
-                  variant="primary"
-                  onClick={() => update({ delivery_id: open.delivery_id, status: "dispatched" })}
-                >
-                  {t("Dispatch")}
-                </Button>
-              ) : null}
-              {open.status === "dispatched" ? (
-                <Button
-                  variant="primary"
-                  onClick={() => update({ delivery_id: open.delivery_id, status: "delivered" })}
-                >
-                  {t("Delivered")}
-                </Button>
-              ) : null}
-              {["pending", "preparing", "dispatched"].includes(open.status) ? (
-                <WhatsAppSendButton kind="dispatch" deliveryId={open.delivery_id} phone={open.phone} />
-              ) : null}
-              {open.status === "delivered" ? (
-                <WhatsAppSendButton kind="delivered" deliveryId={open.delivery_id} phone={open.phone} />
-              ) : null}
-              {open.payment_status !== "paid" && open.status !== "cancelled" ? (
-                <WhatsAppSendButton kind="reminder" deliveryId={open.delivery_id} phone={open.phone} />
-              ) : null}
-              {["pending", "preparing", "dispatched"].includes(open.status) && has("deliveries.manage") ? (
-                <Button
-                  variant="danger-outline"
-                  onClick={() => update({ delivery_id: open.delivery_id, status: "cancelled" })}
-                >
-                  {t("Cancel")}
-                </Button>
-              ) : null}
-            </div>
-            {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
-            {detail.data ? (
-              <>
-                <div>
-                  <h3 style={{ marginBottom: 6 }}>{t("Timeline")}</h3>
-                  {detail.data.events.map((e, i) => (
-                    <div key={i} className="small row">
-                      <span style={{ width: 130 }}>{formatShort(e.at)}</span>
-                      <span className="grow">
-                        {e.from ? `${e.from} → ` : ""}
-                        {e.to} {e.note ? `· ${e.note}` : ""}
-                      </span>
-                      <span className="muted">{e.user}</span>
-                    </div>
-                  ))}
-                </div>
-                {detail.data.items.length ? (
-                  <div>
-                    <h3 style={{ marginBottom: 6 }}>{t("Items")}</h3>
-                    {detail.data.items.map((it, i) => (
-                      <div key={i} className="small row">
-                        <span className="grow">{String(it.name)}</span>
-                        <span className="num">{formatMoney(Number(it.line_total_minor))}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        </Drawer>
-      ) : null}
+      {view === "table" && data ? <DeliveryTable rows={data} onOpen={(d) => setOpen(d.delivery_id)} /> : null}
+      {open ? <TicketSheet ticketId={open} onClose={() => setOpen(null)} onChanged={() => void reload()} /> : null}
     </div>
   );
 }
@@ -584,11 +445,11 @@ function TicketBoard() {
   ];
   const channels = uniq((data ?? []).map((r) => r.channel));
   const cols: { key: BoardCol; label: string }[] = [
-    { key: "now", label: t("Now") },
-    { key: "prep", label: t("Prep") },
-    { key: "out", label: t("Out") },
+    { key: "now", label: t("New") },
+    { key: "prep", label: t("Packing") },
+    { key: "out", label: t("On the way") },
     { key: "done", label: t("Done") },
-    { key: "problem", label: t("Problem") },
+    { key: "problem", label: t("Needs help") },
   ];
   const chip = (key: keyof typeof f, value: string, label: string) => (
     <button

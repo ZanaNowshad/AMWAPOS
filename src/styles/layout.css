@@ -4139,3 +4139,154 @@ table.diff tr.changed {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- order journey bar (OrderFlow) ---------- */
+.order-flow {
+  margin: 0 0 20px;
+}
+.order-flow ol {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.order-flow li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: max-content;
+}
+.order-flow .flow-sep {
+  color: var(--text-3);
+  flex: none;
+}
+.flow-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--text-2);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform var(--dur-press);
+}
+.flow-step:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.flow-step:active {
+  transform: scale(0.98);
+}
+.flow-step:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.flow-step .flow-label {
+  flex: 1;
+}
+.flow-step .flow-n {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 13px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.flow-step.busy .flow-n {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.flow-step.active {
+  background: var(--brand);
+  color: var(--on-brand);
+  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--brand) 70%, transparent);
+}
+.flow-step.active .flow-n {
+  background: color-mix(in srgb, var(--on-brand) 22%, transparent);
+  color: var(--on-brand);
+}
+.order-flow .flow-hint {
+  margin: 8px 18px 0;
+  font-size: 13px;
+  color: var(--text-3);
+}
+@media (max-width: 1100px) {
+  .flow-step .flow-label {
+    display: none;
+  }
+  .flow-step.active .flow-label {
+    display: inline;
+  }
+}
+
+/* ---------- next step card (WhatsApp order) ---------- */
+.next-step {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius-card);
+  background: var(--brand-tint);
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, transparent);
+}
+.next-step.done {
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 25%, transparent);
+}
+.next-step .ns-num {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: var(--brand);
+  color: var(--on-brand);
+  font-weight: 700;
+}
+.next-step.done .ns-num {
+  background: var(--success);
+}
+.next-step .ns-title {
+  font-weight: 650;
+  font-size: 16px;
+}
+.next-step .ns-text {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* ---------- rider desk ---------- */
+.rider-drop-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}

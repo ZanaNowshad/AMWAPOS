@@ -252,6 +252,8 @@ impl AppCore {
         self.db.read(|c| {
             let text = q.unwrap_or_default().trim().to_string();
             let digits: String = text.chars().filter(|c| c.is_ascii_digit()).collect();
+            // "0097333112233" is stored as "+97333112233".
+            let digits = if text.starts_with("00") { digits.trim_start_matches("00").to_string() } else { digits };
             let like = format!("%{}%", text.replace('%', ""));
             let dlike = if digits.len() >= 3 { format!("%{digits}%") } else { "\u{0}".into() };
             let mut st = c.prepare(&format!(

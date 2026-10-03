@@ -523,3 +523,36 @@ fn a_hold_that_is_not_sold_in_time_expires_and_frees_the_stock() {
     assert_eq!(count(&e, "SELECT COUNT(*) FROM stock_reservations WHERE status='expired'"), 1);
     assert_eq!(conv(&e, A)["order"]["status"], "confirmed", "the order itself stays for a person to decide");
 }
+
+#[test]
+fn the_guide_bar_counts_each_step_of_the_order_journey() {
+    let e = setup();
+    let t = &e.owner_token;
+    let f = e.core.orders_flow(t).unwrap();
+    assert_eq!((f["chats"].as_i64(), f["to_confirm"].as_i64(), f["to_pack"].as_i64()), (Some(0), Some(0), Some(0)));
+    say(&e, "F1", A, now() - 60, "2 lays cheese pickup");
+    let f = e.core.orders_flow(t).unwrap();
+    assert_eq!(f["chats"], 1);
+    assert_eq!(f["to_confirm"], 1, "{f}");
+    let v = conv(&e, A);
+    e.core.wa_order_confirm(t, &sid(&v), rev(&v)).unwrap();
+    let f = e.core.orders_flow(t).unwrap();
+    assert_eq!((f["chats"].as_i64(), f["to_confirm"].as_i64(), f["to_pack"].as_i64()), (Some(0), Some(0), Some(1)), "{f}");
+    // Someone without order work sees no order steps at all.
+    let (_, acc) = e.user("Accounts", "role_accountant", "7391");
+    let f = e.core.orders_flow(&acc).unwrap();
+    assert!(f["chats"].is_null() && f["to_confirm"].is_null() && f["payments"].is_null(), "{f}");
+}
+
+#[test]
+fn customers_are_found_by_any_way_of_writing_a_bahrain_number() {
+    let e = setup();
+    let t = &e.owner_token;
+    let c: amwapos_core::customers::CustomerInput =
+        serde_json::from_value(json!({ "name": "Mariam", "phone": "3311 2233", "active": true })).unwrap();
+    e.core.customer_save(t, None, c).unwrap();
+    for q in ["33112233", "+973 3311 2233", "0097333112233", "973-3311-2233"] {
+        let r = e.core.customers_search(t, Some(q.into()), false, None).unwrap();
+        assert_eq!(r.len(), 1, "{q}");
+    }
+}

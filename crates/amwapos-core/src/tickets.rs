@@ -380,6 +380,57 @@ impl AppCore {
         })
     }
 
+    /// The order journey at a glance, for the guide bar on the order pages:
+    /// chats to read, orders to confirm, orders to pack, on the way, and
+    /// payments to check. A step this person may not see (or whose module is
+    /// off) is null, so the bar shows only what they can act on.
+    pub fn orders_flow(&self, token: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        let f = self.features()?;
+        let wa = f.is_on("orders.whatsapp_ai") && ["orders.manage", "whatsapp.manage", "whatsapp.send"].iter().any(|p| s.has(p));
+        let orders = f.is_on("orders.digital") && (s.has("orders.manage") || s.has("pos.sell"));
+        let drops = ["deliveries.manage", "deliveries.view", "pos.sell"].iter().any(|p| s.has(p));
+        let pay = s.has("whatsapp.manage") || s.has("payments.review");
+        self.db.read(|c| {
+            let n = |sql: &str, p: &[&dyn rusqlite::ToSql]| -> AppResult<i64> { Ok(c.query_row(sql, p, |r| r.get(0))?) };
+            let branch = crate::branches::list_scope(c, &s)?;
+            let chats = if wa {
+                Some(n("SELECT COUNT(*) FROM wa_order_sessions WHERE state IN ('collecting','clarifying','ready')", &[])?)
+            } else {
+                None
+            };
+            let waiting = if wa {
+                Some(n("SELECT COUNT(*) FROM wa_order_sessions WHERE state IN ('collecting','clarifying','ready') AND handled=0", &[])?)
+            } else {
+                None
+            };
+            let to_confirm = if orders {
+                Some(n("SELECT COUNT(*) FROM digital_orders WHERE status='draft' AND (?1 IS NULL OR branch_id=?1)", &[&branch])?)
+            } else {
+                None
+            };
+            let (to_pack, out) = if drops {
+                let sc = scope(c, &s)?;
+                let base = "FROM delivery_orders d WHERE (?1 IS NULL OR d.branch_id IS NULL OR d.branch_id=?1) AND (?2 IS NULL OR d.assigned_user_id=?2)";
+                let pack = n(&format!("SELECT COUNT(*) {base} AND d.status IN ('pending','preparing')"), &[&sc.branch, &sc.only_assigned])?;
+                let ready = if orders && sc.only_assigned.is_none() {
+                    n("SELECT COUNT(*) FROM digital_orders WHERE status='confirmed' AND (?1 IS NULL OR branch_id=?1)", &[&sc.branch])?
+                } else {
+                    0
+                };
+                (Some(pack + ready), Some(n(&format!("SELECT COUNT(*) {base} AND d.status='dispatched'"), &[&sc.branch, &sc.only_assigned])?))
+            } else {
+                (None, None)
+            };
+            let payments = if pay {
+                Some(n("SELECT COUNT(*) FROM payment_reviews WHERE status IN ('pending','matched','mismatch','needs_review')", &[])?)
+            } else {
+                None
+            };
+            Ok(json!({ "chats": chats, "waiting": waiting, "to_confirm": to_confirm, "to_pack": to_pack, "out": out, "payments": payments }))
+        })
+    }
+
     /// One ticket with everything the sheet shows: lines, drop, payments,
     /// screenshots, notices, and what this person may do next.
     pub fn ticket_get(&self, token: &str, id: &str) -> AppResult<Value> {

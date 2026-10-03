@@ -13,6 +13,7 @@ import { formatShort } from "../lib/time";
 import { Banner, Button, Checkbox, Chip, Empty, Field, Modal, TextInput } from "../components/ui";
 import { t } from "../i18n";
 import { codeLabel } from "../i18n/codes";
+import { useConfirmWithWarnings } from "./orderConfirm";
 
 const CHANNELS: OrderChannel[] = ["phone", "whatsapp", "web", "other"];
 const PAY: OrderPaymentState[] = ["unpaid", "recorded", "screenshot_pending"];
@@ -290,6 +291,8 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
   const [editing, setEditing] = useState<DigitalOrder | null | "new">(null);
   const [error, setError] = useState<string | null>(null);
   const [ops] = useState(() => new Map<string, string>());
+  const [cancelling, setCancelling] = useState<DigitalOrder | null>(null);
+  const warn = useConfirmWithWarnings<DigitalOrder>();
   const manage = has("orders.manage");
   const load = () =>
     api.orders
@@ -374,7 +377,11 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
                 <Button size="sm" onClick={() => setEditing(o)}>
                   {t("Edit")}
                 </Button>
-                <Button size="sm" variant="primary" onClick={() => act(() => api.orders.confirm(o.order_id))}>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => act(() => warn.confirm((ack) => api.orders.confirm(o.order_id, ack)))}
+                >
                   {t("Confirm")}
                 </Button>
               </>
@@ -394,7 +401,7 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
                     </option>
                   ))}
                 </select>
-                <Button size="sm" variant="danger-outline" onClick={() => act(() => api.orders.cancel(o.order_id))}>
+                <Button size="sm" variant="danger-outline" onClick={() => setCancelling(o)}>
                   {t("Cancel order")}
                 </Button>
               </>
@@ -407,6 +414,33 @@ export function OrdersList({ onConverted }: { onConverted?: (c: Cart) => void })
           </div>
         </div>
       ))}
+      {warn.dialog}
+      {cancelling ? (
+        <Modal
+          title={t("Cancel order {0}?", cancelling.order_number)}
+          size="sm"
+          onClose={() => setCancelling(null)}
+          footer={
+            <>
+              <Button onClick={() => setCancelling(null)}>{t("Keep the order")}</Button>
+              <Button
+                variant="danger"
+                className="right"
+                data-testid="order-cancel-confirm"
+                onClick={() => {
+                  const o = cancelling;
+                  setCancelling(null);
+                  void act(() => api.orders.cancel(o.order_id));
+                }}
+              >
+                {t("Cancel order")}
+              </Button>
+            </>
+          }
+        >
+          {t("Any items held for it go back on sale. The customer is not messaged automatically.")}
+        </Modal>
+      ) : null}
       {editing ? (
         <OrderEditor
           order={editing === "new" ? null : editing}

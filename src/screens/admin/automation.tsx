@@ -23,6 +23,7 @@ import type {
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { FeatureGate, useFeature } from "../../components/FeatureGate";
+import { OrderFlowBar } from "../../components/OrderFlow";
 import { WaQr } from "../../components/WaQr";
 import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, Tabs, TextInput } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
@@ -1478,8 +1479,10 @@ export function PaymentReviewsPage() {
   return (
     <div>
       <PageHeader
-        title={t("Payment Reviews")}
-        subtitle={t("BenefitPay and bank transfer screenshots compared with the amount you expect.")}
+        title={t("Payment checks")}
+        subtitle={t(
+          "Customers' BenefitPay and bank transfer screenshots, next to the amount you expect. Check your bank, then accept or reject.",
+        )}
         actions={
           <Button icon={<Upload size={16} />} onClick={() => setUpload(true)}>
             {t("Upload screenshot")}
@@ -1487,6 +1490,7 @@ export function PaymentReviewsPage() {
         }
       />
       <FeatureGate feature="ocr.payment_screenshots">
+        <OrderFlowBar />
         <div className="col gap-16">
           <Banner tone="warning" title={t("A screenshot is not proof of payment")}>
             {t(
@@ -1497,13 +1501,18 @@ export function PaymentReviewsPage() {
             <Banner tone="info">{t("OCR is switched off: screenshots wait for a person to read the amount.")}</Banner>
           ) : null}
           <div className="filters">
-            {["open", "ocr_match", "likely_match", "mismatch", "needs_review", "confirmed", "rejected", "all"].map(
-              (s) => (
-                <button key={s} className={`filter-chip ${status === s ? "active" : ""}`} onClick={() => setStatus(s)}>
-                  {s === "open" ? t("Open") : s === "all" ? t("All") : REVIEW_STATUS[s]()}
-                </button>
-              ),
-            )}
+            {(
+              [
+                ["open", t("To check")],
+                ["confirmed", t("Accepted")],
+                ["rejected", t("Rejected")],
+                ["all", t("All")],
+              ] as const
+            ).map(([k, label]) => (
+              <button key={k} className={`filter-chip ${status === k ? "active" : ""}`} onClick={() => setStatus(k)}>
+                {label}
+              </button>
+            ))}
           </div>
           {error ? <Banner tone="danger">{error}</Banner> : null}
           <DataTable<PaymentReview>

@@ -497,6 +497,7 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("receipts.pdf", "file export for the page"),
     ("whatsapp.media", "binary attachment"),
     ("tickets.counts", "the till's Send badge"),
+    ("orders.flow", "the order pages' guide bar"),
     ("tickets.record_payment", "money is recorded by a person on the ticket sheet, at the till or the door"),
     ("tickets.unable", "a rider or cashier says why a drop failed, on the ticket sheet"),
     ("tickets.not_delivered", "refunds a sale and moves stock; a manager closes it on the ticket sheet"),

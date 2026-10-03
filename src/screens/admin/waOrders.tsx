@@ -26,6 +26,10 @@ import { formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
 import { formatDateTime, relative } from "../../lib/time";
 import { t, tb } from "../../i18n";
 import { InlineNumber, ProductPick } from "./automation";
+import { OrderFlowBar } from "../../components/OrderFlow";
+import { useConfirmWithWarnings } from "../orderConfirm";
+import { payLabel } from "../pos/SendLoop";
+import type { PayState } from "../../api/types";
 
 type Filter = "open" | "attention" | "all";
 
@@ -60,6 +64,156 @@ const CUSTOMER_LABEL: Record<string, () => string> = {
   provisional: () => t("New number"),
   ambiguous: () => t("Several customers match"),
 };
+/** What happened, in plain words (unknown kinds fall back to their name). */
+const EVENT_LABEL: Record<string, () => string> = {
+  session_started: () => t("Conversation started"),
+  line_added: () => t("Item added from the message"),
+  line_resolved: () => t("Item matched to a product"),
+  line_qty: () => t("Quantity changed"),
+  line_removed: () => t("Item removed"),
+  remove_not_found: () => t("Asked to remove an item that is not in the order"),
+  skipped_locked_line: () => t("Left an item a person set alone"),
+  address: () => t("Address read from the message"),
+  customer_cancelled: () => t("Customer asked to cancel"),
+  staff_line: () => t("Item changed by staff"),
+  staff_customer: () => t("Customer chosen by staff"),
+  staff_confirmed: () => t("Order confirmed"),
+  staff_cancelled: () => t("Order cancelled"),
+  staff_takeover: () => t("Staff took over the chat"),
+  message_during_takeover: () => t("Message kept for staff (chat taken over)"),
+  late_message: () => t("Late message kept for staff"),
+  other_open_order: () => t("Customer has another open order"),
+  closed_idle: () => t("Closed after no reply"),
+  closed_order_not_draft: () => t("Closed: the order was already confirmed"),
+  ai_result_dropped: () => t("AI suggestion ignored (the chat had changed)"),
+  reply_queued: () => t("Reply sent"),
+};
+const eventLabel = (k: string) => EVENT_LABEL[k]?.() ?? k.replace(/_/g, " ");
+
+export interface NextStep {
+  /** Card id to scroll to, or "confirm" to open the confirmation. */
+  target: string | null;
+  title: string;
+  text: string;
+  action?: string;
+  done?: boolean;
+}
+
+/** The one thing to do next on a WhatsApp order, for a first-time user. */
+export function waNextStep(d: WaOrderDetail): NextStep | null {
+  const s = d.session;
+  const o = d.order;
+  if (s.state === "cancelled" || s.state === "closed") return null;
+  if (s.state === "confirmed" || (o && o.status !== "draft")) {
+    return {
+      target: null,
+      done: true,
+      title: t("Order confirmed"),
+      text: t("The items are held for it. Ring it up at the till, then pack and send it from Deliveries."),
+    };
+  }
+  if (s.staff_takeover) {
+    return {
+      target: "wa-reply",
+      title: t("You are handling this chat"),
+      text: t("New messages no longer change the order. Reply to the customer yourself."),
+      action: t("Reply"),
+    };
+  }
+  if (!o || !o.lines.length) {
+    return {
+      target: "wa-reply",
+      title: t("Waiting for the items"),
+      text: t("Nothing to order yet. Ask the customer what they would like."),
+      action: t("Reply"),
+    };
+  }
+  const questions = (s.questions ?? []).filter((q) => q.line_no && (q.options ?? []).length).length;
+  if (questions) {
+    return {
+      target: "wa-questions",
+      title: t("Choose the right product"),
+      text:
+        questions === 1
+          ? t("One item could be more than one product. Tap the right one.")
+          : t("{0} items could be more than one product. Tap the right one.", questions),
+      action: t("Show me"),
+    };
+  }
+  const missing = o.lines.filter((l) => !l.product_id).length;
+  if (missing) {
+    return {
+      target: "wa-order-lines",
+      title: missing === 1 ? t("Find one product") : t("Find {0} products", missing),
+      text: t("Some words did not match a product. Tap Choose product on those lines."),
+      action: t("Show me"),
+    };
+  }
+  const out = o.lines.filter((l) => l.resolution === "unavailable").length;
+  if (out) {
+    return {
+      target: "wa-order-lines",
+      title: out === 1 ? t("Replace an item that is out of stock") : t("Replace {0} items that are out of stock", out),
+      text: t("Pick one of the items in stock instead, or remove it."),
+      action: t("Show me"),
+    };
+  }
+  if (s.delivery_mode === "unknown") {
+    return {
+      target: "wa-delivery",
+      title: t("Delivery or pickup?"),
+      text: t("The customer has not said. Ask them, or choose it below."),
+      action: t("Show me"),
+    };
+  }
+  if (s.delivery_mode === "delivery" && s.fee_state !== "resolved") {
+    return {
+      target: "wa-delivery",
+      title: t("Complete the address"),
+      text: t("Add the block or choose a delivery zone so the fee is known."),
+      action: t("Show me"),
+    };
+  }
+  if (s.customer_state === "ambiguous") {
+    return {
+      target: "wa-customer",
+      title: t("Which customer is this?"),
+      text: t("More than one customer has this number. Choose the right one."),
+      action: t("Show me"),
+    };
+  }
+  return {
+    target: "confirm",
+    title: t("Ready to confirm"),
+    text: t("Everything is matched. Send the customer the total, then confirm the order."),
+    action: t("Confirm order"),
+  };
+}
+
+function NextStepCard({ step, onConfirm }: { step: NextStep; onConfirm: () => void }) {
+  const go = () => {
+    if (step.target === "confirm") return onConfirm();
+    if (step.target)
+      document.querySelector(`[data-testid="${step.target}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  return (
+    <div className={`next-step ${step.done ? "done" : ""}`} data-testid="wa-next-step" role="status">
+      <span className="ns-num" aria-hidden>
+        {step.done ? "✓" : "→"}
+      </span>
+      <div className="grow">
+        <div className="ns-title">{step.title}</div>
+        <div className="ns-text">{step.text}</div>
+      </div>
+      {step.action && step.target ? (
+        <Button variant={step.target === "confirm" ? "primary" : "default"} onClick={go}>
+          {step.action}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 const PRIORITY_REASON: Record<string, () => string> = {
   complaint: () => t("Complaint"),
   urgent: () => t("Asked for urgency"),
@@ -82,10 +236,11 @@ export function WhatsAppOrdersPage() {
       <PageHeader
         title={t("WhatsApp orders")}
         subtitle={t(
-          "Chats on the linked WhatsApp number, read into draft orders with real products and prices. You answer, correct and confirm; nothing is charged or sent automatically.",
+          "Customers' WhatsApp messages become draft orders with real products and prices. Follow the next step on each chat. Nothing is sent or charged until you do it.",
         )}
       />
       <FeatureGate feature="orders.whatsapp_ai">
+        <OrderFlowBar />
         <div className="col gap-16">
           <WaMetrics />
           <div className="wa-orders">
@@ -162,15 +317,20 @@ function WaMetrics() {
   const { data } = useLoad(() => api.waOrders.metrics(), []);
   if (!data || !data.messages_processed) return null;
   return (
-    <div className="row small" style={{ flexWrap: "wrap", gap: 16 }} data-testid="wa-metrics">
-      <span>{t("Messages read: {0}", data.messages_processed)}</span>
-      <span>{t("Draft orders: {0}", data.drafts)}</span>
-      <span>{t("Confirmed: {0}", data.confirmed)}</span>
-      <span>{t("Items matched automatically: {0}%", data.product_resolution_pct)}</span>
-      <span>{t("Needed a question: {0}%", data.clarification_rate_pct)}</span>
-      <span>{t("Staff corrections: {0}", data.staff_overrides)}</span>
-      {data.failed_jobs ? <span className="neg-num">{t("Failed readings: {0}", data.failed_jobs)}</span> : null}
-    </div>
+    <>
+      {data.failed_jobs ? <Banner tone="warning">{t("Failed readings: {0}", data.failed_jobs)}</Banner> : null}
+      <details className="small" data-testid="wa-metrics">
+        <summary className="muted">{t("Reading statistics")}</summary>
+        <div className="row" style={{ flexWrap: "wrap", gap: 16, marginTop: 8 }}>
+          <span>{t("Messages read: {0}", data.messages_processed)}</span>
+          <span>{t("Draft orders: {0}", data.drafts)}</span>
+          <span>{t("Confirmed: {0}", data.confirmed)}</span>
+          <span>{t("Items matched automatically: {0}%", data.product_resolution_pct)}</span>
+          <span>{t("Needed a question: {0}%", data.clarification_rate_pct)}</span>
+          <span>{t("Staff corrections: {0}", data.staff_overrides)}</span>
+        </div>
+      </details>
+    </>
   );
 }
 
@@ -185,6 +345,7 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
   const [cancel, setCancel] = useState(false);
   const [sending, setSending] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
+  const warn = useConfirmWithWarnings<WaOrderDetail>();
   useEffect(() => {
     const iv = window.setInterval(() => void reload(), 6000);
     return () => window.clearInterval(iv);
@@ -207,9 +368,11 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
   const flags = async (a: Parameters<typeof api.waOrders.flags>[1]) =>
     done(await act.run(() => api.waOrders.flags(id, a)));
   const replyText = reply ?? data.suggested_reply;
+  const next = waNextStep(data);
 
   return (
     <div className="col gap-16" data-testid="wa-order-detail">
+      {next ? <NextStepCard step={next} onConfirm={() => setConfirm(true)} /> : null}
       <div className="card card-pad col gap-8">
         <div className="row" style={{ flexWrap: "wrap" }}>
           <h3 className="grow">
@@ -238,7 +401,7 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
               onClick={() => void flags({ takeover: !s.staff_takeover })}
               data-testid="wa-takeover"
             >
-              {s.staff_takeover ? t("Let the reader continue") : t("Take over this chat")}
+              {s.staff_takeover ? t("Hand back to automatic reading") : t("Take over this chat")}
             </Button>
             <Button size="sm" onClick={() => void flags({ handled: !s.handled })}>
               {s.handled ? t("Mark not handled") : t("Mark handled")}
@@ -265,10 +428,7 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
               <div dir="auto" style={{ whiteSpace: "pre-wrap" }}>
                 {m.text ?? (m.kind === "image" ? t("Image") : m.kind)}
               </div>
-              <div className="tiny">
-                {formatDateTime(m.at)}
-                {m.intent ? ` · ${m.intent.replace(/_/g, " ")}` : ""}
-              </div>
+              <div className="tiny">{formatDateTime(m.at)}</div>
             </div>
           ))}
         </div>
@@ -435,7 +595,7 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
                     <strong>{formatMoney(o.total_minor)}</strong>
                   </dd>
                   <dt>{t("Payment")}</dt>
-                  <dd>{o.payment_state}</dd>
+                  <dd>{payLabel(o.payment_state as PayState)}</dd>
                 </dl>
                 <div className="tiny">{t("Prices come from the POS at the moment of reading.")}</div>
               </div>
@@ -550,7 +710,8 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
             <ul className="plain-list tiny" data-testid="wa-events">
               {(data.events ?? []).map((e, i) => (
                 <li key={i}>
-                  {formatDateTime(e.at)} · {e.kind.replace(/_/g, " ")} · {e.source}
+                  {formatDateTime(e.at)} · {eventLabel(e.kind)} ·{" "}
+                  {e.source === "ai" ? t("AI") : e.source === "rules" ? t("Automatic") : t("Staff")}
                   {e.data && typeof e.data === "object" && "reasons" in (e.data as object)
                     ? ` · ${((e.data as { reasons: string[] }).reasons ?? []).join("; ")}`
                     : ""}
@@ -582,20 +743,20 @@ function OrderDetail({ id, name, onChanged }: { id: string; name: string | null;
           error={act.error}
           onCancel={() => setConfirm(false)}
           onConfirm={async () => {
-            const r = done(await act.run(() => api.waOrders.confirm(id, s.revision)));
-            if (r) {
-              setConfirm(false);
-              toast("success", t("Order {0} confirmed", o.order_number));
-            }
+            // Close first: a stock or price warning opens its own dialog.
+            setConfirm(false);
+            const r = done(await act.run(() => warn.confirm((ack) => api.waOrders.confirm(id, s.revision, ack))));
+            if (r) toast("success", t("Order {0} confirmed", o.order_number));
           }}
         >
           {t(
-            "Order {0} for {1} becomes a confirmed digital order. No payment is taken and no stock moves now: a cashier loads it into a sale as usual.",
+            "Order {0} for {1} is confirmed and its items are held for 48 hours. No payment is taken now: a cashier rings it up at the till as usual.",
             o.order_number,
             formatMoney(o.total_minor),
           )}
         </Confirm>
       ) : null}
+      {warn.dialog}
       {cancel ? (
         <Confirm
           title={t("Cancel order")}

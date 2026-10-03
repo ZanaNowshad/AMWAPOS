@@ -382,6 +382,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         // the Send loop (tickets and drops)
         "tickets.list" => out(core.tickets_list(tk()?, all(&args)?)),
         "tickets.counts" => out(core.tickets_counts(tk()?)),
+        "orders.flow" => out(core.orders_flow(tk()?)),
         "tickets.get" => out(core.ticket_get(tk()?, &req::<String>(&args, "ticket_id")?)),
         "tickets.record_payment" => out(core.ticket_record_payment(tk()?, all(&args)?)),
         "tickets.unable" => out(core.ticket_unable(tk()?, &req::<String>(&args, "delivery_id")?, &req::<String>(&args, "reason")?)),

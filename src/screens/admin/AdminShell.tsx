@@ -107,6 +107,37 @@ const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
+    // The order journey, in the order it happens: message → order → delivery → payment.
+    group: t("ORDERS & DELIVERY"),
+    items: [
+      {
+        path: "whatsapp-orders",
+        label: t("WhatsApp orders"),
+        icon: ShoppingBag,
+        perm: ["orders.manage", "whatsapp.manage", "whatsapp.send"],
+        element: WhatsAppOrdersPage,
+        feature: "orders.whatsapp_ai",
+      },
+      {
+        path: "orders",
+        label: t("Orders"),
+        icon: ClipboardList,
+        perm: ["orders.manage", "pos.sell"],
+        element: OrdersPage,
+        feature: "orders.digital",
+      },
+      { path: "deliveries", label: t("Deliveries"), icon: Truck, perm: "deliveries.view", element: DeliveriesPage },
+      {
+        path: "payment-reviews",
+        label: t("Payment checks"),
+        icon: BadgeCheck,
+        perm: "whatsapp.manage",
+        element: PaymentReviewsPage,
+      },
+      { path: "customers", label: t("Customers"), icon: Users, perm: "customers.view", element: CustomersPage },
+    ],
+  },
+  {
     group: t("SALES"),
     items: [
       { path: "sales", label: t("Sales"), icon: ShoppingCart, perm: "sales.view", element: SalesPage },
@@ -180,21 +211,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: t("CUSTOMERS"),
-    items: [
-      { path: "customers", label: t("Customers"), icon: Users, perm: "customers.view", element: CustomersPage },
-      { path: "deliveries", label: t("Deliveries"), icon: Truck, perm: "deliveries.view", element: DeliveriesPage },
-      {
-        path: "orders",
-        label: t("Digital orders"),
-        icon: ClipboardList,
-        perm: ["orders.manage", "pos.sell"],
-        element: OrdersPage,
-        feature: "orders.digital",
-      },
-    ],
-  },
-  {
     group: t("BUSINESS"),
     items: [
       {
@@ -220,21 +236,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: t("AUTOMATION"),
     items: [
       { path: "whatsapp", label: t("WhatsApp"), icon: MessageCircle, perm: "whatsapp.manage", element: WhatsAppPage },
-      {
-        path: "whatsapp-orders",
-        label: t("WhatsApp orders"),
-        icon: ShoppingBag,
-        perm: ["orders.manage", "whatsapp.manage", "whatsapp.send"],
-        element: WhatsAppOrdersPage,
-        feature: "orders.whatsapp_ai",
-      },
-      {
-        path: "payment-reviews",
-        label: t("Payment Reviews"),
-        icon: BadgeCheck,
-        perm: "whatsapp.manage",
-        element: PaymentReviewsPage,
-      },
       { path: "ai", label: t("AI Assistant"), icon: Bot, perm: "ai.use", element: AiAssistantPage },
     ],
   },

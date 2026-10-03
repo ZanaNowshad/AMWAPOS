@@ -209,6 +209,9 @@ test("WhatsApp order: chat → draft with a question → staff answer, reply, co
   await expect(row).toBeVisible({ timeout: 20_000 });
   await row.click();
   const detail = page.getByTestId("wa-order-detail");
+  // The journey bar and the next step tell a first-time user what to do.
+  await expect(page.getByTestId("order-flow")).toBeVisible();
+  await expect(detail.getByTestId("wa-next-step")).toContainText("Choose the right product");
   // "coke" fits two sizes: a real question with real options, not a guess.
   await expect(detail.getByTestId("wa-questions")).toContainText("Which Coca-Cola size");
   await expect(detail.getByTestId("wa-delivery")).toContainText("Delivery fee");
@@ -219,6 +222,7 @@ test("WhatsApp order: chat → draft with a question → staff answer, reply, co
     .click();
   await expect(detail.getByTestId("wa-questions")).toHaveCount(0);
   await expect(detail.getByTestId("wa-order-lines")).toContainText("Coca-Cola Original 1.5 L");
+  await expect(detail.getByTestId("wa-next-step")).toContainText("Ready to confirm");
 
   // Staff send a reply only when they press Send.
   expect((await wa(page, { action: "sent" })).sent).toEqual([]);
@@ -234,6 +238,7 @@ test("WhatsApp order: chat → draft with a question → staff answer, reply, co
   await detail.getByTestId("wa-confirm").click();
   await page.getByRole("dialog").getByRole("button", { name: "Confirm order" }).click();
   await expect(detail).toContainText("Confirmed");
+  await expect(detail.getByTestId("wa-next-step")).toContainText("Order confirmed");
   const orders = await rpc(page, "orders.list", { status: "confirmed" }, t);
   const o = orders.find((x: { channel: string }) => x.channel === "whatsapp");
   expect(o.payment_state).toBe("unpaid");

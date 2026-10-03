@@ -37,6 +37,7 @@ import { t } from "../../i18n";
 import { methodLabel } from "./labels";
 import { WhatsAppSendButton, fileToBase64 } from "../admin/automation";
 import { AddressFields, type AddrValue, addrFrom, addrPayload, emptyAddr } from "../../components/AddressFields";
+import { useConfirmWithWarnings } from "../orderConfirm";
 
 /** Places a drop goes to (same list as the backend lexicon). */
 export const AREAS = [
@@ -103,9 +104,9 @@ export function statusLabel(s: string): string {
     case "pending":
       return t("New");
     case "preparing":
-      return t("Prep");
+      return t("Packing");
     case "dispatched":
-      return t("Out");
+      return t("On the way");
     case "delivered":
       return t("Delivered");
     case "cancelled":
@@ -119,9 +120,9 @@ export function statusLabel(s: string): string {
 function stepLabel(s: string): string {
   switch (s) {
     case "preparing":
-      return t("Prep");
+      return t("Start packing");
     case "dispatched":
-      return t("Out");
+      return t("Send out");
     case "delivered":
       return t("Delivered");
     case "cancelled":
@@ -534,8 +535,8 @@ export function SendRail({
     void load();
   }, [load, reloadKey]);
   const tabs: { key: RailTab; label: string; n?: number }[] = [
-    { key: "now", label: t("Now"), n: counts?.now },
-    { key: "out", label: t("Out"), n: counts?.out },
+    { key: "now", label: t("To do"), n: counts?.now },
+    { key: "out", label: t("On the way"), n: counts?.out },
     { key: "done", label: t("Done today"), n: counts?.done },
   ];
   return (
@@ -618,9 +619,9 @@ export function SendRail({
         {rows && rows.length === 0 ? (
           <div className="rail-empty" data-testid="rail-empty">
             {tab === "now"
-              ? t("No sends. On PAY, tap Send.")
+              ? t("Nothing to send. To deliver a sale, tap Send on the payment screen.")
               : tab === "out"
-                ? t("Nothing is out.")
+                ? t("Nothing is on the way.")
                 : t("Nothing closed today.")}
           </div>
         ) : null}
@@ -655,6 +656,7 @@ export function TicketSheet({
   const [deliverAsk, setDeliverAsk] = useState(false);
   const [thenDeliver, setThenDeliver] = useState(false);
   const [ringOp] = useState(newOperationId);
+  const warn = useConfirmWithWarnings<unknown>();
   const { error, handle, setError } = useErr();
   const load = useCallback(async () => {
     try {
@@ -708,7 +710,11 @@ export function TicketSheet({
     setBusy(true);
     setError(null);
     try {
-      if (tk.status === "draft") await api.orders.confirm(tk.order_id);
+      if (tk.status === "draft") {
+        const id = tk.order_id;
+        // Short stock or a changed total is explained, not just refused.
+        if ((await warn.confirm((ack) => api.orders.confirm(id, ack))) === undefined) return;
+      }
       const c = await api.orders.convert(tk.order_id, ringOp);
       onRungUp?.(c);
     } catch (e) {
@@ -965,6 +971,7 @@ export function TicketSheet({
           }}
         />
       ) : null}
+      {warn.dialog}
       {deliverAsk && did ? (
         <Modal
           title={t("Paid?")}

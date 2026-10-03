@@ -308,6 +308,22 @@ export interface TicketFilter {
   customer_id?: string | null;
 }
 
+/** What a person accepts when confirming despite a warning. */
+export interface ConfirmAck {
+  acknowledge_shortage?: boolean;
+  acknowledge_price_change?: boolean;
+}
+
+/** Counts for the order journey bar; null = not this person's step. */
+export interface OrderFlow {
+  chats: number | null;
+  waiting: number | null;
+  to_confirm: number | null;
+  to_pack: number | null;
+  out: number | null;
+  payments: number | null;
+}
+
 export interface TicketCounts {
   badge: number;
   now: number;
