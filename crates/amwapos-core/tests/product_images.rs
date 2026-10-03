@@ -334,7 +334,7 @@ fn automatic_discovery_is_on_by_default_for_a_new_installation() {
     let e = normal_env();
     let o = e.core.product_image_overview(&e.owner_token).unwrap();
     assert_eq!((o["enabled"].as_bool(), o["availability"].as_str()), (Some(true), Some("active")), "{o}");
-    assert_eq!(o["sources"], json!({ "open_food_facts": true, "bing": true, "google": false }));
+    assert_eq!(o["sources"], json!({ "bing_thumbnail": true, "open_food_facts": true, "bing": true, "google": false }));
     // New product without a picture: queued for its one lookup, straight away.
     let p = create(&e, "Rani Float Mango 240ml", "5449000000996", None);
     assert_eq!(p.row.auto_image_status, "pending");
@@ -372,13 +372,13 @@ fn switched_off_discovery_queues_and_claims_nothing_but_manual_pictures_still_wo
 #[test]
 fn no_usable_source_means_no_discovery() {
     let e = normal_env();
-    let cfg = json!({ "enabled": true, "open_food_facts": false, "bing": false, "google": true, "google_cx": "", "region": "bh", "language": "en" });
+    let cfg = json!({ "enabled": true, "bing_thumbnail": false, "open_food_facts": false, "bing": false, "google": true, "google_cx": "", "region": "bh", "language": "en" });
     let o = e.core.product_image_configure(&e.owner_token, serde_json::from_value(cfg).unwrap(), None).unwrap();
     assert_eq!((o["availability"].as_str(), o["google_ready"].as_bool()), (Some("no_sources"), Some(false)), "{o}");
     let p = create(&e, "Nothing to ask", "6000000000031", None);
     assert_eq!(p.row.auto_image_status, "not_attempted");
     // Google with its id and key counts as a source.
-    let cfg = json!({ "enabled": true, "open_food_facts": false, "bing": false, "google": true, "google_cx": "abc:1", "region": "bh", "language": "en" });
+    let cfg = json!({ "enabled": true, "bing_thumbnail": false, "open_food_facts": false, "bing": false, "google": true, "google_cx": "abc:1", "region": "bh", "language": "en" });
     let o = e.core.product_image_configure(&e.owner_token, serde_json::from_value(cfg).unwrap(), Some("k-123".into())).unwrap();
     assert_eq!(o["availability"], "active");
 }

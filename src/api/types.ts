@@ -652,6 +652,8 @@ export type DiscoveryAvailability = "active" | "switched_off" | "disabled_by_adm
 export interface ImageSearchSettings {
   /** Find pictures automatically for new products (on by default). */
   enabled: boolean;
+  /** Default: barcode + name on Bing's thumbnail address (tse1.mm.bing.net/th?q=…). */
+  bing_thumbnail: boolean;
   open_food_facts: boolean;
   bing: boolean;
   google: boolean;
@@ -667,7 +669,7 @@ export interface ImageOverview {
   environment_disabled: boolean;
   /** Google is switched on and has its engine id and key. */
   google_ready: boolean;
-  sources: { open_food_facts: boolean; bing: boolean; google: boolean };
+  sources: { bing_thumbnail?: boolean; open_food_facts: boolean; bing: boolean; google: boolean };
   counts: Partial<Record<AutoImageStatus, number>>;
   with_image: number;
   never_searched: number;

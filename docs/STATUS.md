@@ -306,6 +306,12 @@ Precedence: uploaded picture > automatically found picture > monogram placeholde
 - One product at a time, 3 s apart, 30 s idle poll. Product creation never waits for a source.
 
 **Sources, in priority order** (`crates/amwapos-hub/src/image_worker.rs`):
+0. **Default method: barcode + name on Bing's thumbnail address** (`bing_thumbnail`, on by default, no key). The query is "<barcode> <name>" (or name + category without a barcode), form-encoded into `https://tse1.mm.bing.net/th?q=<query>`. For example, "6767647641365 10 Colour Flame Candles" becomes `th?q=6767647641365+10+Colour+Flame+Candles`. No search page is read: that address is the single candidate, and Bing serves the picture it associates with the search when it is downloaded.
+   - The download goes through the same SSRF-guarded fetcher and image checks (readable image, at least 200 px, not a strip).
+   - The query is the identity, so no white-packshot frame is required.
+   - When it gives a usable picture, that picture is used and no other source is asked (tested).
+   - A tiny placeholder or an outage falls through to the sources below. An outage is a temporary error, never `not_found` (tested).
+   - It is unofficial: Bing may change or limit it, and the picture is Bing's best guess for the words. A person can replace it at any time.
 1. **Open Food Facts.** `GET https://world.openfoodfacts.org/api/v2/product/<barcode>?fields=…`, only when the product has an 8–14 digit barcode. No region parameter. Its results carry exact-barcode evidence.
 2. **Bing images.** This is keyless, unofficial and best effort (the `bing-image-urls` approach). `GET https://www.bing.com/images/async` with:
    - `q`: the query text;

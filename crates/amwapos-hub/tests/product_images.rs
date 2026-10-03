@@ -16,7 +16,8 @@ use amwapos_core::catalog::{ProductCreate, ProductInput};
 use amwapos_core::product_images::ImageSearchSettings;
 use amwapos_core::service::{AppCore, MemorySecretStore};
 use amwapos_hub::image_worker::{
-    process_one, BingImages, Candidate, ImageSearchProvider, ImageWorker, OpenFoodFacts, SafeFetcher, SearchError, SearchQuery,
+    process_one, BingImages, BingThumbnail, Candidate, ImageSearchProvider, ImageWorker, OpenFoodFacts, SafeFetcher, SearchError,
+    SearchQuery,
 };
 use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
@@ -31,6 +32,8 @@ struct Fixture {
     hits: Arc<AtomicUsize>,
     bing_hits: Arc<AtomicUsize>,
     image_hits: Arc<AtomicUsize>,
+    /// Queries Bing's thumbnail address received (`q`, decoded).
+    thumb_queries: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 fn packshot() -> Vec<u8> {
@@ -105,6 +108,27 @@ async fn img(State(f): State<Fixture>, Path(name): Path<String>) -> Response {
     }
 }
 
+/// Bing's thumbnail address: one picture for the search in `q`. A lifestyle
+/// photo (no white frame) for the candles, an outage for "down", and a tiny
+/// placeholder for anything it does not know.
+async fn thumb(
+    State(f): State<Fixture>,
+    axum::extract::Query(p): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Response {
+    let q = p.get("q").cloned().unwrap_or_default();
+    f.thumb_queries.lock().unwrap().push(q.clone());
+    if q.contains("Candles") {
+        return ([(header::CONTENT_TYPE, "image/png")], dark_photo()).into_response();
+    }
+    if q.contains("down") {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+    let img = image::RgbaImage::from_pixel(40, 40, image::Rgba([200, 200, 200, 255]));
+    let mut out = Vec::new();
+    image::DynamicImage::ImageRgba8(img).write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).unwrap();
+    ([(header::CONTENT_TYPE, "image/png")], out).into_response()
+}
+
 async fn fixture() -> Fixture {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr: SocketAddr = listener.local_addr().unwrap();
@@ -113,11 +137,13 @@ async fn fixture() -> Fixture {
         hits: Arc::new(AtomicUsize::new(0)),
         bing_hits: Arc::new(AtomicUsize::new(0)),
         image_hits: Arc::new(AtomicUsize::new(0)),
+        thumb_queries: Arc::new(std::sync::Mutex::new(vec![])),
     };
     let app = Router::new()
         .route("/api/v2/product/{code}", get(product))
         .route("/img/{name}", get(img))
         .route("/images/async", get(bing))
+        .route("/th", get(thumb))
         // Bing after a format change: result markup, nothing readable.
         .route(
             "/broken/images/async",
@@ -367,4 +393,38 @@ async fn the_worker_never_runs_on_a_terminal() {
     let w = ImageWorker::new(terminal.clone());
     w.ensure();
     assert!(!w.running(), "terminals receive pictures from the hub");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_default_method_is_barcode_and_name_on_bings_thumbnail_address_and_its_picture_is_used() {
+    let fx = fixture().await;
+    let e = env();
+    let all = |fx: &Fixture| -> Vec<Arc<dyn ImageSearchProvider>> {
+        vec![Arc::new(BingThumbnail::new(&fx.base)), Arc::new(OpenFoodFacts::new(&fx.base)), Arc::new(BingImages::new(&fx.base))]
+    };
+    let fetcher = SafeFetcher::allowing_private_for_tests();
+    let pid = create(&e, "10 Colour Flame Candles", "6767647641365");
+    assert!(process_one(&e.core, &all(&fx), &fetcher).await.unwrap());
+    assert_eq!(fx.thumb_queries.lock().unwrap().clone(), vec!["6767647641365 10 Colour Flame Candles".to_string()]);
+    let (st, _, hash) = status(&e, &pid);
+    assert_eq!(st, "found");
+    assert!(hash.is_some());
+    let note = e.core.product_image_state(&e.t, &pid).unwrap().auto_image_note.unwrap();
+    assert_eq!(note["provider"], "bing_thumbnail");
+    assert_eq!(note["source_url"], format!("{}/th?q=6767647641365+10+Colour+Flame+Candles", fx.base));
+    // Its picture is the answer: no other source was asked.
+    assert_eq!((fx.hits.load(Ordering::SeqCst), fx.bing_hits.load(Ordering::SeqCst)), (0, 0));
+
+    // A placeholder too small to be a product picture: the next sources decide.
+    let milk = create(&e, "Almarai Fresh Milk 1L", "6281007031126");
+    assert!(process_one(&e.core, &all(&fx), &fetcher).await.unwrap());
+    let note = e.core.product_image_state(&e.t, &milk).unwrap().auto_image_note.unwrap();
+    assert_eq!(note["provider"], "open_food_facts", "{note}");
+
+    // Thumbnail outage: still found through the other sources, never "not found".
+    let down = create(&e, "Kiri Cream Cheese down", "3073781037025");
+    assert!(process_one(&e.core, &all(&fx), &fetcher).await.unwrap());
+    let (st, _, _) = status(&e, &down);
+    assert_eq!(st, "found");
+    assert_eq!(e.core.product_image_state(&e.t, &down).unwrap().auto_image_note.unwrap()["provider"], "bing_images");
 }

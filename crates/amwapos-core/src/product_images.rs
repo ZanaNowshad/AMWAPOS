@@ -175,6 +175,11 @@ pub struct ImageSearchSettings {
     /// Look for a picture automatically for new products created without
     /// one. On by default; turning it off stops all outside searches.
     pub enabled: bool,
+    /// The default method: barcode + product name sent as the query of
+    /// Bing's image thumbnail address (`https://tse1.mm.bing.net/th?q=…`),
+    /// which answers with one picture for that search. No key needed.
+    /// Asked first; a picture it returns is used.
+    pub bing_thumbnail: bool,
     /// Open Food Facts: exact barcode lookup, no key needed.
     pub open_food_facts: bool,
     /// Bing image results (the public results page, no key; the approach of
@@ -193,6 +198,7 @@ impl Default for ImageSearchSettings {
     fn default() -> Self {
         Self {
             enabled: true,
+            bing_thumbnail: true,
             open_food_facts: true,
             bing: true,
             google: false,
@@ -215,7 +221,7 @@ pub fn search_disabled_by_environment() -> bool {
 impl ImageSearchSettings {
     /// At least one source can run (Google needs its engine id and key).
     pub fn has_source(&self, google_key_set: bool) -> bool {
-        self.open_food_facts || self.bing || self.google_ready(google_key_set)
+        self.bing_thumbnail || self.open_food_facts || self.bing || self.google_ready(google_key_set)
     }
     pub fn google_ready(&self, google_key_set: bool) -> bool {
         self.google && !self.google_cx.trim().is_empty() && google_key_set
@@ -370,7 +376,7 @@ impl AppCore {
         if !cfg.enabled {
             return Ok(Availability::SwitchedOff);
         }
-        let key_set = if cfg.open_food_facts || cfg.bing { true } else { self.google_key_set()? };
+        let key_set = if cfg.bing_thumbnail || cfg.open_food_facts || cfg.bing { true } else { self.google_key_set()? };
         Ok(if cfg.has_source(key_set) { Availability::Active } else { Availability::NoSources })
     }
 
@@ -554,6 +560,7 @@ impl AppCore {
                 "environment_disabled": search_disabled_by_environment(),
                 "google_ready": cfg.google_ready(key_set),
                 "sources": {
+                    "bing_thumbnail": cfg.bing_thumbnail,
                     "open_food_facts": cfg.open_food_facts,
                     "bing": cfg.bing,
                     "google": cfg.google_ready(key_set),

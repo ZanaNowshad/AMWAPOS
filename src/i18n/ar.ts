@@ -3823,4 +3823,8 @@ export const AR: Record<string, string> = {
   "Replace an item that is out of stock": "استبدل صنفًا غير متوفر",
   "Replace {0} items that are out of stock": "استبدل {0} أصناف غير متوفرة",
   "Reading statistics": "إحصاءات القراءة",
+  "Bing picture for barcode + name (default, no key needed)":
+    "صورة من Bing حسب الباركود + الاسم (افتراضي، لا يحتاج مفتاحًا)",
+  'Asks Bing for one picture of the product\'s barcode and name, for example "6767647641365 10 Colour Flame Candles". When it gives a usable picture, that picture is used; otherwise the sources below are tried.':
+    'يطلب من Bing صورة واحدة لباركود المنتج واسمه، مثل "6767647641365 10 Colour Flame Candles". إذا أعطى صورة صالحة تُستخدم؛ وإلا تُجرَّب المصادر التالية.',
 };

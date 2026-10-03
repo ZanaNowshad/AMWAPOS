@@ -12,6 +12,9 @@
 //! only, and the next source is still asked. As soon as a source yields an
 //! accepted picture tied to the exact barcode, lower-priority sources are not
 //! asked at all; otherwise the best accepted picture across sources wins.
+//! * Default: barcode + product name as the query of Bing's image thumbnail
+//!   address (`https://tse1.mm.bing.net/th?q=<barcode>+<name>`). When it
+//!   returns a usable picture, that picture is used and nothing else is asked.
 //! * Open Food Facts: exact barcode lookup (no key). The strongest evidence.
 //! * Bing image results page (no key), the approach of `bing-image-urls`:
 //!   barcode + name, large white product photographs, configured market.
@@ -90,6 +93,10 @@ pub struct SearchQuery {
 #[async_trait]
 pub trait ImageSearchProvider: Send + Sync {
     fn name(&self) -> &'static str;
+    /// A picture this source returns is the answer: stop asking the others.
+    fn decisive(&self) -> bool {
+        false
+    }
     async fn search(&self, q: &SearchQuery) -> Result<Vec<Candidate>, SearchError>;
 }
 
@@ -175,6 +182,60 @@ impl ImageSearchProvider for OpenFoodFacts {
             }
         }
         Ok(out)
+    }
+}
+
+/// Provider name of the default method (see `BingThumbnail`).
+pub const BING_THUMBNAIL: &str = "bing_thumbnail";
+
+/// The default method: barcode + product name as the query of Bing's image
+/// thumbnail address. Nothing is searched or parsed here: the address itself
+/// is the candidate, e.g. "6767647641365 10 Colour Flame Candles" becomes
+/// `https://tse1.mm.bing.net/th?q=6767647641365+10+Colour+Flame+Candles`, and
+/// Bing serves the picture it associates with that search when it is
+/// fetched (through the same SSRF-guarded fetcher and image checks as every
+/// other source). Unofficial: Bing may change or limit it, so a failed
+/// download is transient and the other sources are still asked.
+pub struct BingThumbnail {
+    pub base: String,
+}
+
+impl BingThumbnail {
+    pub fn new(base: &str) -> Self {
+        Self { base: base.trim_end_matches('/').to_string() }
+    }
+}
+
+/// `<base>/th?q=<query>`, the query form-encoded (spaces become `+`).
+pub fn bing_thumbnail_url(base: &str, query: &str) -> String {
+    let words = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut u = reqwest::Url::parse(&format!("{}/th", base.trim_end_matches('/'))).expect("thumbnail base is a URL");
+    u.query_pairs_mut().append_pair("q", &words);
+    u.to_string()
+}
+
+#[async_trait]
+impl ImageSearchProvider for BingThumbnail {
+    fn name(&self) -> &'static str {
+        BING_THUMBNAIL
+    }
+    fn decisive(&self) -> bool {
+        true
+    }
+    async fn search(&self, q: &SearchQuery) -> Result<Vec<Candidate>, SearchError> {
+        if q.text.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        Ok(vec![Candidate {
+            url: bing_thumbnail_url(&self.base, &q.text),
+            // The picture answers exactly this query (barcode + name).
+            title: q.text.clone(),
+            page_url: None,
+            width: None,
+            height: None,
+            barcode_match: false,
+            provider: BING_THUMBNAIL,
+        }])
     }
 }
 
@@ -447,7 +508,7 @@ pub fn image_score(c: &Candidate, text: f32, n: &Normalized) -> Option<f32> {
     if aspect > 3.0 {
         return None; // banners and strips
     }
-    if !c.barcode_match && n.white_border < 0.45 {
+    if !c.barcode_match && c.provider != BING_THUMBNAIL && n.white_border < 0.45 {
         return None;
     }
     Some(text + 2.0 * n.white_border + (side.min(1000) as f32 / 1000.0))
@@ -757,6 +818,9 @@ pub async fn lookup(providers: &[Arc<dyn ImageSearchProvider>], fetcher: &SafeFe
         if best.as_ref().is_some_and(|b| b.2.barcode_match) {
             break; // exact identity found: lower-priority sources are not asked
         }
+        if p.decisive() && best.as_ref().is_some_and(|b| b.2.provider == name) {
+            break; // the default method answered: use its picture
+        }
     }
     match best {
         Some((score, image, c)) => {
@@ -782,11 +846,23 @@ pub async fn lookup(providers: &[Arc<dyn ImageSearchProvider>], fetcher: &SafeFe
 /// Which sources can run with the current settings (none: the worker idles
 /// without claiming anything, so nothing is marked failed for lack of setup).
 pub fn providers_for(cfg: &ImageSearchSettings, google_key: Option<String>) -> Vec<Arc<dyn ImageSearchProvider>> {
+    if amwapos_core::product_images::search_disabled_by_environment() {
+        return vec![];
+    }
+    configured_providers(cfg, google_key)
+}
+
+/// The sources the settings switch on, in the order they are asked.
+pub fn configured_providers(cfg: &ImageSearchSettings, google_key: Option<String>) -> Vec<Arc<dyn ImageSearchProvider>> {
     let mut v: Vec<Arc<dyn ImageSearchProvider>> = vec![];
     let off_base = std::env::var("AMWAPOS_OFF_BASE").unwrap_or_else(|_| "https://world.openfoodfacts.org".into());
     let google_base = std::env::var("AMWAPOS_GOOGLE_SEARCH_BASE").unwrap_or_else(|_| "https://www.googleapis.com".into());
-    if amwapos_core::product_images::search_disabled_by_environment() || !cfg.enabled {
+    if !cfg.enabled {
         return v;
+    }
+    if cfg.bing_thumbnail {
+        let base = std::env::var("AMWAPOS_BING_THUMB_BASE").unwrap_or_else(|_| "https://tse1.mm.bing.net".into());
+        v.push(Arc::new(BingThumbnail::new(&base)));
     }
     if cfg.open_food_facts {
         v.push(Arc::new(OpenFoodFacts::new(&off_base)));
@@ -962,6 +1038,24 @@ mod tests {
             region: "bh".into(),
             language: "en".into(),
         }
+    }
+
+    #[test]
+    fn the_default_method_puts_barcode_and_name_in_the_bing_thumbnail_address() {
+        assert_eq!(
+            bing_thumbnail_url("https://tse1.mm.bing.net", "6767647641365 10 Colour Flame Candles"),
+            "https://tse1.mm.bing.net/th?q=6767647641365+10+Colour+Flame+Candles"
+        );
+        // Extra spaces collapse; symbols and Arabic are encoded, never break the address.
+        assert_eq!(
+            bing_thumbnail_url("https://tse1.mm.bing.net/", "  6281007031126   Milk & Co 1L  "),
+            "https://tse1.mm.bing.net/th?q=6281007031126+Milk+%26+Co+1L"
+        );
+        assert!(bing_thumbnail_url("https://tse1.mm.bing.net", "حليب").starts_with("https://tse1.mm.bing.net/th?q=%D8%AD"));
+        let cfg = ImageSearchSettings::default();
+        assert!(cfg.bing_thumbnail, "the default method is on by default");
+        let names: Vec<_> = configured_providers(&cfg, None).iter().map(|p| p.name()).collect();
+        assert_eq!(names.first(), Some(&BING_THUMBNAIL), "and asked first: {names:?}");
     }
 
     /// One Bing result entry as the page encodes it (HTML-escaped JSON in `m`).

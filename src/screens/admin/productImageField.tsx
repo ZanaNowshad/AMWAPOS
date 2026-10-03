@@ -374,6 +374,17 @@ export function ProductImageSettings({ canManage }: { canManage: boolean }) {
       <div className="col gap-8">
         <h4>{t("Where to look")}</h4>
         <Checkbox
+          label={t("Bing picture for barcode + name (default, no key needed)")}
+          checked={cfg.bing_thumbnail}
+          disabled={!canManage}
+          onChange={(v) => setCfg({ ...cfg, bing_thumbnail: v })}
+        />
+        <div className="tiny muted">
+          {t(
+            'Asks Bing for one picture of the product\'s barcode and name, for example "6767647641365 10 Colour Flame Candles". When it gives a usable picture, that picture is used; otherwise the sources below are tried.',
+          )}
+        </div>
+        <Checkbox
           label={t("Open Food Facts (by barcode)")}
           checked={cfg.open_food_facts}
           disabled={!canManage}
@@ -483,6 +494,7 @@ export function ProductImageSettings({ canManage }: { canManage: boolean }) {
 
 function sourceList(ov: ImageOverview): string {
   const names: string[] = [];
+  if (ov.sources.bing_thumbnail) names.push(t("Bing picture for barcode + name (default, no key needed)"));
   if (ov.sources.open_food_facts) names.push(t("Open Food Facts (by barcode)"));
   if (ov.sources.bing) names.push(t("Bing image search (no key needed)"));
   if (ov.sources.google) names.push(t("Google Programmable Search (needs a key)"));
