@@ -402,6 +402,7 @@ pub(crate) fn recheck(core: &AppCore, tx: &Connection, id: &str, warnings: &[Str
         f.invoice_date.value.as_deref(),
         f.total_minor.value,
         fp.as_deref(),
+        &doc_type,
     )?;
     let branch = branch_of(core, tx)?;
     let thr = threshold_bp(tx)?;
@@ -1229,7 +1230,7 @@ impl AppCore {
             tx.execute(
                 "INSERT INTO supplier_invoices(invoice_id, number, doc_type, supplier_id, scan_id, invoice_number, invoice_date, due_date, po_id, receiving_draft_id,
                     subtotal_minor, vat_minor, total_minor, status, posting, created_by, created_at, updated_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'draft','not_supported',?14,?15,?15)",
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'draft','not_posted',?14,?15,?15)",
                 params![inv_id, number, kind, supplier, id, f.invoice_number.value, f.invoice_date.value, f.due_date.value, po, rd, subtotal, vat, total, s.user_id, now],
             )
             .map_err(|e| match e {
@@ -1277,6 +1278,12 @@ impl AppCore {
             for l in &lines {
                 if l.product_id.is_none() {
                     return Err(AppError::validation(format!("Line {} is not matched to a product: match it, create the product first, or exclude it.", l.line_no)));
+                }
+                if l.receive_qty().unwrap_or(0) < 0 || l.line_total_minor.unwrap_or(0) < 0 {
+                    return Err(AppError::validation(format!(
+                        "Line {} is a return (negative). Returns do not receive stock: exclude it and record it as a supplier credit.",
+                        l.line_no
+                    )));
                 }
                 if l.receive_qty().unwrap_or(0) <= 0 || l.receive_unit_cost().is_none() {
                     return Err(AppError::validation(format!("Line {} needs a quantity and a cost.", l.line_no)));
@@ -1547,27 +1554,52 @@ impl AppCore {
 
     pub fn supplier_invoices_list(&self, token: &str, status: Option<String>) -> AppResult<Vec<Value>> {
         let s = self.session(token)?;
-        s.require("purchasing.manage")?;
+        if !s.has("payables.view") {
+            s.require("purchasing.manage")?;
+        }
         self.db.read(|c| {
             let mut st = c.prepare(
-                "SELECT i.invoice_id, i.number, i.doc_type, i.status, s.name, i.invoice_number, i.invoice_date, i.total_minor, i.created_at
+                "SELECT i.invoice_id, i.number, i.doc_type, i.status, s.name, i.invoice_number, i.invoice_date, i.total_minor, i.created_at, i.posting, i.supplier_id
                  FROM supplier_invoices i JOIN suppliers s ON s.supplier_id=i.supplier_id WHERE (?1 IS NULL OR i.status=?1) ORDER BY i.created_at DESC LIMIT 300",
             )?;
-            let rows = st
+            let rows: Vec<Value> = st
                 .query_map([status.filter(|x| !x.is_empty())], |r| {
                     Ok(json!({ "invoice_id": r.get::<_, String>(0)?, "number": r.get::<_, String>(1)?, "doc_type": r.get::<_, String>(2)?, "status": r.get::<_, String>(3)?,
                                "supplier_name": r.get::<_, String>(4)?, "invoice_number": r.get::<_, Option<String>>(5)?, "invoice_date": r.get::<_, Option<String>>(6)?,
-                               "total_minor": r.get::<_, i64>(7)?, "created_at": r.get::<_, String>(8)? }))
+                               "total_minor": r.get::<_, i64>(7)?, "created_at": r.get::<_, String>(8)?, "posting": r.get::<_, String>(9)?,
+                               "supplier_id": r.get::<_, String>(10)? }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
+            let mut out = vec![];
+            for mut r in rows {
+                let (life, outstanding) = crate::payables::lifecycle(c, r["invoice_id"].as_str().unwrap_or_default())?;
+                r["lifecycle"] = json!(life);
+                r["outstanding_minor"] = json!(outstanding);
+                out.push(r);
+            }
+            Ok(out)
         })
     }
 
     pub fn supplier_invoice_get(&self, token: &str, invoice_id: &str) -> AppResult<Value> {
         let s = self.session(token)?;
-        s.require("purchasing.manage")?;
+        if !s.has("payables.view") {
+            s.require("purchasing.manage")?;
+        }
         let id = validate::id(invoice_id, "Supplier invoice")?;
+        let mut v = self.supplier_invoice_get_as(&s, &id)?;
+        self.db.read(|c| {
+            let (life, outstanding) = crate::payables::lifecycle(c, &id)?;
+            v["lifecycle"] = json!(life);
+            v["outstanding_minor"] = json!(outstanding);
+            Ok(())
+        })?;
+        Ok(v)
+    }
+
+    /// The record itself (the caller checked the session's permission).
+    pub(crate) fn supplier_invoice_get_as(&self, _s: &crate::auth::Session, id: &str) -> AppResult<Value> {
+        let id = id.to_string();
         self.db.read(|c| {
             let mut h = c
                 .query_row(
@@ -1600,21 +1632,29 @@ impl AppCore {
                 })?
                 .collect::<Result<_, _>>()?;
             h["lines"] = json!(lines);
-            h["posting_note"] = json!("AMWAPOS has no supplier payables ledger: approving records the review only. No liability, payment or stock is created.");
+            h["posting_note"] = json!("Approving records the review. Only posting (Payables) creates what is owed; nothing here moves stock.");
             Ok(h)
         })
     }
 
     pub fn supplier_invoice_set_status(&self, token: &str, invoice_id: &str, status: &str) -> AppResult<Value> {
         let s = self.session(token)?;
-        s.require("purchasing.manage")?;
+        if !s.has("payables.review") {
+            s.require("purchasing.manage")?;
+        }
         let id = validate::id(invoice_id, "Supplier invoice")?;
         if !matches!(status, "approved" | "void") {
             return Err(AppError::validation("Status must be approved or void."));
         }
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
-            let cur: String = tx.query_row("SELECT status FROM supplier_invoices WHERE invoice_id=?1", [&id], |r| r.get(0)).optional()?.ok_or_else(|| AppError::not_found("Supplier invoice"))?;
+            let (cur, posting): (String, String) = tx
+                .query_row("SELECT status, posting FROM supplier_invoices WHERE invoice_id=?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?
+                .ok_or_else(|| AppError::not_found("Supplier invoice"))?;
+            if posting != "not_posted" {
+                return Err(AppError::conflict("This supplier invoice is posted: reverse it in Payables instead."));
+            }
             if cur != "draft" && !(cur == "approved" && status == "void") {
                 return Err(AppError::conflict("This supplier invoice can no longer be changed."));
             }
@@ -1680,10 +1720,34 @@ impl AppCore {
     /// the rules reading only when that reading is missing or does not add up
     /// and the model's does. A person still reviews everything.
     pub fn doc_apply_ai(&self, id: &str, v: &Value, model: &str) -> AppResult<bool> {
+        self.doc_apply_ai_at(id, v, model, None)
+    }
+
+    /// The document's revision (a person's edit or a new reading raises it).
+    pub fn doc_revision(&self, id: &str) -> AppResult<i64> {
+        self.db.read(|c| {
+            c.query_row("SELECT revision FROM invoice_scans WHERE scan_id=?1", [id], |r| r.get(0))
+                .optional()?
+                .ok_or_else(|| AppError::not_found("Document"))
+        })
+    }
+
+    /// Apply a model reading started at `revision`: when the document changed
+    /// meanwhile (a person corrected it), the stale result is dropped whole.
+    pub fn doc_apply_ai_at(&self, id: &str, v: &Value, model: &str, revision: Option<i64>) -> AppResult<bool> {
         self.db.write(|tx| {
-            let status: Option<String> = tx.query_row("SELECT status FROM invoice_scans WHERE scan_id=?1", [id], |r| r.get(0)).optional()?;
+            let (status, current): (Option<String>, Option<i64>) = tx
+                .query_row("SELECT status, revision FROM invoice_scans WHERE scan_id=?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?
+                .unwrap_or((None, None));
             if status.as_deref() != Some("review") {
                 return Ok(false);
+            }
+            if let (Some(started), Some(now)) = (revision, current) {
+                if started != now {
+                    decision(tx, id, "ai_result_dropped", "ai", Some(model), &json!({ "reason": "the document changed while the AI was reading", "started_revision": started, "current_revision": now }), None)?;
+                    return Ok(false);
+                }
             }
             let digits = self.currency(tx)?.1;
             let layout = self.doc_layout(tx, id)?;

@@ -112,7 +112,7 @@ fn invoice_to_drafts_without_posting() {
     let si = e.core.doc_create_supplier_invoice(t, &id, rev).unwrap();
     assert_eq!(
         (si["status"].as_str(), si["doc_type"].as_str(), si["posting"].as_str()),
-        (Some("draft"), Some("invoice"), Some("not_supported"))
+        (Some("draft"), Some("invoice"), Some("not_posted"))
     );
     assert_eq!(si["total_minor"], 24_090);
     assert_eq!(si["receiving_draft_id"], d["draft_id"]);
@@ -144,7 +144,11 @@ fn permissions_follow_roles() {
     let (_, cashier) = e.user("Cash", "role_cashier", "1357");
     assert_eq!(e.core.doc_import(&cashier, "x.jpg", &amwapos_core::ids::b64(b"x"), None).unwrap_err().code, ErrorCode::Forbidden);
     let (_, acct) = e.user("Acct", "role_accountant", "1368");
-    assert_eq!(e.core.supplier_invoices_list(&acct, None).unwrap_err().code, ErrorCode::Forbidden);
+    // Accountants read supplier invoices (payables.view) but never approve or post them.
+    assert!(e.core.supplier_invoices_list(&acct, None).is_ok());
+    assert_eq!(e.core.ap_invoice_approve(&acct, "01XXXXXXXXXXXXXXXXXXXXXXXX").unwrap_err().code, ErrorCode::Forbidden);
+    assert_eq!(e.core.ap_invoice_post(&acct, "01XXXXXXXXXXXXXXXXXXXXXXXX", "op-0123456789abcdef").unwrap_err().code, ErrorCode::Forbidden);
+    assert_eq!(e.core.supplier_invoices_list(&cashier, None).unwrap_err().code, ErrorCode::Forbidden);
     let (_, stock) = e.user("Stock", "role_inventory", "2468");
     assert!(e.core.doc_import(&stock, "x.jpg", &amwapos_core::ids::b64(b"x"), None).is_ok());
 }
@@ -338,7 +342,7 @@ fn credit_notes_and_unclear_types() {
     let e1 = e.core.doc_create_receiving(t, id, rev).unwrap_err();
     assert!(e1.message.contains("credit note does not receive stock"), "{}", e1.message);
     let si = e.core.doc_create_supplier_invoice(t, id, rev).unwrap();
-    assert_eq!((si["doc_type"].as_str(), si["posting"].as_str()), (Some("credit_note"), Some("not_supported")));
+    assert_eq!((si["doc_type"].as_str(), si["posting"].as_str()), (Some("credit_note"), Some("not_posted")));
     assert_eq!(count(&e, "SELECT COUNT(*) FROM stock_movements"), 0);
     // Unclear type: no financially consequential reading is chosen for the user.
     let v = read_doc(&e, t, "u.jpg", b"u", "Al Waha Trading\nVAT No: 200011122233344\nInvoice No: 5\n6291041500213 Milk Full Cream 1L 2 PCS 0.450 0.900\nTotal 0.900\nThis credit note cancels invoice 4");
@@ -377,6 +381,33 @@ fn ai_reading_is_validated_and_never_overrides_people() {
         .unwrap();
     assert_eq!(line(&e.core.doc_get(t, &id).unwrap(), 1)["qty_milli"], 12_000);
     assert!(!e.core.doc_apply_ai(&id, &json!("not json object"), "test:model").unwrap());
+}
+
+#[test]
+fn an_ai_reading_that_started_before_a_person_edited_is_dropped() {
+    let e = env();
+    features(&e);
+    let t = &e.owner_token;
+    e.product("Milk Full Cream 1L", "6291041500213", 600, 400, 0);
+    let v = read_doc(&e, t, "s.jpg", b"s", "gar#bled\nMlk Fll Crm 10 0.450 4.600\nTotal 4.500");
+    let id = v["scan"]["scan_id"].as_str().unwrap().to_string();
+    // The AI starts reading at this revision...
+    let started = e.core.doc_revision(&id).unwrap();
+    // ...a person corrects the document meanwhile...
+    e.core
+        .doc_update_line(t, &id, serde_json::from_value(json!({ "revision": v["revision"], "line_no": 1, "qty_milli": 12_000 })).unwrap())
+        .unwrap();
+    // ...so the late result is dropped whole, header included, and recorded.
+    let reply = json!({ "doc_type": "invoice", "invoice_number": "LATE-1", "total": "4.500",
+        "lines": [{ "src_line": 1, "description": "Milk Full Cream 1L", "qty": "1", "unit_cost": "0.450", "line_total": "0.450" }] });
+    assert!(!e.core.doc_apply_ai_at(&id, &reply, "test:model", Some(started)).unwrap());
+    let v = e.core.doc_get(t, &id).unwrap();
+    assert_ne!(v["fields"]["invoice_number"]["value"], "LATE-1");
+    assert_eq!(line(&v, 1)["qty_milli"], 12_000);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM ai_decisions WHERE kind='ai_result_dropped'"), 1);
+    // A reading that started at the current revision still applies.
+    let now = e.core.doc_revision(&id).unwrap();
+    assert!(e.core.doc_apply_ai_at(&id, &reply, "test:model", Some(now)).unwrap());
 }
 
 #[test]

@@ -289,6 +289,13 @@ impl Runtime {
                     ocr.ensure();
                     images.ensure();
                     orders.ensure();
+                    // Stock held for confirmed orders that were not sold in time is released.
+                    let c = core.clone();
+                    if let Ok(Ok(n)) = tokio::task::spawn_blocking(move || c.orders_expire_reservations()).await {
+                        if n > 0 {
+                            tracing::info!(orders = n, "order stock holds expired");
+                        }
+                    }
                     // A8: scheduled AI briefings (only while the app is open).
                     let c = core.clone();
                     if let Ok(Ok(due)) = tokio::task::spawn_blocking(move || c.ai_briefings_due()).await {

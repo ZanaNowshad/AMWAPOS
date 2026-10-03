@@ -21,6 +21,12 @@ pub struct Num {
     pub decimals: usize,
     pub percent: bool,
     pub text: String,
+    /// "1,250": a thousands comma, or a decimal comma (1.250)? Read as
+    /// thousands, but flagged: the money meaning changes a thousandfold.
+    pub ambiguous: bool,
+    /// Letters OCR confuses with digits (O→0, I/l→1) were corrected in a
+    /// token shaped like money ("1O.500").
+    pub ocr_fixed: bool,
 }
 
 impl Num {
@@ -47,6 +53,25 @@ pub fn parse_num(tok: &str, digits: u32) -> Option<Num> {
     if let Some(r) = t.strip_prefix('-') {
         negative = true;
         t = r.to_string();
+    } else if let Some(r) = t.strip_suffix('-').filter(|r| !r.is_empty()) {
+        // "12.500-": a trailing minus (common on credit notes).
+        negative = true;
+        t = r.to_string();
+    }
+    // OCR confusions, only in a token shaped exactly like money with this
+    // currency's decimals ("1O.500", "l2.250"): never in codes or words.
+    let mut ocr_fixed = false;
+    if digits > 0 && t.chars().any(|c| matches!(c, 'O' | 'o' | 'I' | 'l')) {
+        if let Some((a, b)) = t.split_once('.') {
+            let shaped = !a.is_empty()
+                && b.len() == digits as usize
+                && a.chars().chain(b.chars()).all(|c| c.is_ascii_digit() || matches!(c, 'O' | 'o' | 'I' | 'l'))
+                && a.chars().chain(b.chars()).filter(|c| c.is_ascii_digit()).count() >= 2;
+            if shaped {
+                t = t.replace(['O', 'o'], "0").replace(['I', 'l'], "1");
+                ocr_fixed = true;
+            }
+        }
     }
     if t.is_empty() || !t.chars().next()?.is_ascii_digit() || !t.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ',') {
         return None;
@@ -66,12 +91,14 @@ pub fn parse_num(tok: &str, digits: u32) -> Option<Num> {
             return None;
         }
     }
+    // One comma group and no point: "1,250" is 1250 or 1.250.
+    let ambiguous = digits == 3 && !t.contains('.') && t.matches(',').count() == 1 && t.split(',').nth(1).is_some_and(|g| g.len() == 3);
     let clean = t.replace(',', "");
     if clean.len() > 16 {
         return None;
     }
     let minor = parse_decimal(&clean, digits).ok()?;
-    Some(Num { minor, negative, decimals, percent, text: tok.to_string() })
+    Some(Num { minor, negative, decimals, percent, text: tok.to_string(), ambiguous, ocr_fixed })
 }
 
 fn is_barcode(t: &str) -> bool {
@@ -416,6 +443,25 @@ const VAT_AMT: &[&str] = &["vat", "tax", "ضريبة القيمة المضافة
 const DISCOUNT: &[&str] = &["discount", "disc", "الخصم"];
 const ZERO_RATED: &[&str] = &["zero rated", "zero-rated", "0% vat", "خاضع لنسبة الصفر"];
 const EXEMPT: &[&str] = &["exempt", "معفى", "معفاة"];
+
+/// Running totals printed at a page break (never the document's totals).
+const PAGE_TOTAL: &[&str] = &[
+    "page total",
+    "page sub total",
+    "page subtotal",
+    "total this page",
+    "carried forward",
+    "carried fwd",
+    "brought forward",
+    "brought fwd",
+    "c/f",
+    "b/f",
+    "continued on next page",
+    "continued overleaf",
+    "مجموع الصفحة",
+    "مرحل",
+    "المنقول",
+];
 
 fn is_summary_line(low: &str) -> bool {
     has_any(low, SUBTOTAL)
@@ -828,6 +874,8 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
         }
     }
     let mut qty_before_unit: Option<(i64, usize)> = None;
+    let (mut num_ambiguous, mut num_ocr_fixed) = (false, false);
+    let signed = |n: &Num| if n.negative { -n.minor } else { n.minor };
     for (i, w) in words.iter().enumerate() {
         let t = clean_id_token(&normalize_digits(&w.text));
         let col = cols.and_then(|c| nearest_col(c, w.bbox[0] + w.bbox[2] / 2));
@@ -851,6 +899,8 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
             }
         }
         if let Some(n) = parse_num(&w.text, digits) {
+            num_ambiguous |= n.ambiguous;
+            num_ocr_fixed |= n.ocr_fixed;
             if n.percent {
                 pct = Some(n.minor / 10i64.pow(digits.saturating_sub(2)));
                 if let Some(bp) = parse_num(&w.text, 2).filter(|x| x.percent).map(|x| x.minor) {
@@ -874,7 +924,7 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
             if n.decimals > 0 {
                 decs.push((n, i));
             } else if let Some(v) = n.int(digits) {
-                ints.push((v, i));
+                ints.push((if n.negative { -v } else { v }, i));
             }
             continue;
         }
@@ -906,8 +956,13 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
         for (c, n, _) in &by_col {
             match c {
                 Col::Qty => {
-                    line.qty_milli =
-                        Some(if n.decimals == 0 { n.minor / one * 1000 } else { parse_decimal(&n.text.replace(',', ""), 3).unwrap_or(0) })
+                    let q = if n.decimals == 0 {
+                        n.minor / one * 1000
+                    } else {
+                        parse_decimal(normalize_digits(&n.text).replace(',', "").trim_matches(|c: char| !c.is_ascii_digit() && c != '.'), 3)
+                            .unwrap_or(0)
+                    };
+                    line.qty_milli = Some(if n.negative { -q } else { q })
                 }
                 Col::Price => line.unit_cost_minor = Some(n.minor),
                 Col::Disc => line.discount_minor = Some(n.minor),
@@ -919,7 +974,7 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
                         line.vat_minor = Some(n.minor);
                     }
                 }
-                Col::Amount => line.line_total_minor = Some(n.minor),
+                Col::Amount => line.line_total_minor = Some(signed(n)),
                 Col::Unit | Col::Desc | Col::Code => {}
             }
         }
@@ -935,14 +990,14 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
         }
         match decs.len() {
             0 => {}
-            1 => line.line_total_minor = Some(decs[0].0.minor),
+            1 => line.line_total_minor = Some(signed(&decs[0].0)),
             2 => {
                 line.unit_cost_minor = Some(decs[0].0.minor);
-                line.line_total_minor = Some(decs[1].0.minor);
+                line.line_total_minor = Some(signed(&decs[1].0));
             }
             _ => {
                 let unit_c = decs[0].0.minor;
-                let total = decs[decs.len() - 1].0.minor;
+                let total = signed(&decs[decs.len() - 1].0);
                 let mid = decs[decs.len() - 2].0.minor;
                 line.unit_cost_minor = Some(unit_c);
                 line.line_total_minor = Some(total);
@@ -1031,6 +1086,26 @@ fn line_from_row(l: &DocLine, cols: Option<&[(Col, u32)]>, digits: u32) -> Optio
     if line.barcode_valid == Some(false) {
         line.flags.push("barcode_check_digit".into());
     }
+    if num_ambiguous {
+        // "1,250": thousands or a decimal comma? Kept as printed, flagged.
+        line.flags.push("ambiguous_number".into());
+    }
+    if num_ocr_fixed {
+        line.flags.push("ocr_digit_corrected".into());
+    }
+    if line.line_total_minor.is_some_and(|t| t < 0) || line.qty_milli.is_some_and(|q| q < 0) {
+        line.flags.push("negative_amount".into());
+    }
+    // "2 FREE", "bonus", "F.O.C.": goods supplied at no cost are kept, at zero.
+    let low_raw = text.to_lowercase();
+    let free = ["free", "foc", "f.o.c", "bonus", "مجاني", "مجانا", "هدية"]
+        .iter()
+        .any(|w| low_raw.split(|c: char| !c.is_alphanumeric() && c != '.').any(|x| x.trim_end_matches('.') == w.trim_end_matches('.')));
+    if free && line.qty_milli.is_some_and(|q| q > 0) && line.line_total_minor.unwrap_or(0) == 0 {
+        line.unit_cost_minor = Some(0);
+        line.line_total_minor = Some(0);
+        line.flags.push("free_goods".into());
+    }
     if line.qty_milli.is_none() && line.line_total_minor.is_none() {
         return None;
     }
@@ -1058,9 +1133,20 @@ pub fn extract(layout: &Layout, digits: u32, own_vat: Option<&str>, own_names: &
     let mut all_dates: Vec<(DateRead, usize)> = vec![];
     let mut seen_total_block = false;
     let mut currency = "BHD".to_string();
+    let mut page = 0u32;
     for l in &lines {
         let text = normalize_digits(&l.line.text());
         let low = text.to_lowercase();
+        // A new page starts new content: a total printed on an earlier page
+        // does not end the item table of the next.
+        if l.page != page {
+            page = l.page;
+            seen_total_block = false;
+        }
+        // Page totals / carried-forward lines are not the invoice's totals.
+        if has_any(&low, PAGE_TOTAL) {
+            continue;
+        }
         if has_any(&low, BUYER) {
             in_buyer_block = true;
         } else if has_any(&low, &["supplier", "vendor", "from:", "المورد"]) {
@@ -1177,7 +1263,10 @@ pub fn extract(layout: &Layout, digits: u32, own_vat: Option<&str>, own_names: &
             seen_total_block = true;
             let amount = last_amount(l, digits);
             let set = |fld: &mut Field<i64>, amt: &(Num, usize)| {
-                if !fld.is_set() {
+                // A total printed again on a later page replaces an earlier page's
+                // (multi-page invoices print the grand total on the last page).
+                let earlier_page = fld.evidence.as_ref().and_then(|e| e.page).is_some_and(|p| p < l.page);
+                if !fld.is_set() || earlier_page {
                     let (n, i) = amt;
                     let mut x = Field::found(
                         n.minor,
@@ -1292,6 +1381,88 @@ mod tests {
 
     fn ex(text: &str) -> Extraction {
         extract(&Layout::from_text(text, 90), 3, Some("200000000000003"), &["Al Noor Supermarket".into()])
+    }
+
+    /// A multi-page document from page texts.
+    fn ex_pages(pages: &[&str]) -> Extraction {
+        let mut layout = Layout { pages: vec![] };
+        for (i, p) in pages.iter().enumerate() {
+            let mut one = Layout::from_text(p, 90).pages.remove(0);
+            one.number = i as u32 + 1;
+            layout.pages.push(one);
+        }
+        extract(&layout, 3, Some("200000000000003"), &["Al Noor Supermarket".into()])
+    }
+
+    #[test]
+    fn multi_page_items_page_totals_and_the_last_pages_grand_total() {
+        let e = ex_pages(&[
+            "Gulf Foods W.L.L.\nTAX INVOICE\nInvoice No: GF-3301\nDate: 20/09/2026\n\
+             Milk Full Cream 1L 12 0.450 5.400\nArabic Bread 6pcs 10 0.300 3.000\n\
+             Page total 8.400\nCarried forward 8.400\nPage 1 of 2",
+            "Gulf Foods W.L.L.\nInvoice No: GF-3301\nBrought forward 8.400\n\
+             Laban Up 250ml 24 0.150 3.600\nMilk Full Cream 1L 6 0.450 2.700\n\
+             Subtotal 14.700\nVAT 10% 1.470\nTotal 16.170\nPage 2 of 2",
+        ]);
+        let names: Vec<&str> = e.lines.iter().map(|l| l.description.as_str()).collect();
+        assert_eq!(e.lines.len(), 4, "page 2 items are read after page 1's page total: {names:?}");
+        assert_eq!(e.fields.subtotal_minor.value, Some(14_700), "not the page total");
+        assert_eq!(e.fields.total_minor.value, Some(16_170));
+        // The same product on both pages stays two lines (not merged, not dropped).
+        assert_eq!(e.lines.iter().filter(|l| l.description.starts_with("Milk")).count(), 2);
+    }
+
+    #[test]
+    fn a_subtotal_printed_on_every_page_uses_the_last_one() {
+        let e = ex_pages(&[
+            "Delta Trading\nInvoice No: DT-9\nDate: 21/09/2026\nTea 100 bags 5 0.850 4.250\nSubtotal 4.250",
+            "Delta Trading\nCoffee 200g 2 1.500 3.000\nSubtotal 7.250\nVAT 0.725\nTotal 7.975",
+        ]);
+        assert_eq!(e.fields.subtotal_minor.value, Some(7_250));
+        assert_eq!(e.lines.len(), 2);
+    }
+
+    #[test]
+    fn numbers_that_change_meaning_are_flagged_or_read_exactly() {
+        assert!(parse_num("1,250", 3).unwrap().ambiguous, "1,250: thousands or 1.250");
+        assert!(!parse_num("1,250.000", 3).unwrap().ambiguous);
+        assert!(!parse_num("1.250", 3).unwrap().ambiguous);
+        let t = parse_num("12.500-", 3).unwrap();
+        assert!(t.negative && t.minor == 12_500, "trailing minus");
+        assert!(parse_num("(1.250)", 3).unwrap().negative);
+        let o = parse_num("1O.5OO", 3).unwrap();
+        assert!(o.ocr_fixed && o.minor == 10_500, "O read as 0 in a money-shaped token");
+        assert_eq!(parse_num("l2.250", 3).unwrap().minor, 12_250);
+        assert!(parse_num("SKU-10O", 3).is_none(), "codes are never 'corrected'");
+        assert!(parse_num("OIl", 3).is_none(), "no digits: not a number");
+        assert_eq!(parse_num("١٢٫٥٠٠", 3).unwrap().minor, 12_500, "Arabic-Indic digits and separator");
+        assert!(parse_num("1.2500", 3).is_none(), "more decimals than the currency: not money");
+        let l = ex("Invoice No: X1\nWidget 2 1,250 2.500\nTotal 2.500");
+        assert!(l.lines.iter().any(|x| x.flags.iter().any(|f| f == "ambiguous_number")), "{:?}", l.lines);
+    }
+
+    #[test]
+    fn returns_keep_their_sign_and_free_goods_their_zero_cost() {
+        let e = ex(
+            "Invoice No: GF-77\nMilk Full Cream 1L 12 0.450 5.400\nMilk returned -2 0.450 -0.900\nArabic Bread 6pcs 2 FREE\nTotal 4.500",
+        );
+        let ret = e.lines.iter().find(|l| l.description.contains("returned")).expect("the return line is read");
+        assert_eq!((ret.qty_milli, ret.line_total_minor), (Some(-2_000), Some(-900)));
+        assert!(ret.flags.iter().any(|f| f == "negative_amount"));
+        let free = e.lines.iter().find(|l| l.description.contains("Bread")).expect("the free line is kept");
+        assert_eq!((free.qty_milli, free.unit_cost_minor, free.line_total_minor), (Some(2_000), Some(0), Some(0)));
+        assert!(free.flags.iter().any(|f| f == "free_goods"));
+    }
+
+    #[test]
+    fn repeated_table_headers_and_footers_are_not_items() {
+        let e = ex_pages(&[
+            "Gulf Foods\nInvoice No: H-1\nDescription Qty Price Amount\nMilk 1L 2 0.450 0.900\nTel 17001234 Fax 17001235\nPage 1 of 2",
+            "Gulf Foods\nDescription Qty Price Amount\nBread 1 0.300 0.300\nTotal 1.200",
+        ]);
+        let names: Vec<&str> = e.lines.iter().map(|l| l.description.as_str()).collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(names.iter().all(|n| !n.contains("Description") && !n.contains("Tel")));
     }
 
     #[test]

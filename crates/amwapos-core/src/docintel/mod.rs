@@ -25,6 +25,30 @@ pub mod service;
 /// Re-exported so the OCR worker decodes pages with the same image library.
 pub use image;
 
+/// Largest page image read (pixels per side, and memory for one decode):
+/// a supplier page never needs more, and a hostile header asking for a
+/// 60 000 × 60 000 image is refused instead of exhausting a till's memory.
+pub const MAX_PAGE_SIDE: u32 = 12_000;
+pub const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
+
+/// The declared size of an image when it is larger than a page may be
+/// (read from the header only; nothing is decoded).
+pub fn page_oversized(bytes: &[u8]) -> Option<(u32, u32)> {
+    let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?.into_dimensions().ok()?;
+    (w > MAX_PAGE_SIDE || h > MAX_PAGE_SIDE).then_some((w, h))
+}
+
+/// Decode an uploaded page image within those limits (None: unreadable or too large).
+pub fn decode_page(bytes: &[u8]) -> Option<image::DynamicImage> {
+    let mut r = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().ok()?;
+    let mut l = image::Limits::default();
+    l.max_image_width = Some(MAX_PAGE_SIDE);
+    l.max_image_height = Some(MAX_PAGE_SIDE);
+    l.max_alloc = Some(MAX_DECODE_BYTES);
+    r.limits(l);
+    r.decode().ok()
+}
+
 use serde::{Deserialize, Serialize};
 
 /// Application-defined confidence band. Not a calibrated probability: OCR

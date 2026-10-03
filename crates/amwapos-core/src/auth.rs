@@ -88,6 +88,10 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("orders.manage", "Customers", "Record and confirm digital orders"),
     ("branches.manage", "System", "Create branches and assign staff to branches"),
     ("branches.all", "System", "Work in every branch"),
+    ("payables.view", "Finance", "View supplier invoices, balances and ageing"),
+    ("payables.review", "Finance", "Enter and approve supplier invoices for posting"),
+    ("payables.post", "Finance", "Post and reverse supplier invoices and credit notes"),
+    ("payables.pay", "Finance", "Record, allocate and reverse supplier payments"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -105,7 +109,16 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         .filter(|p| {
             !matches!(
                 *p,
-                "roles.manage" | "backup.restore" | "sync.manage" | "ai.mutate" | "devices.manage" | "branches.manage" | "branches.all"
+                "roles.manage"
+                    | "backup.restore"
+                    | "sync.manage"
+                    | "ai.mutate"
+                    | "devices.manage"
+                    | "branches.manage"
+                    | "branches.all"
+                    // Money owed to suppliers is posted and paid by the owner unless granted.
+                    | "payables.post"
+                    | "payables.pay"
             )
         })
         .collect();
@@ -134,6 +147,7 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "products.view_cost",
         "inventory.view",
         "customers.view",
+        "payables.view",
     ];
     let inventory = vec![
         "admin.access",
@@ -172,6 +186,10 @@ pub const UPGRADE_PERMISSIONS: &[&str] = &[
     "orders.manage",
     "branches.manage",
     "branches.all",
+    "payables.view",
+    "payables.review",
+    "payables.post",
+    "payables.pay",
 ];
 
 fn seed_mark(conn: &Connection, role: &str, perm: &str, now: &str) -> AppResult<()> {

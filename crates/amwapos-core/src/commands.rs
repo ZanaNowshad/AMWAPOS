@@ -463,6 +463,20 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "supplier_invoices.set_status" => {
             out(core.supplier_invoice_set_status(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "status")?))
         }
+        // Accounts Payable (posting, payments, allocations, balances)
+        "ap.overview" => out(core.ap_overview(tk()?)),
+        "ap.supplier" => out(core.ap_supplier(tk()?, &req::<String>(&args, "supplier_id")?)),
+        "ap.invoice_get" => out(core.ap_invoice_get(tk()?, &req::<String>(&args, "invoice_id")?)),
+        "ap.invoice_create" => out(core.ap_invoice_create_manual(tk()?, req(&args, "invoice")?)),
+        "ap.invoice_approve" => out(core.ap_invoice_approve(tk()?, &req::<String>(&args, "invoice_id")?)),
+        "ap.invoice_post" => out(core.ap_invoice_post(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "operation_id")?)),
+        "ap.invoice_reverse" => out(core.ap_invoice_reverse(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "reason")?)),
+        "ap.payment_record" => out(core.ap_payment_record(tk()?, req(&args, "payment")?)),
+        "ap.payment_get" => out(core.ap_payment_get(tk()?, &req::<String>(&args, "payment_id")?)),
+        "ap.payment_reverse" => out(core.ap_payment_reverse(tk()?, &req::<String>(&args, "payment_id")?, &req::<String>(&args, "reason")?)),
+        "ap.allocate" => out(core.ap_allocate(tk()?, opt(&args, "payment_id")?, opt(&args, "credit_id")?, req(&args, "allocations")?)),
+        "ap.allocation_reverse" => out(core.ap_allocation_reverse(tk()?, &req::<String>(&args, "allocation_id")?)),
+        "products.purchase_costs" => out(core.purchase_costs(tk()?, &req::<String>(&args, "product_id")?)),
         // WhatsApp AI orders (conversation → structured draft → staff review)
         "waorders.list" => out(core.wa_orders_list(tk()?, opt(&args, "filter")?)),
         "waorders.get" => out(core.wa_order_get(tk()?, &req::<String>(&args, "session_id")?)),
@@ -497,7 +511,13 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "handled")?,
             opt(&args, "assign_to_me")?,
         )),
-        "waorders.confirm" => out(core.wa_order_confirm(tk()?, &req::<String>(&args, "session_id")?, req(&args, "revision")?)),
+        "waorders.confirm" => out(core.wa_order_confirm_checked(
+            tk()?,
+            &req::<String>(&args, "session_id")?,
+            req(&args, "revision")?,
+            opt::<bool>(&args, "acknowledge_shortage")?.unwrap_or(false),
+            opt::<bool>(&args, "acknowledge_price_change")?.unwrap_or(false),
+        )),
         "waorders.cancel" => out(core.wa_order_cancel(tk()?, &req::<String>(&args, "session_id")?)),
         "waorders.payment" => out(core.wa_order_payment(
             tk()?,
@@ -527,7 +547,11 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "orders.products" => out(core.orders_product_search(tk()?, &req::<String>(&args, "q")?)),
         "orders.save" => out(core.order_save(tk()?, opt(&args, "order_id")?, req(&args, "order")?)),
         "orders.from_inbox" => out(core.order_from_inbox(tk()?, req(&args, "seq")?)),
-        "orders.confirm" => out(core.order_confirm(tk()?, &req::<String>(&args, "order_id")?)),
+        "orders.confirm" => out(core.order_confirm_checked(
+            tk()?,
+            &req::<String>(&args, "order_id")?,
+            opt::<bool>(&args, "acknowledge_shortage")?.unwrap_or(false),
+        )),
         "orders.cancel" => out(core.order_cancel(tk()?, &req::<String>(&args, "order_id")?, opt(&args, "reason")?)),
         "orders.set_payment" => {
             out(core.order_set_payment(tk()?, &req::<String>(&args, "order_id")?, &req::<String>(&args, "payment_state")?))

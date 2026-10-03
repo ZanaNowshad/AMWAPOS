@@ -123,11 +123,13 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "refunds.create"
         | "cash.event"
         | "ap.invoice_post"
-        | "ap.credit_post"
+        | "ap.invoice_reverse"
         | "ap.payment_record"
-        | "ap.payment_allocate"
-        | "ap.reverse"
+        | "ap.payment_reverse"
+        | "ap.allocate"
+        | "ap.allocation_reverse"
         | "legacy.price_change" => CommitFinancial,
+        "ap.invoice_create" | "ap.invoice_approve" | "supplier_invoices.set_status" => Draft,
         // ---- stock --------------------------------------------------------
         "inventory.receive"
         | "inventory.adjust"
@@ -333,6 +335,8 @@ fn is_read_command(c: &str) -> bool {
         "ap.overview",
         "ap.supplier",
         "ap.invoice_get",
+        "ap.payment_get",
+        "products.purchase_costs",
         "attention.list",
         "search.global",
         "legacy.search_products",

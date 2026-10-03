@@ -94,6 +94,8 @@ pub struct OrderView {
     pub lines: Vec<OrderLineView>,
     /// Sum of catalogue prices, before any till discount (a guide only).
     pub estimate_minor: i64,
+    /// Stock held for this order (active, released, expired, converted).
+    pub reservations: Vec<serde_json::Value>,
 }
 
 fn load_order(c: &Connection, id: &str) -> AppResult<OrderView> {
@@ -129,11 +131,13 @@ fn load_order(c: &Connection, id: &str) -> AppResult<OrderView> {
                     updated_at: r.get(19)?,
                     lines: vec![],
                     estimate_minor: 0,
+                    reservations: vec![],
                 })
             },
         )
         .optional()?
         .ok_or_else(|| AppError::not_found("Order"))?;
+    o.reservations = crate::reservations::for_order(c, id)?;
     let sql = format!(
         "SELECT l.line_no, l.product_id, p.name, l.description, l.qty_milli, {} FROM digital_order_lines l
          LEFT JOIN products p ON p.product_id=l.product_id WHERE l.order_id=?1 ORDER BY l.line_no",
@@ -316,6 +320,8 @@ pub(crate) fn on_sale_committed(
         "UPDATE digital_orders SET status='converted', sale_id=?2, delivery_id=?3, updated_at=?4 WHERE order_id=?1",
         params![order_id, sale_id, delivery_id, now],
     )?;
+    // The sale moved the stock: the hold ends.
+    crate::reservations::close_order(tx, &order_id, "converted", actor, "sold")?;
     audit::record(
         tx,
         actor,
@@ -526,6 +532,14 @@ impl AppCore {
     }
 
     pub fn order_confirm(&self, token: &str, order_id: &str) -> AppResult<OrderView> {
+        self.order_confirm_checked(token, order_id, false)
+    }
+
+    /// Confirm for fulfilment: stock is checked again now (other tills may
+    /// have sold it since the draft was made) and reserved. A shortage stops
+    /// the confirmation unless the person acknowledges it; then only the free
+    /// stock is reserved.
+    pub fn order_confirm_checked(&self, token: &str, order_id: &str, acknowledge_shortage: bool) -> AppResult<OrderView> {
         let s = self.order_session(token, "orders.manage")?;
         let id = validate::id(order_id, "Order")?;
         let actor = self.actor(&s, None);
@@ -541,11 +555,44 @@ impl AppCore {
             if o.lines.iter().any(|l| l.product_id.is_none()) {
                 return Err(AppError::validation("Match every line to a product before confirming."));
             }
+            let short = crate::reservations::shortages(tx, &id)?;
+            if !short.is_empty() && !acknowledge_shortage {
+                let names: Vec<String> = short
+                    .iter()
+                    .map(|x| {
+                        format!(
+                            "{} (wanted {}, free {})",
+                            x.name,
+                            crate::money::format_qty(x.wanted_milli),
+                            crate::money::format_qty(x.free_milli)
+                        )
+                    })
+                    .collect();
+                return Err(AppError::conflict(format!(
+                    "Not enough stock now for: {}. Change the order or confirm the shortage.",
+                    names.join(", ")
+                ))
+                .with_details(json!({ "kind": "stock_shortage", "lines": short })));
+            }
             tx.execute("UPDATE digital_orders SET status='confirmed', updated_at=?2 WHERE order_id=?1", params![id, time::now_str()])?;
-            audit::record(tx, &actor, "order.confirmed", "digital_order", Some(&id), None, Some(&json!({ "lines": o.lines.len() })))?;
+            audit::record(
+                tx,
+                &actor,
+                "order.confirmed",
+                "digital_order",
+                Some(&id),
+                None,
+                Some(&json!({ "lines": o.lines.len(), "shortage_acknowledged": !short.is_empty(), "shortages": short })),
+            )?;
+            crate::reservations::reserve_order(tx, &id, &actor, crate::reservations::DEFAULT_TTL_HOURS)?;
             Ok(())
         })?;
         self.db.read(|c| load_order(c, &id))
+    }
+
+    /// Background pass: end holds of confirmed orders not sold in time.
+    pub fn orders_expire_reservations(&self) -> AppResult<usize> {
+        Ok(self.db.write(|tx| crate::reservations::expire_due(tx))?.len())
     }
 
     pub fn order_cancel(&self, token: &str, order_id: &str, reason: Option<String>) -> AppResult<OrderView> {
@@ -560,6 +607,7 @@ impl AppCore {
                 return Err(AppError::conflict("This order can no longer be cancelled."));
             }
             tx.execute("UPDATE digital_orders SET status='cancelled', updated_at=?2 WHERE order_id=?1", params![id, time::now_str()])?;
+            crate::reservations::close_order(tx, &id, "released", &actor, "order cancelled")?;
             // A till that loaded it keeps its sale, which is no longer tied to the order.
             tx.execute("UPDATE carts SET digital_order_id=NULL WHERE digital_order_id=?1 AND status IN ('active','held')", [&id])?;
             audit::record(

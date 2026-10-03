@@ -49,6 +49,8 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 22, name: "document_intelligence", sql: include_str!("migrations/0022_document_intelligence.sql") },
     Migration { version: 23, name: "whatsapp_ai_orders", sql: include_str!("migrations/0023_whatsapp_ai_orders.sql") },
     Migration { version: 24, name: "wa_catalog_hardening", sql: include_str!("migrations/0024_wa_catalog_hardening.sql") },
+    Migration { version: 25, name: "order_reservations", sql: include_str!("migrations/0025_order_reservations.sql") },
+    Migration { version: 26, name: "accounts_payable", sql: include_str!("migrations/0026_accounts_payable.sql") },
 ];
 
 pub fn latest_schema_version() -> i64 {
@@ -393,9 +395,24 @@ mod tests {
     /// published to WhatsApp by the upgrade itself.
     #[test]
     fn upgrade_from_earlier_schemas_keeps_data_and_starts_nothing() {
-        for from in [13, 19] {
+        for from in [13, 19, 24] {
             upgrade_from(from);
         }
+    }
+
+    /// Schema 24 already holds reviewed supplier invoices from Document
+    /// Intelligence. The Accounts Payable upgrade keeps them as unposted
+    /// records: no liability, credit, payment, reservation or stock change.
+    fn seed_supplier_invoices(c: &Connection) {
+        c.execute_batch(
+            "INSERT INTO suppliers(supplier_id,name,created_at,updated_at) VALUES ('S1','Gulf Foods','x','x');
+             INSERT INTO supplier_invoices(invoice_id,number,doc_type,supplier_id,invoice_number,invoice_date,subtotal_minor,vat_minor,total_minor,status,posting,created_by,created_at,updated_at)
+               VALUES ('I1','SI-00001','invoice','S1','GF-9','2026-08-01',1000,100,1100,'approved','not_supported','u','x','x'),
+                      ('I2','SI-00002','credit_note','S1','GF-CN','2026-08-02',100,10,110,'draft','not_supported','u','x','x');
+             INSERT INTO supplier_invoice_lines(invoice_id,line_no,product_id,description,qty_milli,unit_cost_minor,line_total_minor)
+               VALUES ('I1',1,'P1','Laban',1000,1000,1000);",
+        )
+        .unwrap();
     }
 
     fn upgrade_from(from: i64) {
@@ -423,8 +440,29 @@ mod tests {
                    VALUES ('P1','100001','Laban','C1','T1','x','x');",
             )
             .unwrap();
+            if from >= 22 {
+                seed_supplier_invoices(&c);
+            }
         }
         let (db, rep) = Db::open(&p, false).unwrap();
+        if from >= 22 {
+            let (posting, status, money, lines): (String, String, i64, i64) = db
+                .read(|c| {
+                    Ok(c.query_row(
+                        "SELECT (SELECT group_concat(posting) FROM supplier_invoices), (SELECT group_concat(status) FROM supplier_invoices),
+                                (SELECT COUNT(*) FROM ap_liabilities) + (SELECT COUNT(*) FROM ap_credits) + (SELECT COUNT(*) FROM ap_payments)
+                                  + (SELECT COUNT(*) FROM ap_allocations) + (SELECT COUNT(*) FROM stock_reservations) + (SELECT COUNT(*) FROM stock_movements),
+                                (SELECT COUNT(*) FROM supplier_invoice_lines)",
+                        [],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                    )?)
+                })
+                .unwrap();
+            assert_eq!(posting, "not_posted,not_posted", "existing records are kept, unposted");
+            assert_eq!(status, "approved,draft", "review states kept");
+            assert_eq!(money, 0, "the upgrade posts, pays, reserves and moves nothing");
+            assert_eq!(lines, 1);
+        }
         assert_eq!((rep.from_version, rep.to_version), (from, latest_schema_version()));
         assert_eq!(rep.applied, (from + 1..=latest_schema_version()).collect::<Vec<_>>());
         assert!(rep.safety_backup.as_deref().is_some_and(|b| Path::new(b).exists()), "backup before upgrading");

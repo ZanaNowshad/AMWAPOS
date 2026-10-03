@@ -103,6 +103,11 @@ pub struct Mention {
     pub size: Option<(i64, String)>,
     /// small | big | medium
     pub size_word: Option<String>,
+    /// Said as an addition ("add", "also", "more", "another"): raises the
+    /// quantity of a product already in the draft. Without it, a product
+    /// already in the draft is not changed (the customer may be repeating it).
+    #[serde(default)]
+    pub increment: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -333,6 +338,21 @@ const STOP: &[&str] = &[
     "fine",
     "good",
     "nice",
+    "hai",
+    "hii",
+    "hiii",
+    "helo",
+    "snd",
+    "wala",
+    "walla",
+    "wallah",
+    "inshallah",
+    "yalla",
+    "shukran",
+    "shukriya",
+    "kindly",
+    "akhi",
+    "add",
 ];
 
 /// Words that never name a product (questions, time, waiting, courtesy).
@@ -413,6 +433,99 @@ const NOT_PRODUCT: &[&str] = &[
     "ok",
     "ready",
     "done",
+    "actually",
+    "only",
+    "last",
+    "yesterday",
+    "previous",
+    "before",
+    "address",
+    "location",
+    "asking",
+    "ordering",
+    "price",
+    "prices",
+    "rate",
+    "mafi",
+    "mafee",
+    "know",
+    "sure",
+    "وصل",
+    "امس",
+    "العنوان",
+    "عنوان",
+    "do",
+    "does",
+    "did",
+    "much",
+    "many",
+    "available",
+    "any",
+    "كم",
+    "سعر",
+    "بكم",
+    "عندكم",
+    "متوفر",
+    "ethra",
+    "aanu",
+    "anymore",
+    "extra",
+    "additional",
+    "another",
+];
+
+/// Words that only name a variant or size of a product ("zero", "normal"):
+/// never a product on their own, so never added as a new line.
+const VARIANT_ONLY: &[&str] = &[
+    "zero",
+    "diet",
+    "normal",
+    "regular",
+    "original",
+    "classic",
+    "light",
+    "lite",
+    "full",
+    "low",
+    "fat",
+    "skim",
+    "skimmed",
+    "plain",
+    "free",
+    "sugarfree",
+    "big",
+    "small",
+    "medium",
+    "cream",
+];
+
+/// Negation words that apply to the words after them ("don't send coke", "no milk", "لا ترسل كولا").
+const NEG_BEFORE: &[&str] = &["dont", "not", "no", "never", "without", "except", "لا", "ما", "مو", "بدون", "بلا"];
+/// Manglish negation after the product ("coke venda" = no coke).
+const NEG_AFTER: &[&str] = &["venda", "vendaa", "vendam", "vendaam", "veenda", "vendathu"];
+/// Verbs dropped after a negation ("don't *send* coke").
+const NEG_VERBS: &[&str] = &[
+    "send",
+    "add",
+    "want",
+    "need",
+    "give",
+    "bring",
+    "put",
+    "include",
+    "get",
+    "deliver",
+    "ترسل",
+    "ترسلي",
+    "تضيف",
+    "تجيب",
+    "تحط",
+    "ابي",
+    "ابغي",
+    "ابغى",
+    "ابغا",
+    "اريد",
+    "نبي",
 ];
 
 const SIZE_WORDS: &[(&str, &str)] = &[
@@ -506,8 +619,25 @@ pub fn size_token(w: &str, next: Option<&str>) -> Option<(i64, String)> {
     Some(((v * mul).round() as i64, unit.to_string()))
 }
 
-fn any(t: &str, words: &[&str]) -> bool {
-    words.iter().any(|w| t.contains(w))
+/// Words of a text for phrase matching: split on anything that is not a
+/// letter or digit; apostrophes are dropped ("don't" → "dont", "lay's" → "lays").
+pub fn tokens(t: &str) -> Vec<String> {
+    t.split(|c: char| !(c.is_alphanumeric() || c == '\'' || c == '\u{2019}'))
+        .map(|w| w.chars().filter(|c| *c != '\'' && *c != '\u{2019}').collect::<String>())
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// The phrase occurs as whole words ("late" is not in "chocolate", "كم" is
+/// not in "كمان"). Every keyword list is matched this way.
+pub fn has_phrase(t: &str, phrase: &str) -> bool {
+    let tw = tokens(t);
+    let pw = tokens(phrase);
+    !pw.is_empty() && tw.windows(pw.len()).any(|w| w.iter().zip(pw.iter()).all(|(a, b)| a == b))
+}
+
+fn any(t: &str, phrases: &[&str]) -> bool {
+    phrases.iter().any(|p| has_phrase(t, p))
 }
 
 fn word_in(t: &str, words: &[&str]) -> bool {
@@ -743,7 +873,15 @@ pub fn parse_item(seg: &str) -> Option<Mention> {
         None => (1000, "pcs".to_string(), false),
     };
     out.dedup();
-    Some(Mention { text: seg.trim().chars().take(120).collect(), qty: Qty { milli, unit, explicit }, words: out, size, size_word })
+    let increment = words.iter().any(|w| matches!(*w, "more" | "another" | "extra" | "additional" | "also" | "plus" | "كمان" | "زياده"));
+    Some(Mention {
+        text: seg.trim().chars().take(120).collect(),
+        qty: Qty { milli, unit, explicit },
+        words: out,
+        size,
+        size_word,
+        increment,
+    })
 }
 
 // ---------------------------------------------------------------- intent
@@ -769,9 +907,39 @@ const GREETINGS: &[&str] = &[
     "شكرا",
     "ok thanks",
     "namaskaram",
+    "shukran",
+    "shukriya",
+    "thanks a lot",
+    "jazakallah",
 ];
-const CANCEL: &[&str] =
-    &["cancel", "cancel it", "cancel order", "no need", "dont need", "don't need", "الغي", "الغاء", "كنسل", "لا ابغي", "venda", "vendaa"];
+/// A message that is only one of these cancels the whole draft.
+const CANCEL: &[&str] = &[
+    "cancel",
+    "cancel it",
+    "cancel order",
+    "cancel my order",
+    "cancel the order",
+    "cancel everything",
+    "cancel all",
+    "cancel all items",
+    "please cancel",
+    "no need",
+    "dont need",
+    "don't need",
+    "الغي",
+    "الغي الطلب",
+    "الغاء",
+    "الغاء الطلب",
+    "كنسل",
+    "كنسل الطلب",
+    "لا ابغي",
+    "venda",
+    "vendaa",
+    "order venda",
+    "order cancel",
+];
+/// Cancel words whose object is unclear ("cancel that"): never applied by rules.
+const CANCEL_UNCLEAR: &[&str] = &["cancel that", "cancel this"];
 const CONFIRM: &[&str] = &[
     "yes",
     "yes please",
@@ -859,7 +1027,7 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
         priority.push("complaint".into());
     }
     // Spam: a link with promotion words, or a known pattern.
-    if any(&t, &["http://", "https://", "www."])
+    if ["http://", "https://", "www."].iter().any(|u| t.contains(u))
         && any(&t, &["win", "prize", "crypto", "bitcoin", "free gift", "click", "investment", "loan", "لقد ربحت", "جائزه", "اربح"])
     {
         out.intent = Intent::Spam;
@@ -885,12 +1053,53 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
         out.reasons = vec!["greeting_only".into()];
         return out;
     }
-    if CANCEL.iter().any(|c| bare == *c || bare.starts_with(&format!("{c} ")) || bare.ends_with(&format!(" {c}")))
-        || (active && word_in(&t, &["cancel", "الغي", "الغاء"]))
-    {
+    // Cancellation: the whole draft only for a clear cancel message; "cancel
+    // the milk" / "milk venda" remove that item; "cancel that" is left to a person.
+    let bare_words = tokens(bare).join(" ");
+    let cancel_phrase = |c: &&str| {
+        let c = tokens(c).join(" ");
+        bare_words == c || (bare_words.starts_with(&format!("{c} ")) && is_filler(&bare_words[c.len()..]))
+    };
+    if CANCEL.iter().any(cancel_phrase) {
         out.intent = Intent::Cancellation;
         out.band = "high".into();
         out.reasons = vec!["cancel_words".into()];
+        out.priority = priority;
+        return out;
+    }
+    if CANCEL_UNCLEAR.iter().any(cancel_phrase) {
+        out.intent = Intent::Cancellation;
+        out.band = "low".into();
+        out.reasons = vec!["cancel_unclear".into()];
+        out.priority = priority;
+        return out;
+    }
+    if active && word_in(&t, &["cancel", "الغي", "الغاء", "كنسل"]) {
+        // "cancel the milk": remove that item.
+        let rest: Vec<String> = tokens(&t).into_iter().filter(|w| !matches!(w.as_str(), "cancel" | "الغي" | "الغاء" | "كنسل")).collect();
+        if let Some(target) = parse_item(&rest.join(" ")).filter(|m| !variant_only(m) && !not_product(m)) {
+            out.intent = Intent::OrderModification;
+            out.band = "medium".into();
+            out.reasons = vec!["cancel_item".into()];
+            out.modifications = vec![Modification::Remove { target }];
+            out.priority = priority;
+            return out;
+        }
+        out.intent = Intent::Cancellation;
+        out.band = "low".into();
+        out.reasons = vec!["cancel_unclear".into()];
+        out.priority = priority;
+        return out;
+    }
+    // Messages about something other than ordering now (a past delivery, a
+    // repeat request, an opinion, "stop messaging me"): no items are read.
+    if let Some((reason, intent, prio)) = non_order_context(&t) {
+        out.intent = intent;
+        out.band = "medium".into();
+        out.reasons = vec![reason.into()];
+        if let Some(p) = prio {
+            priority.push(p.into());
+        }
         out.priority = priority;
         return out;
     }
@@ -912,7 +1121,7 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
         || any(&t, &["pick up", "i will come", "ill come", "will collect", "بجي اخذ"])
     {
         out.mode = Some("pickup".into());
-    } else if any(&t, &["deliver", "delivery", "send to", "توصيل", "وصل", "ارسل ل"]) {
+    } else if any(&t, &["deliver", "delivery", "send to", "توصيل"]) {
         out.mode = Some("delivery".into());
     }
     let address = parse_address(raw);
@@ -926,27 +1135,126 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
         // Short words match whole words only ("und" is not "refund").
         || word_in(&t, &["فيه", "undo", "und"]);
     let price_q = any(&t, &["how much", "price", "cost", "rate", "كم سعر", "بكم", "كم", "سعر", "ethra", "evide price"]);
-    // Modifications (only meaningful with an open draft).
+    let retracted =
+        any(&t, &["not ordering", "not an order", "not order", "just asking", "only asking", "was asking", "just checking", "not buying"]);
+    // Negated words never become items: "don't send coke", "coke venda",
+    // "coke zero 2 not normal". With an open draft they are removals.
+    let (positive, negated) = split_negation(&item_text);
+    // A change with no open draft ("remove lays", "make coke 3") is about an
+    // order that is no longer open: never read as new items.
+    if !active {
+        match modification(&positive) {
+            Some(Modification::Add { .. }) => reasons.push("addition_words".into()),
+            Some(_) => {
+                out.intent = Intent::OrderModification;
+                out.band = "low".into();
+                out.reasons = vec!["change_without_open_order".into()];
+                out.address = address;
+                out.priority = priority;
+                return out;
+            }
+            None => {}
+        }
+    }
+    let mut removals: Vec<Modification> = vec![];
+    for seg in &negated {
+        if let Some(m) = parse_item(seg).filter(|m| !variant_only(m) && !not_product(m)) {
+            if active {
+                removals.push(Modification::Remove { target: m });
+            }
+        }
+    }
+    // Modifications (only meaningful with an open draft), clause by clause:
+    // "remove the coke and add 2 pepsi" is two changes.
     if active {
-        if let Some(m) = modification(&item_text) {
-            out.modifications.push(m);
+        let clauses = split_clauses(&positive);
+        let mods: Vec<Option<Modification>> = clauses.iter().map(|c| modification(c)).collect();
+        if mods.iter().any(|m| m.is_some()) {
+            for (c, m) in clauses.iter().zip(mods) {
+                match m {
+                    Some(m) => out.modifications.push(m),
+                    None => {
+                        if let Some(item) = parse_item(c).filter(|m| !variant_only(m) && !not_product(m)) {
+                            out.modifications.push(Modification::Add { item });
+                        }
+                    }
+                }
+            }
             out.intent = Intent::OrderModification;
             out.band = "medium".into();
             reasons.push("modification_words".into());
         }
     }
+    let mut variant_left = false;
     if out.modifications.is_empty() {
-        for seg in split_items(&item_text) {
+        for seg in split_items(&positive) {
             if let Some(m) = parse_item(&seg) {
                 // Leftover delivery words are not products.
-                if m.words.iter().all(|w| {
-                    matches!(w.as_str(), "deliver" | "delivery" | "to" | "at" | "توصيل" | "pickup" | "later" | "now" | "today" | "tomorrow")
-                }) {
+                if not_product(&m) {
+                    continue;
+                }
+                // "normal", "zero": a variant alone is never a product.
+                if variant_only(&m) {
+                    variant_left = true;
+                    continue;
+                }
+                // "coke is cold", "milk was bad": a statement, not an order.
+                if !question && !m.qty.explicit && seg_has_copula(&seg) {
                     continue;
                 }
                 out.items.push(m);
             }
         }
+    }
+    if !negated.is_empty() {
+        reasons.push("negated_items".into());
+        if active && out.modifications.is_empty() && out.items.is_empty() && removals.is_empty() && variant_left {
+            // "not zero, normal": a correction of a variant; a person (or the AI) decides.
+            out.intent = Intent::Unknown;
+            out.band = "low".into();
+            out.reasons = vec!["variant_correction".into()];
+            out.address = address;
+            out.priority = priority;
+            return out;
+        }
+        if active && variant_left && out.items.is_empty() {
+            // Same: never guess which variant was meant.
+            out.intent = Intent::Unknown;
+            out.band = "low".into();
+            out.reasons = vec!["variant_correction".into()];
+            out.address = address;
+            out.priority = priority;
+            return out;
+        }
+        // "send 3 coke not 2": the number is corrected, not added.
+        let qty_fix = negated.iter().all(|n| tokens(n).iter().all(|w| number_token(w).is_some() || number_word(w).is_some()));
+        if active && qty_fix && out.items.len() == 1 && out.items[0].qty.explicit {
+            let target = out.items.remove(0);
+            out.modifications.push(Modification::SetQty { target });
+        }
+        out.modifications.extend(removals);
+        if active && !out.modifications.is_empty() {
+            let adds: Vec<Modification> = out.items.drain(..).map(|item| Modification::Add { item }).collect();
+            out.modifications.extend(adds);
+        }
+        if !out.modifications.is_empty() && out.items.is_empty() {
+            out.intent = Intent::OrderModification;
+            out.band = "medium".into();
+        }
+    }
+    if retracted {
+        // "I was asking the price, not ordering": never an order.
+        reasons.push("not_an_order".into());
+        if active {
+            priority.push("customer_retracted".into());
+        }
+        out.intent = if price_q { Intent::PriceQuestion } else { Intent::ProductQuestion };
+        out.band = "medium".into();
+        out.modifications.clear();
+        out.address = address;
+        out.reasons = reasons;
+        out.priority = priority;
+        return out;
     }
     if !out.modifications.is_empty() {
         // done above
@@ -994,6 +1302,135 @@ pub fn read(kind: &str, text: &str, active: bool) -> Reading {
     out.reasons = reasons;
     out.priority = priority;
     out
+}
+
+/// Clauses of a change message: lines, commas and "and" / "و" between words.
+fn split_clauses(t: &str) -> Vec<String> {
+    let mut out = vec![];
+    for line in t.split(['\n', ',', ';']) {
+        let mut cur: Vec<&str> = vec![];
+        for w in line.split_whitespace() {
+            if matches!(w, "and" | "&" | "و" | "then") {
+                if !cur.is_empty() {
+                    out.push(cur.join(" "));
+                    cur.clear();
+                }
+                continue;
+            }
+            cur.push(w);
+        }
+        if !cur.is_empty() {
+            out.push(cur.join(" "));
+        }
+    }
+    out
+}
+
+/// Only polite filler after a phrase ("cancel it please").
+fn is_filler(rest: &str) -> bool {
+    tokens(rest).iter().all(|w| CONFIRM_FILL.contains(&w.as_str()) || matches!(w.as_str(), "now" | "all" | "sorry" | "bro" | "habibi"))
+}
+
+fn variant_only(m: &Mention) -> bool {
+    !m.words.is_empty() && m.words.iter().all(|w| VARIANT_ONLY.contains(&w.as_str()))
+}
+
+fn not_product(m: &Mention) -> bool {
+    m.words.iter().all(|w| {
+        matches!(w.as_str(), "deliver" | "delivery" | "to" | "at" | "توصيل" | "pickup" | "later" | "now" | "today" | "tomorrow")
+            || NOT_PRODUCT.contains(&w.as_str())
+    })
+}
+
+fn seg_has_copula(seg: &str) -> bool {
+    tokens(seg).iter().any(|w| matches!(w.as_str(), "is" | "are" | "was" | "were" | "isnt" | "wasnt"))
+}
+
+/// Split a message into the words that are asked for and the words that are
+/// negated, clause by clause. "don't send coke" → ([], ["coke"]); "coke zero 2
+/// not normal" → (["coke zero 2"], ["normal"]); "coke venda" → ([], ["coke"]).
+pub fn split_negation(text: &str) -> (String, Vec<String>) {
+    let mut pos: Vec<String> = vec![];
+    let mut neg: Vec<String> = vec![];
+    for clause in text.split(['\n', ',', ';']) {
+        let raw: Vec<&str> = clause.split_whitespace().collect();
+        let tk: Vec<String> = raw.iter().map(|w| tokens(w).join("")).collect();
+        let is_neg_before = |i: usize| {
+            let w = tk[i].as_str();
+            NEG_BEFORE.contains(&w) || (w == "do" && tk.get(i + 1).is_some_and(|n| n == "not"))
+        };
+        if let Some(k) = (0..tk.len()).find(|i| NEG_AFTER.contains(&tk[*i].as_str())) {
+            // Manglish: the product comes before the negation.
+            neg.push(raw[..k].join(" "));
+            pos.push(raw[k + 1..].join(" "));
+            continue;
+        }
+        match (0..tk.len()).find(|i| is_neg_before(*i)) {
+            Some(k) => {
+                let mut j = k + 1;
+                if tk[k] == "do" {
+                    j += 1;
+                }
+                while j < tk.len() && (NEG_VERBS.contains(&tk[j].as_str()) || STOP.contains(&tk[j].as_str())) {
+                    j += 1;
+                }
+                pos.push(raw[..k].join(" "));
+                neg.push(raw[j.min(raw.len())..].join(" "));
+            }
+            None => pos.push(clause.to_string()),
+        }
+    }
+    let pos: Vec<String> = pos.into_iter().filter(|p| !p.trim().is_empty()).collect();
+    (pos.join("\n"), neg.into_iter().filter(|n| !n.trim().is_empty()).collect())
+}
+
+/// Messages about something other than ordering now.
+fn non_order_context(t: &str) -> Option<(&'static str, Intent, Option<&'static str>)> {
+    if any(
+        t,
+        &[
+            "stop sending",
+            "stop messaging",
+            "stop messages",
+            "unsubscribe",
+            "dont message",
+            "no more messages",
+            "لا ترسل رسائل",
+            "وقف الرسائل",
+        ],
+    ) {
+        return Some(("opt_out_request", Intent::SupportIssue, Some("opt_out_request")));
+    }
+    if any(t, &["why did you", "why you", "you sent", "u sent", "you send me", "did you send", "ليش ارسلت", "ليش جبت"]) {
+        return Some(("about_previous_delivery", Intent::SupportIssue, Some("complaint")));
+    }
+    if any(
+        t,
+        &[
+            "same as yesterday",
+            "same as last time",
+            "same as before",
+            "like last time",
+            "same order",
+            "repeat order",
+            "repeat my order",
+            "نفس الطلب",
+            "نفس امس",
+            "مثل امس",
+            "مثل المره",
+        ],
+    ) {
+        return Some(("repeat_previous_order", Intent::SupportIssue, Some("repeat_order_request")));
+    }
+    let ordering_verb = any(t, &["send", "need", "want", "give", "bring", "deliver", "ابي", "ابغي", "ابغى", "اريد", "ارسل", "venam"]);
+    if !ordering_verb && any(t, &["last time", "yesterday", "last week", "previous", "امس", "المره الماضيه"]) {
+        return Some(("past_reference", Intent::Unknown, None));
+    }
+    if any(t, &["too expensive", "expensive", "too costly", "very costly", "cheaper", "not fresh", "tasty", "delicious", "غالي", "رخيص"])
+    {
+        return Some(("product_comment", Intent::ProductQuestion, None));
+    }
+    None
 }
 
 fn strip_address(t: &str) -> String {
@@ -1052,7 +1489,10 @@ fn modification(t: &str) -> Option<Modification> {
     // add / also / plus / one more
     if matches!(first, "add" | "also" | "plus" | "زيد" | "ضيف" | "كمان") || t.starts_with("one more") || t.starts_with("and ") {
         let skip = if t.starts_with("one more") { 0 } else { 1 };
-        return parse_item(&rest(skip)).map(|item| Modification::Add { item });
+        return parse_item(&rest(skip)).map(|mut item| {
+            item.increment = true;
+            Modification::Add { item }
+        });
     }
     // "same but coke zero", "instead coke zero", "change milk to low fat milk"
     if t.starts_with("same but") || first == "instead" || t.contains(" instead") {

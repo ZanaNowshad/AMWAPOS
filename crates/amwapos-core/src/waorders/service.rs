@@ -35,6 +35,12 @@ use crate::validate;
 /// Only recent messages are interpreted (history is not replayed when the
 /// module is switched on).
 const WINDOW_HOURS: i64 = 6;
+/// A conversation idle this long starts over: a message days later is a new
+/// order, never appended to an old draft.
+pub const SESSION_IDLE_HOURS: i64 = 24;
+/// Messages about a closed order (cancel, pay, confirm) are attached to it
+/// for staff when it closed within this window.
+const AFTER_CLOSE_HOURS: i64 = 48;
 pub const SYSTEM_USER: &str = "system:whatsapp";
 const ACTIVE: &str = "('collecting','clarifying','ready')";
 
@@ -151,6 +157,15 @@ fn ensure_order(core: &AppCore, tx: &Connection, session: &str) -> AppResult<Str
         params![id, number, branch(core, tx)?, customer, phone, "Draft from WhatsApp messages; review before confirming.", SYSTEM_USER, t, session],
     )?;
     tx.execute("UPDATE wa_order_sessions SET order_id=?2 WHERE session_id=?1", params![session, id])?;
+    // A payment screenshot sent before the first item belongs to this draft.
+    let linked = tx.execute(
+        "UPDATE payment_reviews SET order_id=?2 WHERE order_id IS NULL AND status NOT IN ('confirmed','rejected')
+           AND inbox_seq IN (SELECT inbox_seq FROM wa_inbox_processing WHERE session_id=?1)",
+        params![session, id],
+    )?;
+    if linked > 0 {
+        tx.execute("UPDATE digital_orders SET payment_state='screenshot_pending' WHERE order_id=?1 AND payment_state='unpaid'", [&id])?;
+    }
     audit::record(
         tx,
         &audit::Actor { user_id: None, device_id: None, branch_id: None, approved_by: None },
@@ -348,6 +363,34 @@ fn apply_mods(
                                 "skipped_locked_line",
                                 source,
                                 &json!({ "line_no": l.line_no, "wanted": "add" }),
+                                None,
+                            )?;
+                        } else if !item.increment {
+                            // The product is already in the draft and the customer did not
+                            // say "more": repeating it ("2 coke" again) changes nothing; a
+                            // different number is a question, never a guess.
+                            if item.qty.explicit && item.qty.milli != l.qty_milli {
+                                qs.push(Question {
+                                    id: new_id(),
+                                    kind: "quantity".into(),
+                                    line_no: Some(l.line_no),
+                                    text: format!(
+                                        "You have {} {} in the order. Should it be {} in total, or {} more?",
+                                        money::format_qty(l.qty_milli),
+                                        l.product_name.clone().unwrap_or(l.description.clone()),
+                                        money::format_qty(item.qty.milli),
+                                        money::format_qty(item.qty.milli)
+                                    ),
+                                    options: vec![],
+                                });
+                            }
+                            event(
+                                tx,
+                                session,
+                                seq,
+                                "repeated_item",
+                                source,
+                                &json!({ "line_no": l.line_no, "said_qty": item.qty.milli }),
                                 None,
                             )?;
                         } else {
@@ -550,6 +593,7 @@ pub(crate) fn refresh(core: &AppCore, tx: &Connection, session: &str) -> AppResu
         None => vec![],
     };
     qs.retain(|q| match q.line_no {
+        Some(n) if q.kind == "quantity" => rows.iter().any(|l| l.line_no == n && !l.locked),
         Some(n) => {
             rows.iter().any(|l| l.line_no == n && matches!(l.resolution.as_deref(), Some("ambiguous" | "unmatched" | "unavailable")))
         }
@@ -795,7 +839,7 @@ impl AppCore {
         let seqs: Vec<i64> = self.db.read(|c| {
             let mut st = c.prepare(
                 "SELECT i.seq FROM wa_inbox i WHERE NOT EXISTS (SELECT 1 FROM wa_inbox_processing p WHERE p.inbox_seq=i.seq)
-                   AND i.received_at >= ?1 AND i.chat NOT LIKE '%@g.us' AND i.chat NOT LIKE 'status@%' ORDER BY i.seq LIMIT ?2",
+                   AND i.received_at >= ?1 AND i.chat NOT LIKE '%@g.us' AND i.chat NOT LIKE 'status@%' ORDER BY i.received_at, i.seq LIMIT ?2",
             )?;
             let r = st.query_map(params![since, limit], |r| r.get(0))?.collect::<Result<Vec<i64>, _>>()?;
             Ok(r)
@@ -854,6 +898,36 @@ impl AppCore {
                 }
             }
         }
+        // Rule: a conversation idle for SESSION_IDLE_HOURS starts over.
+        if let Some(s) = &session {
+            let last: Option<String> =
+                tx.query_row("SELECT last_message_at FROM wa_order_sessions WHERE session_id=?1", [s], |r| r.get(0))?;
+            let idle = last
+                .as_deref()
+                .and_then(|x| time::parse(x).ok())
+                .zip(time::parse(&received).ok())
+                .map(|(a, b)| (b - a).num_hours())
+                .unwrap_or(0);
+            if idle >= SESSION_IDLE_HOURS {
+                tx.execute("UPDATE wa_order_sessions SET state='closed', updated_at=?2 WHERE session_id=?1", params![s, now()])?;
+                event(tx, s, Some(seq), "closed_idle", "system", &json!({ "idle_hours": idle }), None)?;
+                session = None;
+            }
+        }
+        // Rule: a message older than the last one applied to this conversation
+        // (delivered late, out of order, after a reconnect) is shown to staff
+        // and never applied to the current draft.
+        if let Some(s) = &session {
+            let last: Option<String> =
+                tx.query_row("SELECT last_message_at FROM wa_order_sessions WHERE session_id=?1", [s], |r| r.get(0))?;
+            if last.as_deref().is_some_and(|l| received.as_str() < l) {
+                event(tx, s, Some(seq), "late_message", "system", &json!({ "sent_at": received, "last_applied_at": last }), None)?;
+                add_priority(tx, s, "late_message")?;
+                tx.execute("UPDATE wa_order_sessions SET handled=0, updated_at=?2 WHERE session_id=?1", params![s, now()])?;
+                tx.execute("UPDATE wa_inbox_processing SET reason='out_of_order', session_id=?2 WHERE inbox_seq=?1", params![seq, s])?;
+                return Ok(Some(Processed { seq, session_id: session.clone(), intent: "late_message".into(), ai_wanted: false }));
+            }
+        }
         let active = session.is_some();
         let mut reading: Reading = interpret::read(&kind, &text, active);
         // An answer to a pending question ("2.25" for "which size?").
@@ -899,6 +973,45 @@ impl AppCore {
                 | Intent::SupportIssue
                 | Intent::DeliveryAddress
         ) || (reading.intent == Intent::Payment && kind != "text");
+        // No open conversation: a cancel / confirm / payment message about an
+        // order that closed recently is attached to it for staff (never applied).
+        let about_closed =
+            matches!(reading.intent, Intent::Cancellation | Intent::Confirmation | Intent::Payment | Intent::OrderModification)
+                || (reading.intent == Intent::NewOrder && reading.reasons.iter().any(|r| r == "addition_words"));
+        if session.is_none() && about_closed {
+            if let Some(prev) = recent_closed(tx, &chat, &received)? {
+                let is_payment_image = reading.intent == Intent::Payment && kind != "text";
+                event(
+                    tx,
+                    &prev,
+                    Some(seq),
+                    "message_after_close",
+                    "system",
+                    &json!({ "intent": reading.intent.as_str(), "kind": kind }),
+                    None,
+                )?;
+                add_priority(
+                    tx,
+                    &prev,
+                    if reading.intent == Intent::Cancellation { "cancel_after_confirm" } else { "message_after_close" },
+                )?;
+                tx.execute("UPDATE wa_order_sessions SET handled=0, updated_at=?2 WHERE session_id=?1", params![prev, now()])?;
+                if is_payment_image {
+                    // Payment evidence for the confirmed order (a person verifies it).
+                    let o: Option<String> =
+                        tx.query_row("SELECT order_id FROM wa_order_sessions WHERE session_id=?1", [&prev], |r| r.get(0))?;
+                    if let Some(o) = o {
+                        tx.execute("UPDATE digital_orders SET payment_state='screenshot_pending', updated_at=?2 WHERE order_id=?1 AND payment_state='unpaid' AND status='confirmed'", params![o, now()])?;
+                        tx.execute("UPDATE payment_reviews SET order_id=?2 WHERE inbox_seq=?1 AND order_id IS NULL", params![seq, o])?;
+                    }
+                }
+                tx.execute(
+                    "UPDATE wa_inbox_processing SET intent=?2, intent_band=?3, reason='after_close', session_id=?4 WHERE inbox_seq=?1",
+                    params![seq, reading.intent.as_str(), reading.band, prev],
+                )?;
+                return Ok(Some(Processed { seq, session_id: Some(prev), intent: reading.intent.as_str().into(), ai_wanted: false }));
+            }
+        }
         if session.is_none() && !creates {
             let status = "skipped";
             tx.execute(
@@ -932,6 +1045,22 @@ impl AppCore {
                     &json!({ "intent": reading.intent.as_str(), "customer_state": cstate }),
                     None,
                 )?;
+                // Another open order for this customer (an earlier WhatsApp draft
+                // confirmed, or one staff entered by phone): shown, never merged.
+                let others: Vec<String> = {
+                    let mut st = tx.prepare(
+                        "SELECT order_number FROM digital_orders WHERE status IN ('draft','confirmed') AND created_at >= ?4
+                           AND (wa_session_id IS NULL OR wa_session_id<>?3)
+                           AND ((?1 IS NOT NULL AND phone=?1) OR (?2 IS NOT NULL AND customer_id=?2)) ORDER BY created_at DESC LIMIT 5",
+                    )?;
+                    let since = time::fmt(time::now() - chrono::Duration::hours(72));
+                    let r = st.query_map(params![phone, cust, sid, since], |r| r.get(0))?.collect::<Result<_, _>>()?;
+                    r
+                };
+                if !others.is_empty() {
+                    event(tx, &sid, Some(seq), "other_open_order", "system", &json!({ "orders": others }), None)?;
+                    add_priority(tx, &sid, "other_open_order")?;
+                }
                 sid
             }
         };
@@ -962,6 +1091,19 @@ impl AppCore {
             }
             Intent::OrderModification if !answered => {
                 new_q.extend(apply_mods(self, tx, &sid, &reading.modifications, Some(seq), "rules", &branch_id)?);
+            }
+            Intent::Cancellation if reading.band != "high" => {
+                // "cancel that": which item or the whole order? A person decides.
+                event(
+                    tx,
+                    &sid,
+                    Some(seq),
+                    "cancel_request_unclear",
+                    "rules",
+                    &json!({ "text": text.chars().take(80).collect::<String>() }),
+                    None,
+                )?;
+                add_priority(tx, &sid, "cancel_request_unclear")?;
             }
             Intent::Cancellation => {
                 let o: Option<String> = tx.query_row("SELECT order_id FROM wa_order_sessions WHERE session_id=?1", [&sid], |r| r.get(0))?;
@@ -1126,7 +1268,8 @@ impl AppCore {
                 .collect();
             for m in &mentions {
                 let r = resolve::resolve(c, m, &branch_id)?;
-                let list: Vec<Value> = r.product.iter().chain(r.options.iter()).map(|p| {
+                let loose = if r.product.is_none() && r.options.is_empty() { resolve::loose_candidates(c, m, &branch_id, 8)? } else { vec![] };
+                let list: Vec<Value> = r.product.iter().chain(r.options.iter()).chain(loose.iter()).map(|p| {
                     if !allowed.contains(&p.product_id) {
                         allowed.push(p.product_id.clone());
                     }
@@ -1219,19 +1362,46 @@ impl AppCore {
                 event(tx, &sid, Some(seq), "ai_result_dropped", "ai", &json!({ "reason": "session changed", "revision": revision, "current": rev }), None)?;
                 return Ok(false);
             }
+            // Completed-order immutability: only a draft is ever changed.
+            if let Some(o) = &order {
+                if order_status(tx, o)?.as_deref() != Some("draft") {
+                    event(tx, &sid, Some(seq), "ai_result_dropped", "ai", &json!({ "reason": "order not a draft" }), None)?;
+                    return Ok(false);
+                }
+            }
             let branch_id = branch(self, tx)?;
             let mut changed = false;
             if let Some(o) = &order {
                 let rows = lines(tx, o)?;
+                let sources: std::collections::HashMap<i64, Option<i64>> = {
+                    let mut st = tx.prepare("SELECT line_no, source_seq FROM digital_order_lines WHERE order_id=?1")?;
+                    let r = st.query_map([o], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?;
+                    r
+                };
                 for it in &ai.items {
                     let Some(pid) = &it.product_id else { continue };
                     // Only lines from this message the rules could not resolve.
                     let target = rows.iter().find(|l| {
                         !l.locked
                             && l.product_id.is_none()
+                            && sources.get(&l.line_no).copied().flatten() == Some(seq)
                             && l.requested.as_deref().map(|t| interpret::normalize(t).contains(&interpret::normalize(&it.text)) || interpret::normalize(&it.text).contains(&interpret::normalize(t))).unwrap_or(false)
                     });
                     if let Some(l) = target {
+                        // The product must be a real candidate for *this* line's words,
+                        // not one offered for another item in the message.
+                        let own: Vec<String> = match l.requested.as_deref().and_then(interpret::parse_item) {
+                            Some(m) => {
+                                let r = resolve::resolve(tx, &m, &branch_id)?;
+                                let loose = if r.product.is_none() && r.options.is_empty() { resolve::loose_candidates(tx, &m, &branch_id, 8)? } else { vec![] };
+                                r.product.iter().chain(r.options.iter()).chain(loose.iter()).map(|c| c.product_id.clone()).collect()
+                            }
+                            None => vec![],
+                        };
+                        if !own.contains(pid) {
+                            event(tx, &sid, Some(seq), "ai_result_dropped", "ai", &json!({ "reason": "not a candidate for this line", "line_no": l.line_no }), None)?;
+                            continue;
+                        }
                         if let Some(p) = resolve::product(tx, pid, &branch_id)? {
                             tx.execute(
                                 "UPDATE digital_order_lines SET product_id=?3, description=?4, resolution=?5, note=COALESCE(note,'') || ' Matched with AI help; check it.' WHERE order_id=?1 AND line_no=?2",
@@ -1662,8 +1832,21 @@ impl AppCore {
         self.wa_order_get(token, &sid)
     }
 
-    /// Staff confirm the draft through the normal order confirmation.
+    /// Staff confirm the draft through the normal order confirmation. Stock is
+    /// checked again now (and reserved); a total that changed since it was
+    /// sent to the customer must be acknowledged.
     pub fn wa_order_confirm(&self, token: &str, session_id: &str, revision: i64) -> AppResult<Value> {
+        self.wa_order_confirm_checked(token, session_id, revision, false, false)
+    }
+
+    pub fn wa_order_confirm_checked(
+        &self,
+        token: &str,
+        session_id: &str,
+        revision: i64,
+        acknowledge_shortage: bool,
+        acknowledge_price_change: bool,
+    ) -> AppResult<Value> {
         let s = self.wa_orders_editor(token)?;
         let sid = validate::id(session_id, "Conversation")?;
         let order = self.db.write(|tx| {
@@ -1676,9 +1859,34 @@ impl AppCore {
             if bad > 0 {
                 return Err(AppError::validation("Some items are out of stock: replace or remove them first."));
             }
+            // The total the customer was last sent, against today's prices.
+            let quoted: Option<i64> = tx
+                .query_row(
+                    "SELECT json_extract(data_json,'$.quoted_total_minor') FROM wa_order_events WHERE session_id=?1 AND kind='reply_queued'
+                       AND json_extract(data_json,'$.quoted_total_minor') IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+                    [&sid],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
+            if let Some(q) = quoted {
+                let branch_id = branch(self, tx)?;
+                let (sub, _, _) = totals(tx, &o, &branch_id)?;
+                let fee: Option<i64> =
+                    tx.query_row("SELECT delivery_fee_minor FROM wa_order_sessions WHERE session_id=?1", [&sid], |r| r.get(0))?;
+                let now_total = sub + fee.unwrap_or(0);
+                if now_total != q && !acknowledge_price_change {
+                    return Err(AppError::conflict(format!(
+                        "The total changed since it was sent to the customer ({} → {} BHD). Send the new total, or confirm the change.",
+                        money_str(q),
+                        money_str(now_total)
+                    ))
+                    .with_details(json!({ "kind": "price_changed_since_quote", "quoted_minor": q, "current_minor": now_total })));
+                }
+            }
             Ok(o)
         })?;
-        self.order_confirm(token, &order)?;
+        self.order_confirm_checked(token, &order, acknowledge_shortage)?;
         self.db.write(|tx| {
             tx.execute("UPDATE digital_orders SET confirmed_by=?2 WHERE order_id=?1", params![order, s.user_id])?;
             tx.execute(
@@ -1735,13 +1943,36 @@ impl AppCore {
         self.db.write(|tx| {
             let order: Option<String> = tx.query_row("SELECT order_id FROM wa_order_sessions WHERE session_id=?1", [&sid], |r| r.get(0)).optional()?.flatten();
             let order = order.ok_or_else(|| AppError::validation("There is no draft for this conversation."))?;
-            let (rorder, status): (Option<String>, String) =
-                tx.query_row("SELECT order_id, status FROM payment_reviews WHERE review_id=?1", [&rid], |r| Ok((r.get(0)?, r.get(1)?))).optional()?.ok_or_else(|| AppError::not_found("Payment review"))?;
+            let (rorder, status, dup, detected): (Option<String>, String, Option<String>, Option<i64>) = tx
+                .query_row("SELECT order_id, status, duplicate_of, detected_minor FROM payment_reviews WHERE review_id=?1", [&rid], |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+                })
+                .optional()?
+                .ok_or_else(|| AppError::not_found("Payment review"))?;
             if rorder.as_deref() != Some(order.as_str()) {
                 return Err(AppError::validation("That screenshot is not attached to this order."));
             }
             if matches!(status.as_str(), "confirmed" | "rejected") {
                 return Err(AppError::conflict("This screenshot was already decided."));
+            }
+            if decision == "verified" && note.as_deref().is_none_or(|n| n.trim().is_empty()) {
+                // A reused image or a different amount can still be right, but a
+                // person writes why they accept it.
+                if let Some(d) = &dup {
+                    return Err(AppError::validation(format!("This image was already sent before ({d}). Add a note to verify it anyway."))
+                        .with_details(json!({ "kind": "note_required", "reason": "duplicate_image" })));
+                }
+                let branch_id = branch(self, tx)?;
+                let (sub, _, _) = totals(tx, &order, &branch_id)?;
+                let fee: Option<i64> = tx.query_row("SELECT delivery_fee_minor FROM wa_order_sessions WHERE session_id=?1", [&sid], |r| r.get(0))?;
+                if let Some(d) = detected.filter(|d| *d != sub + fee.unwrap_or(0)) {
+                    return Err(AppError::validation(format!(
+                        "The screenshot shows {} BHD but the order total is {} BHD. Add a note to verify it anyway.",
+                        money_str(d),
+                        money_str(sub + fee.unwrap_or(0))
+                    ))
+                    .with_details(json!({ "kind": "note_required", "reason": "amount_mismatch" })));
+                }
             }
             let t = now();
             if decision == "verified" {
@@ -1783,8 +2014,20 @@ impl AppCore {
         }))
         .map_err(|e| AppError::validation(format!("Invalid reply: {e}")))?;
         let queued = self.wa_queue(token, req)?;
+        // The total the customer was told (when the reply carries the order total).
+        let quoted = (v["order"]["total_minor"].is_i64() && body.contains(&money_str(v["order"]["total_minor"].as_i64().unwrap_or(0))))
+            .then(|| v["order"]["total_minor"].as_i64())
+            .flatten();
         self.db.write(|tx| {
-            event(tx, &sid, None, "reply_queued", "person", &json!({ "message_id": queued.message_id }), Some(&s.user_id))?;
+            event(
+                tx,
+                &sid,
+                None,
+                "reply_queued",
+                "person",
+                &json!({ "message_id": queued.message_id, "quoted_total_minor": quoted }),
+                Some(&s.user_id),
+            )?;
             tx.execute("UPDATE wa_order_sessions SET handled=1 WHERE session_id=?1", [&sid])?;
             refresh(self, tx, &sid)
         })?;
@@ -1813,6 +2056,36 @@ impl AppCore {
             }))
         })
     }
+}
+
+/// Add a priority reason to a conversation (kept until staff handle it).
+fn add_priority(tx: &Connection, session: &str, reason: &str) -> AppResult<()> {
+    let mut reasons: Vec<String> = tx
+        .query_row("SELECT priority_reasons FROM wa_order_sessions WHERE session_id=?1", [session], |r| r.get::<_, Option<String>>(0))?
+        .and_then(|x| serde_json::from_str(&x).ok())
+        .unwrap_or_default();
+    if !reasons.iter().any(|r| r == reason) {
+        reasons.push(reason.into());
+    }
+    tx.execute(
+        "UPDATE wa_order_sessions SET priority='high', priority_reasons=?2 WHERE session_id=?1",
+        params![session, serde_json::to_string(&reasons).unwrap_or_default()],
+    )?;
+    Ok(())
+}
+
+/// The chat's most recent conversation that closed (confirmed, cancelled or
+/// closed) within AFTER_CLOSE_HOURS of this message.
+fn recent_closed(tx: &Connection, chat: &str, at: &str) -> AppResult<Option<String>> {
+    let since = time::parse(at).map(|t| time::fmt(t - chrono::Duration::hours(AFTER_CLOSE_HOURS))).unwrap_or_default();
+    Ok(tx
+        .query_row(
+            "SELECT session_id FROM wa_order_sessions WHERE chat=?1 AND state IN ('confirmed','cancelled','closed') AND updated_at >= ?2
+               AND order_id IS NOT NULL ORDER BY updated_at DESC LIMIT 1",
+            params![chat, since],
+            |r| r.get(0),
+        )
+        .optional()?)
 }
 
 fn opt(s: Option<String>) -> Value {

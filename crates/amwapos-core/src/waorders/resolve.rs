@@ -353,6 +353,34 @@ pub fn resolve(c: &Connection, m: &Mention, branch: &str) -> AppResult<Resolutio
 
 /// How to describe options to a customer: by size when that is the only
 /// difference, else by name.
+/// Loose candidates for wording the resolver could not match ("lays chese"):
+/// products whose name (apostrophes ignored) shares the start of a word.
+/// Only ever offered to the AI as a closed list; never resolves on its own.
+pub fn loose_candidates(c: &Connection, m: &Mention, branch: &str, limit: usize) -> AppResult<Vec<Cand>> {
+    let mut out: Vec<Cand> = vec![];
+    let mut st =
+        c.prepare("SELECT product_id FROM products WHERE active=1 AND replace(lower(name), '''', '') LIKE ?1 ORDER BY name LIMIT 20")?;
+    for w in m.words.iter().filter(|w| w.chars().count() >= 3).take(6) {
+        let stem: String = w.replace(['%', '_', '\''], "").chars().take(4).collect();
+        if stem.chars().count() < 3 {
+            continue;
+        }
+        let ids = st.query_map([format!("%{stem}%")], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+        for id in ids {
+            if out.len() >= limit {
+                return Ok(out);
+            }
+            if out.iter().any(|x| x.product_id == id) {
+                continue;
+            }
+            if let Some(p) = load(c, &id, branch)? {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
+}
+
 pub fn option_labels(options: &[Cand]) -> Vec<String> {
     let names: Vec<String> = options.iter().map(|o| product_words(&o.name).join(" ")).collect();
     let same_words = names.windows(2).all(|w| w[0] == w[1]);

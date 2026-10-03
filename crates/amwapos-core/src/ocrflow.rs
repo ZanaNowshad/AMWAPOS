@@ -581,10 +581,20 @@ impl AppCore {
                 let rid = insert_review(tx, "whatsapp", Some(*seq), &path, &sha.unwrap_or_default(), phone, customer, None, None)?;
                 // An image sent during an open WhatsApp order is that draft's
                 // payment evidence (still to be verified by a person).
+                // The conversation the message was attached to when it was read
+                // (also a recently confirmed order), else the chat's open one.
                 tx.execute(
-                    "UPDATE payment_reviews SET order_id=(SELECT w.order_id FROM wa_order_sessions w JOIN wa_inbox i ON i.chat=w.chat
-                        WHERE i.seq=?2 AND w.state IN ('collecting','clarifying','ready') AND w.order_id IS NOT NULL) WHERE review_id=?1",
+                    "UPDATE payment_reviews SET order_id=COALESCE(
+                        (SELECT w.order_id FROM wa_inbox_processing p JOIN wa_order_sessions w ON w.session_id=p.session_id
+                           JOIN digital_orders o ON o.order_id=w.order_id WHERE p.inbox_seq=?2 AND o.status IN ('draft','confirmed')),
+                        (SELECT w.order_id FROM wa_order_sessions w JOIN wa_inbox i ON i.chat=w.chat
+                           WHERE i.seq=?2 AND w.state IN ('collecting','clarifying','ready') AND w.order_id IS NOT NULL)) WHERE review_id=?1",
                     params![rid, seq],
+                )?;
+                tx.execute(
+                    "UPDATE digital_orders SET payment_state='screenshot_pending' WHERE payment_state='unpaid' AND status IN ('draft','confirmed')
+                       AND order_id=(SELECT order_id FROM payment_reviews WHERE review_id=?1)",
+                    [&rid],
                 )?;
                 ids.push(rid);
             }
@@ -1099,8 +1109,14 @@ impl AppCore {
     /// Runtime: apply an AI reading to a scan still waiting for review (see
     /// `docintel::service::doc_apply_ai`). Returns false when nothing was applied.
     pub fn inv_apply_ai_parse(&self, scan_id: &str, v: &Value) -> AppResult<bool> {
+        self.inv_apply_ai_parse_at(scan_id, v, None)
+    }
+
+    /// As above, dropped when the document changed since `revision` (a person
+    /// edited it while the AI was reading).
+    pub fn inv_apply_ai_parse_at(&self, scan_id: &str, v: &Value, revision: Option<i64>) -> AppResult<bool> {
         let model = self.ai_settings_pub().map(|s| format!("{}:{}", s.provider, s.model_id)).unwrap_or_default();
-        self.doc_apply_ai(scan_id, v, &model)
+        self.doc_apply_ai_at(scan_id, v, &model, revision)
     }
 }
 

@@ -409,7 +409,7 @@ pub async fn read_document(w: &Arc<OcrWorker>, id: &str, path: &Path) -> AppResu
                     let f = work.join(format!("src-{}.{ext}", p.number));
                     std::fs::write(&f, &img_bytes)?;
                     let n = img_bytes.len() as u64;
-                    let dec = blocking(move || Ok(dq::image::load_from_memory(&img_bytes).ok())).await?;
+                    let dec = blocking(move || Ok(dq::decode_page(&img_bytes))).await?;
                     let (page, q, h, derived) = read_page(w, dec, &f, p.number, &work, Some(n), p.image_is_jpeg, true).await?;
                     out.layout.pages.push(page);
                     qualities.extend(q);
@@ -429,7 +429,15 @@ pub async fn read_document(w: &Arc<OcrWorker>, id: &str, path: &Path) -> AppResu
         out.page_count = 1;
         let n = bytes.len() as u64;
         let is_jpeg = bytes.starts_with(&[0xFF, 0xD8]);
-        let dec = blocking(move || Ok(dq::image::load_from_memory(&bytes).ok())).await?;
+        // A picture larger than any page is refused before OCR, which would
+        // otherwise try to hold it all in memory.
+        if let Some((w, h)) = dq::page_oversized(&bytes) {
+            return Err(AppError::validation(format!(
+                "The image is too large to read ({w} × {h} pixels). Upload a photo or scan under {} pixels per side.",
+                dq::MAX_PAGE_SIDE
+            )));
+        }
+        let dec = blocking(move || Ok(dq::decode_page(&bytes))).await?;
         if dec.is_none() {
             out.notes.push("Page 1: the image could not be decoded for the quality check; it was read as uploaded.".into());
         }
@@ -464,6 +472,10 @@ async fn ai_parse(core: &Arc<AppCore>, scan_id: &str) {
 /// One AI parse of a scan in review. Ok(true) when the lines were replaced.
 /// Also behind the "Improve parse" button (`invoicescan.ai_parse`).
 pub async fn ai_parse_now(core: &Arc<AppCore>, scan_id: &str) -> AppResult<bool> {
+    // The revision the AI starts from: a person's edit meanwhile makes the
+    // result stale, and a stale result is dropped (never merged over the edit).
+    let (c, id) = (core.clone(), scan_id.to_string());
+    let revision = blocking(move || c.doc_revision(&id)).await?;
     let (c, id) = (core.clone(), scan_id.to_string());
     let Some(turn) = blocking(move || c.ocr_ai_parse_turn(&id)).await? else {
         return Err(AppError::conflict(
@@ -474,7 +486,7 @@ pub async fn ai_parse_now(core: &Arc<AppCore>, scan_id: &str) -> AppResult<bool>
     let v = crate::ai_client::json_object(&reply)
         .ok_or_else(|| AppError::new(ErrorCode::AiProviderError, "The AI reply was not a JSON object; the rules parse was kept."))?;
     let (c, id) = (core.clone(), scan_id.to_string());
-    blocking(move || c.inv_apply_ai_parse(&id, &v)).await
+    blocking(move || c.inv_apply_ai_parse_at(&id, &v, Some(revision))).await
 }
 
 async fn run(w: Arc<OcrWorker>) {

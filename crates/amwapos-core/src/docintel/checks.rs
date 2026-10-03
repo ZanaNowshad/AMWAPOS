@@ -395,7 +395,11 @@ pub fn duplicates(
     date: Option<&str>,
     total: Option<i64>,
     fingerprint: Option<&str>,
+    doc_type: &str,
 ) -> AppResult<Vec<Duplicate>> {
+    fn parse_ymd(s: &str) -> Option<chrono::NaiveDate> {
+        chrono::NaiveDate::parse_from_str(s.get(..10)?, "%Y-%m-%d").ok()
+    }
     let mut out: Vec<Duplicate> = vec![];
     let mut push = |kind: &str, id: String, num: String, status: String, reason: String| {
         if let Some(d) = out.iter_mut().find(|d| d.scan_id == id) {
@@ -425,18 +429,51 @@ pub fn duplicates(
         push("exact_document", id, n, s, "The same file was uploaded before.".into());
     }
     if let (Some(sup), Some(num)) = (supplier, number_norm.filter(|x| !x.is_empty())) {
-        for (id, n, s) in q(
-            "SELECT scan_id, scan_number, status FROM invoice_scans WHERE supplier_id=?1 AND invoice_number_norm=?2 AND scan_id<>?3",
+        // Same number only counts for the same kind of document (a credit note
+        // quoting the invoice it corrects is not that invoice), and a number
+        // reused more than a year apart is only a possible duplicate.
+        let kind_of = |other_type: &str, other_date: Option<&str>| -> Option<(&'static str, String)> {
+            let known = |t: &str| matches!(t, "invoice" | "credit_note");
+            if known(doc_type) && known(other_type) && doc_type != other_type {
+                return None;
+            }
+            let far = match (date.and_then(parse_ymd), other_date.and_then(parse_ymd)) {
+                (Some(a), Some(b)) => (a - b).num_days().abs() > 365,
+                _ => false,
+            };
+            Some(if far {
+                ("possible_duplicate", "Same invoice number, but dated more than a year apart (suppliers reuse numbers).".to_string())
+            } else {
+                ("same_invoice", "Same supplier and invoice number.".to_string())
+            })
+        };
+        type Row5 = (String, String, String, Option<String>, String);
+        let q5 = |sql: &str, p: &[&dyn rusqlite::ToSql]| -> AppResult<Vec<Row5>> {
+            let mut st = c.prepare(sql)?;
+            let rows = st.query_map(p, |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))?.collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        };
+        for (id, n, s, d, t) in q5(
+            "SELECT scan_id, scan_number, status, invoice_date, doc_type FROM invoice_scans WHERE supplier_id=?1 AND invoice_number_norm=?2 AND scan_id<>?3",
             &[&sup, &num, &scan_id],
         )? {
-            push("same_invoice", id, n, s, "Same supplier and invoice number.".into());
+            if let Some((k, why)) = kind_of(&t, d.as_deref()) {
+                push(k, id, n, s, why);
+            }
         }
-        let si: Vec<Row> = q(
-            "SELECT invoice_id, number, status FROM supplier_invoices WHERE supplier_id=?1 AND status<>'void' AND upper(replace(replace(replace(COALESCE(invoice_number,''),'-',''),'/',''),' ',''))=?2 AND COALESCE(scan_id,'')<>?3",
+        let si = q5(
+            "SELECT invoice_id, number, status, invoice_date, doc_type FROM supplier_invoices WHERE supplier_id=?1 AND status<>'void' AND upper(replace(replace(replace(COALESCE(invoice_number,''),'-',''),'/',''),' ',''))=?2 AND COALESCE(scan_id,'')<>?3",
             &[&sup, &num, &scan_id],
         )?;
-        for (id, n, s) in si {
-            push("same_invoice", id, n, s, "A supplier invoice with this number is already recorded.".into());
+        for (id, n, s, d, t) in si {
+            if let Some((k, _)) = kind_of(&t, d.as_deref()) {
+                let why = if k == "same_invoice" {
+                    "A supplier invoice with this number is already recorded.".to_string()
+                } else {
+                    "A supplier invoice with this number was recorded more than a year apart.".to_string()
+                };
+                push(k, id, n, s, why);
+            }
         }
     }
     if let (Some(sup), Some(fp)) = (supplier, fingerprint) {
