@@ -143,6 +143,42 @@ button, because at 1024×700 the change panel can be below the fold.
   `checks-warning`, `checks-info`, `close-view`, `day-drawers`,
   `after-close`, `case-drawer`, `case-ack`, `case-resolve`.
 
+## Wave 3 surfaces
+
+- **Inventory → Expiry.** KPIs: expired still in stock, expiring within
+  7/30/90 days, likely left at expiry ("at risk, not lost yet") and
+  thrown away as expired ("already lost"). Tabs: Expired, Urgent, Soon,
+  Later. Rows: product + batch (codes `dir="ltr"`, names `dir="auto"`), an
+  expiry chip ("Expires in 6 days", "Past best-before by 2 days"), left,
+  sells a day, likely left at expiry, value, where, and Record waste.
+  Empty state: "No batch-tracked stock yet. Batches appear when stock is
+  received with a batch code or an expiry date."
+- **Batch drawer** (`lot-drawer`):
+  - batch code, date and its meaning, supplier, received, cost;
+  - how much is left: received, recorded out, "Estimated sold (first
+    expiring first out — the till does not know the batch)", left;
+  - "If you reduce the price" options (`markdowns`), with a link to the
+    product;
+  - history and corrections;
+  - Record waste and Correct details.
+- **Record waste dialog** (`waste-dialog`): quantity, reason chips and an
+  optional note. Shrinkage explains that a manager confirms it. Approval
+  uses the standard manager dialog.
+- **Inventory → Waste:** records (Reverse for approvers) and a Summary
+  with ratios and their definitions. Empty state: "No waste recorded for
+  this period."
+- **Inventory → Days of stock left:** selling rate over 7/30/60/90 days,
+  available, sells a day, days of stock left, runs out, and "with stock on
+  order" shown apart. When it can't be counted it says why ("Not enough
+  recent sales to estimate", "No sales recently", "No stock").
+- **Receiving:** batch code and expiry per line. Date warnings show in a
+  banner; pressing again keeps the dates.
+- **Receiving draft** (`draft-lot-N`): batch code and expiry. A document
+  date shows "Read from the document" and **Confirm date**.
+- **Product → Inventory** (`product-batches`): tracking, what the date
+  means, batches on hand, "Not in a batch" and **Count stock into a
+  batch**.
+
 ## Display size
 
 Settings → Appearance → Display size (90, 100, 110, 125, 150 %) zooms the whole

@@ -133,11 +133,12 @@ transitions are audited.
 - `registers(register_id, branch_id, code, name, active, device_id, default_drawer_id)`; `cash_drawers(drawer_id, branch_id, register_id, name, active)`; `shifts` + nullable `register_id`, `drawer_id`. The shift stays the cash session.
 - `cases(… kind[cash_variance], severity, status[new|acknowledged|in_progress|resolved|dismissed], entity, facts_json …)` + `case_events` (append-only). "investigating" was named `in_progress`.
 
-### Wave 3
-- `stock_movements` rebuilt once: `type` CHECK adds `waste`, `supplier_return`, `void`, `lot_adjust`; new nullable `lot_id`, `business_date`.
-- `stock_lots(lot_id, product_id, branch_id, location_id?, lot_code?, supplier_id?, po_id?, receipt_id?, received_at, manufactured_on?, expires_on?, qty_received_milli, unit_cost_minor, status[active|depleted|quarantined|expired_written_off], created_by)`; remaining = Σ movements with that `lot_id` (derived, cached).
-- `waste_records(waste_id, number, branch_id, business_date, reason, note, evidence_ref?, user_id, approved_by?, operation_id UNIQUE)` + lines (product, lot?, qty, unit_cost snapshot, location).
-- settings `inventory.expiry_thresholds` (days list, per-category override map).
+### Wave 3 (as built; see INVENTORY.md)
+- No `stock_movements` rebuild: Wave 1 already added `waste`, `supplier_return`, `void` and `lot_id`.
+- `stock_lots(lot_id, lot_number, product, branch, location?, supplier?, po?, receipt?, supplier_lot_code?, received_at, manufactured_on?, expires_on?, expiry_kind[use_by|best_before], expiry_source[person|document], qty_received_milli, unit_cost_minor, provenance[receiving|count])`: facts only, immutable. There is no stored remaining quantity and no lot status: both are derived (replay; expiry state from the date).
+- `lot_corrections` (append-only, the newest applies); `waste_records(…, reason[expired|damaged|spoiled|broken|shrinkage|internal_use|receiving_rejection|other], movement_id, status[recorded|reversed], …)`.
+- Settings in `inventory`: expiry thresholds, waste approval value, shrinkage approval.
+- No FEFO allocation table: the estimate is computed on read (deterministic and order-independent), so it is never stored as evidence.
 
 ### Wave 4
 - `supplier_product_map` + `supplier_sku, supplier_barcode, description, pack_size_milli, moq_milli, lead_time_days, preferred, active, last_cost_minor, last_ordered_at, last_received_at` (keys stay; human-confirmed rows authoritative).

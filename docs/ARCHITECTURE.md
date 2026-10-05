@@ -94,6 +94,8 @@ The same id with a different payload fails with `idempotency_mismatch`.
     when a new table has neither. Expenses and petty cash are hub-local. Receipt snapshots and
     sale voids are append-only. Registers and cash drawers are hub-owned and copied to
     terminals. Day closes and cases are hub-local, and a terminal refuses to close a day.
+    Batches, batch corrections and waste records are hub-local; their stock movements
+    sync as usual, so a till's stock stays right without the batch ledger.
 - **Stock:** the hub replays stock movements to recompute balances.
 - **Cycle:** a terminal pushes, then pulls (excluding its own origin). Changes that fail to apply
   go to a dead-letter queue, which can be retried from Admin → Sync.
@@ -101,6 +103,19 @@ The same id with a different payload fails with `idempotency_mismatch`.
   - A terminal records the hub's `hub_instance_id` and refuses a hub that was rebuilt or rolled
     back, until a person decides.
   - A schema version mismatch refuses pairing.
+
+## Batches and expiry
+
+Stock is the movement ledger, and nothing else. A batch records facts only.
+Its balance is worked out by replaying the product's movements in time
+order (`lots::replay`):
+- movements tagged with a batch are evidence;
+- untagged outflows (till sales) use stock in no batch first, then batches
+  first-expiring-first-out, as an estimate that is never stored;
+- evidence moves the estimate.
+
+Batches plus stock in no batch equal stock on hand. See
+[INVENTORY.md](INVENTORY.md).
 
 ## Printing
 

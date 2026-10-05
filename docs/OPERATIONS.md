@@ -121,6 +121,32 @@ On the hub computer (or the only computer), go to Admin → Business → End of 
 - **New computer replacing a till:** System → More tools → Registers.
   Open the till's register and choose the new computer.
 
+## Batches, expiry and waste
+
+- **Products with dates:** in Product → Inventory, tick "Ask for batch and
+  expiry when receiving" and choose what the pack date means (expiry or
+  best before).
+- **Receiving:** type the batch code and expiry on each line. On a draft
+  made from a supplier document, a date the reader found shows "Read from
+  the document": check it against the pack, then press **Confirm date** or
+  change it. Receiving waits until you do.
+- **Every morning:** go to Inventory → Expiry and look at Expired and
+  Urgent. Expired stock stays on the shelf in the system until you record
+  what happened. To throw it away, press **Record waste** with the reason
+  Expired. To sell it off, change the price on the product: the batch shows
+  price options, but nothing changes by itself.
+- **Waste:** record it from Inventory → Waste or from a batch. Choose the
+  plain reason. Use "Shrinkage / unexplained difference" only when nobody
+  knows why stock is missing; a manager confirms it, and confirms anything
+  above the value in Settings → Inventory. A mistake is reversed (Waste →
+  Reverse), never deleted.
+- **Stock from before batches:** it shows as "Not in a batch" and sells
+  first. If you read its date off the pack, use Product → Inventory →
+  **Count stock into a batch**. Stock on hand does not change.
+- **Days of stock left** (Inventory): how long each product lasts at the
+  recent selling rate. "Not enough recent sales" means the product is too
+  new to say.
+
 ## Paying suppliers (Payables)
 
 Admin → Purchasing → Payables, on the hub computer.
