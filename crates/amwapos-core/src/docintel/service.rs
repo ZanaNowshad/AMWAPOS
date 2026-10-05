@@ -1317,9 +1317,15 @@ impl AppCore {
             })?;
             for (i, l) in lines.iter().enumerate() {
                 let (cost, _) = l.receive_unit_cost().unwrap_or((0, true));
+                // A date printed on the document line is only a suggestion.
+                let raw: Option<String> = tx
+                    .query_row("SELECT raw_text FROM invoice_scan_lines WHERE scan_id=?1 AND line_no=?2", params![id, l.line_no], |r| r.get(0))
+                    .optional()?;
+                let suggested = raw.as_deref().and_then(crate::lots::suggest_expiry);
                 tx.execute(
-                    "INSERT INTO receiving_draft_lines(draft_id, line_no, product_id, description, qty_milli, unit_cost_minor, case_qty_milli, units_per_case, po_item_id, scan_line_no)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                    "INSERT INTO receiving_draft_lines(draft_id, line_no, product_id, description, qty_milli, unit_cost_minor, case_qty_milli, units_per_case, po_item_id, scan_line_no,
+                         expires_on, expiry_source, expiry_confirmed)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,CASE WHEN ?11 IS NULL THEN NULL ELSE 'document' END,0)",
                     params![
                         did,
                         i as i64 + 1,
@@ -1330,7 +1336,8 @@ impl AppCore {
                         l.units_per_case.and(l.qty_milli),
                         l.units_per_case,
                         l.po_item_id.clone().filter(|_| po.is_some()),
-                        l.line_no
+                        l.line_no,
+                        suggested
                     ],
                 )?;
             }
@@ -1404,14 +1411,18 @@ impl AppCore {
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Receiving draft"))?;
             let mut st = c.prepare(
-                "SELECT l.line_no, l.product_id, p.name, l.description, l.qty_milli, l.unit_cost_minor, l.case_qty_milli, l.units_per_case, l.po_item_id, l.scan_line_no
+                "SELECT l.line_no, l.product_id, p.name, l.description, l.qty_milli, l.unit_cost_minor, l.case_qty_milli, l.units_per_case, l.po_item_id, l.scan_line_no,
+                        l.lot_code, l.expires_on, l.expiry_source, l.expiry_confirmed, p.track_lots
                  FROM receiving_draft_lines l JOIN products p ON p.product_id=l.product_id WHERE l.draft_id=?1 ORDER BY l.line_no",
             )?;
             let lines: Vec<Value> = st
                 .query_map([&id], |r| {
                     Ok(json!({ "line_no": r.get::<_, i64>(0)?, "product_id": r.get::<_, String>(1)?, "product_name": r.get::<_, String>(2)?, "description": r.get::<_, String>(3)?,
                                "qty_milli": r.get::<_, i64>(4)?, "unit_cost_minor": r.get::<_, i64>(5)?, "case_qty_milli": r.get::<_, Option<i64>>(6)?,
-                               "units_per_case": r.get::<_, Option<i64>>(7)?, "po_item_id": r.get::<_, Option<String>>(8)?, "scan_line_no": r.get::<_, Option<i64>>(9)? }))
+                               "units_per_case": r.get::<_, Option<i64>>(7)?, "po_item_id": r.get::<_, Option<String>>(8)?, "scan_line_no": r.get::<_, Option<i64>>(9)?,
+                               "lot_code": r.get::<_, Option<String>>(10)?, "expires_on": r.get::<_, Option<String>>(11)?,
+                               "expiry_source": r.get::<_, Option<String>>(12)?, "expiry_confirmed": r.get::<_, i64>(13)? == 1,
+                               "track_lots": r.get::<_, i64>(14)? == 1 }))
                 })?
                 .collect::<Result<_, _>>()?;
             let total: i64 = lines.iter().map(|l| crate::money::extend(l["unit_cost_minor"].as_i64().unwrap_or(0), l["qty_milli"].as_i64().unwrap_or(0)).unwrap_or(0)).sum();
@@ -1513,6 +1524,24 @@ impl AppCore {
         if lines.is_empty() {
             return Err(AppError::validation("The draft has no lines."));
         }
+        if let Some(l) =
+            lines.iter().find(|l| l["expiry_source"] == "document" && l["expiry_confirmed"] != true && l["expires_on"].is_string())
+        {
+            return Err(AppError::validation(format!(
+                "Line {}: the expiry date was read from the document. Confirm it or clear it before receiving.",
+                l["line_no"]
+            )));
+        }
+        let lot_of = |l: &Value| -> Option<crate::lots::LotInput> {
+            let input = crate::lots::LotInput {
+                supplier_lot_code: l["lot_code"].as_str().map(String::from),
+                expires_on: l["expires_on"].as_str().map(String::from),
+                expiry_source: l["expiry_source"].as_str().map(String::from),
+                confirm_warnings: true,
+                ..Default::default()
+            };
+            (!input.is_empty()).then_some(input)
+        };
         let po = head["po_id"].as_str().map(|x| x.to_string());
         let (po_lines, direct): (Vec<&Value>, Vec<&Value>) = lines.iter().partition(|l| po.is_some() && l["po_item_id"].is_string());
         let mut receipts = vec![];
@@ -1534,6 +1563,7 @@ impl AppCore {
                             po_item_id: l["po_item_id"].as_str().unwrap_or_default().to_string(),
                             qty_milli: l["qty_milli"].as_i64().unwrap_or(0),
                             unit_cost_minor: l["unit_cost_minor"].as_i64(),
+                            lot: lot_of(l),
                         })
                         .collect(),
                     operation_id: format!("{op}-po"),
@@ -1553,6 +1583,7 @@ impl AppCore {
                         qty_milli: l["qty_milli"].as_i64().unwrap_or(0),
                         unit_cost_minor: l["unit_cost_minor"].as_i64().unwrap_or(0),
                         po_item_id: None,
+                        lot: lot_of(l),
                     })
                     .collect(),
                 operation_id: format!("{op}-direct"),

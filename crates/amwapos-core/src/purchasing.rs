@@ -125,6 +125,8 @@ pub struct PoReceiveLine {
     pub qty_milli: i64,
     #[serde(default)]
     pub unit_cost_minor: Option<i64>,
+    #[serde(default)]
+    pub lot: Option<crate::lots::LotInput>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -564,7 +566,13 @@ impl AppCore {
                     )));
                 }
                 tx.execute("UPDATE purchase_order_items SET qty_received_milli=qty_received_milli+?2 WHERE po_item_id=?1", params![iid, l.qty_milli])?;
-                lines.push(ReceiveLine { product_id: pid, qty_milli: l.qty_milli, unit_cost_minor: l.unit_cost_minor.unwrap_or(cost), po_item_id: Some(iid) });
+                lines.push(ReceiveLine {
+                    product_id: pid,
+                    qty_milli: l.qty_milli,
+                    unit_cost_minor: l.unit_cost_minor.unwrap_or(cost),
+                    po_item_id: Some(iid),
+                    lot: l.lot.clone(),
+                });
             }
             if lines.is_empty() {
                 return Err(AppError::validation("Enter at least one received quantity."));

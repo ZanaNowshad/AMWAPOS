@@ -31,6 +31,7 @@ pub mod idempotency;
 pub mod ids;
 pub mod importer;
 pub mod inventory;
+pub mod lots;
 pub mod loyalty;
 pub mod messaging;
 pub mod migration;
@@ -67,6 +68,7 @@ pub mod voids;
 pub mod wa_catalog;
 pub mod wa_contacts;
 pub mod waorders;
+pub mod waste;
 
 pub use error::{AppError, AppResult, ErrorCode};
 pub use service::AppCore;

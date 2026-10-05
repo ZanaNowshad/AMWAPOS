@@ -132,6 +132,11 @@ pub const LOCAL_TABLES: &[&str] = &[
     "day_close_items",
     "cases",
     "case_events",
+    // Lots, their corrections and waste records are kept on the hub, which
+    // receives the goods; their stock movements are what tills receive.
+    "stock_lots",
+    "lot_corrections",
+    "waste_records",
     "purchase_orders",
     "purchase_order_items",
     "goods_receipts",

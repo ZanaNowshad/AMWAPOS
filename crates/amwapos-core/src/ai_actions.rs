@@ -136,7 +136,11 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "petty.entry"
         | "petty.count"
         | "day.close"
-        | "cases.act" => CommitFinancial,
+        | "cases.act"
+        | "waste.record"
+        | "waste.reverse"
+        | "lots.count_in"
+        | "lots.correct" => CommitFinancial,
         "ap.invoice_create"
         | "ap.invoice_approve"
         | "supplier_invoices.set_status"
@@ -269,6 +273,13 @@ fn is_read_command(c: &str) -> bool {
         "cases.list",
         "cases.get",
         "registers.list",
+        "lots.product",
+        "lots.get",
+        "expiry.overview",
+        "stock.cover",
+        "waste.list",
+        "waste.get",
+        "waste.summary",
         "customers.statement",
         "customers.receivables",
         "expenses.list",

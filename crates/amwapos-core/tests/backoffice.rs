@@ -59,6 +59,7 @@ fn purchase_order_partial_receiving() {
             po_item_id: po.lines[0].po_item_id.clone(),
             qty_milli: qty,
             unit_cost_minor: None,
+            lot: None,
         }],
         operation_id: op(),
     };

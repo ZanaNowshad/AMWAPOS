@@ -192,6 +192,17 @@ pub struct InventorySettings {
     /// Supplier documents: flag a unit cost that differs from the PO cost by
     /// at least this much (basis points; 500 = 5%).
     pub invoice_cost_variance_bp: i64,
+    /// Expiry: a batch is "soon" within this many days, "urgent" within the
+    /// next, and listed as "later" up to the last. One state per batch.
+    pub expiry_later_days: i64,
+    pub expiry_soon_days: i64,
+    pub expiry_urgent_days: i64,
+    /// An expiry date further away than this many years asks to confirm.
+    pub expiry_max_years: i64,
+    /// Waste worth more than this (at cost) needs a manager (0 = never).
+    pub waste_approval_cost_minor: i64,
+    /// Shrinkage (unexplained difference) always needs a manager.
+    pub waste_shrinkage_needs_approval: bool,
 }
 impl Default for InventorySettings {
     fn default() -> Self {
@@ -200,6 +211,12 @@ impl Default for InventorySettings {
             require_adjust_reason: true,
             stocktake_blind_default: true,
             invoice_cost_variance_bp: 500,
+            expiry_later_days: 90,
+            expiry_soon_days: 30,
+            expiry_urgent_days: 7,
+            expiry_max_years: 10,
+            waste_approval_cost_minor: 20_000,
+            waste_shrinkage_needs_approval: true,
         }
     }
 }
@@ -689,6 +706,16 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             let s: InventorySettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if !["weighted_average", "manual"].contains(&s.costing_method.as_str()) {
                 return Err(AppError::validation("Costing method must be weighted average or manual."));
+            }
+            if !(0 < s.expiry_urgent_days
+                && s.expiry_urgent_days <= s.expiry_soon_days
+                && s.expiry_soon_days <= s.expiry_later_days
+                && s.expiry_later_days <= 3650)
+            {
+                return Err(AppError::validation("Expiry days must go up: urgent, then soon, then later (at most 3650)."));
+            }
+            if !(1..=100).contains(&s.expiry_max_years) || s.waste_approval_cost_minor < 0 {
+                return Err(AppError::validation("Check the expiry and waste limits."));
             }
             serde_json::to_value(s)?
         }

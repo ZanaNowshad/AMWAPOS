@@ -39,8 +39,15 @@ pub fn apply_movement(c: &Connection, m: &Movement) -> AppResult<i64> {
 /// As `apply_movement`, recording the stock location inside the branch
 /// (`None` = the branch's default stockroom).
 pub fn apply_movement_at(c: &Connection, m: &Movement, location_id: Option<&str>) -> AppResult<i64> {
+    apply_movement_lot(c, m, location_id, None).map(|(b, _)| b)
+}
+
+/// As `apply_movement_at`, tagging the movement with the lot it is known to
+/// concern (receiving into a lot, waste from a lot). Returns the new balance
+/// and the movement id.
+pub fn apply_movement_lot(c: &Connection, m: &Movement, location_id: Option<&str>, lot_id: Option<&str>) -> AppResult<(i64, String)> {
     if m.qty_delta_milli == 0 {
-        return current_qty(c, m.product_id, m.branch_id);
+        return Ok((current_qty(c, m.product_id, m.branch_id)?, String::new()));
     }
     let now = time::now_str();
     c.execute(
@@ -49,12 +56,13 @@ pub fn apply_movement_at(c: &Connection, m: &Movement, location_id: Option<&str>
         params![m.product_id, m.branch_id, m.qty_delta_milli, now],
     )?;
     let balance = current_qty(c, m.product_id, m.branch_id)?;
+    let movement_id = new_id();
     c.execute(
         "INSERT INTO stock_movements(movement_id, product_id, branch_id, type, qty_delta_milli, unit_cost_minor, balance_after_milli,
-             source_type, source_id, reason, user_id, device_id, created_at, location_id)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+             source_type, source_id, reason, user_id, device_id, created_at, location_id, lot_id)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
         params![
-            new_id(),
+            movement_id,
             m.product_id,
             m.branch_id,
             m.kind,
@@ -67,10 +75,11 @@ pub fn apply_movement_at(c: &Connection, m: &Movement, location_id: Option<&str>
             m.user_id,
             m.device_id,
             now,
-            location_id
+            location_id,
+            lot_id
         ],
     )?;
-    Ok(balance)
+    Ok((balance, movement_id))
 }
 
 pub fn current_qty(c: &Connection, product_id: &str, branch_id: &str) -> AppResult<i64> {
@@ -160,6 +169,9 @@ pub struct ReceiveLine {
     pub unit_cost_minor: i64,
     #[serde(default)]
     pub po_item_id: Option<String>,
+    /// Batch code and dates, when known: the goods go into a new batch.
+    #[serde(default)]
+    pub lot: Option<crate::lots::LotInput>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -290,7 +302,36 @@ pub(crate) fn receive_lines(
             }
         }
         if track == 1 {
-            apply_movement(
+            // Batch details make a new batch, written with the movement.
+            let lot_id = match l.lot.as_ref().filter(|x| !x.is_empty()) {
+                Some(input) => {
+                    let kind: Option<String> = c.query_row("SELECT expiry_kind FROM products WHERE product_id=?1", [&pid], |r| r.get(0))?;
+                    let today = time::business_date(time::now(), &time::day(c)?)?;
+                    let lot = crate::lots::check_lot(c, input, &today, kind)?;
+                    let po: Option<String> = c
+                        .query_row("SELECT po_id FROM goods_receipts WHERE receipt_id=?1", [receipt_id], |r| r.get(0))
+                        .optional()?
+                        .flatten();
+                    let (id, _) = crate::lots::create_lot(
+                        c,
+                        &crate::lots::NewLot {
+                            product_id: &pid,
+                            branch_id: &s.branch_id,
+                            supplier_id,
+                            po_id: po.as_deref(),
+                            receipt_id: Some(receipt_id),
+                            qty_milli: l.qty_milli,
+                            unit_cost_minor: l.unit_cost_minor,
+                            provenance: "receiving",
+                            user_id: &s.user_id,
+                        },
+                        &lot,
+                    )?;
+                    Some(id)
+                }
+                None => None,
+            };
+            apply_movement_lot(
                 c,
                 &Movement {
                     product_id: &pid,
@@ -304,6 +345,8 @@ pub(crate) fn receive_lines(
                     user_id: Some(&s.user_id),
                     device_id: Some(&s.device_id),
                 },
+                None,
+                lot_id.as_deref(),
             )?;
         }
     }

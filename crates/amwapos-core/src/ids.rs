@@ -4,7 +4,16 @@ use rusqlite::{params, Connection};
 
 use crate::error::AppResult;
 
+/// A new ULID. Ids made in this process increase strictly, even within the
+/// same millisecond, so records written one after the other sort in the
+/// order they were written (the stock replay relies on it as a tie-break).
 pub fn new_id() -> String {
+    static GEN: std::sync::Mutex<Option<ulid::Generator>> = std::sync::Mutex::new(None);
+    if let Ok(mut g) = GEN.lock() {
+        if let Ok(id) = g.get_or_insert_with(ulid::Generator::new).generate() {
+            return id.to_string();
+        }
+    }
     ulid::Ulid::new().to_string()
 }
 

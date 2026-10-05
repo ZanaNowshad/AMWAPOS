@@ -417,3 +417,83 @@ fn a_till_offline_during_the_close_sends_its_sales_into_the_next_close() {
     assert_eq!(count(&hub.core, &format!("SELECT COUNT(*) FROM cases WHERE entity_id='{sid}'")), 1);
     assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM cases"), 0, "cases live on the hub");
 }
+
+#[test]
+fn batches_on_the_hub_converge_after_a_till_sells_offline() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let pid = hub.product("Labneh", "4002", 900, 500, 0);
+    let today = hub.core.db.read(|c| amwapos_core::time::business_date(amwapos_core::time::now(), &amwapos_core::time::day(c)?)).unwrap();
+    let plus = |n: i64| (chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").unwrap() + chrono::Duration::days(n)).to_string();
+    // 1. The hub receives two batches.
+    for (exp, op_id) in [(plus(20), op()), (plus(8), op())] {
+        hub.core
+            .inventory_receive(
+                &ht,
+                amwapos_core::inventory::ReceiveRequest {
+                    supplier_id: None,
+                    reference: None,
+                    lines: vec![amwapos_core::inventory::ReceiveLine {
+                        product_id: pid.clone(),
+                        qty_milli: 10_000,
+                        unit_cost_minor: 500,
+                        po_item_id: None,
+                        lot: Some(amwapos_core::lots::LotInput { expires_on: Some(exp), ..Default::default() }),
+                    }],
+                    operation_id: op_id,
+                },
+            )
+            .unwrap();
+    }
+    // 2. The till syncs; batches stay on the hub, the stock reaches the till.
+    let t1 = pair(&hub, "Till 2", "T02");
+    assert_eq!(stock(&t1.core, "4002"), 20_000);
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM stock_lots"), 0, "no private batch ledger on a till");
+    assert_eq!(
+        t1.core
+            .waste_record(
+                &t1.token,
+                serde_json::from_value(serde_json::json!({
+        "product_id": pid, "qty_milli": 1000, "reason": "damaged", "operation_id": op() }))
+                .unwrap()
+            )
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    // 3–4. Offline, the till sells 12 without knowing any batch.
+    t1.core.shift_open(&t1.token, 0, &op()).unwrap();
+    sell(&t1.core, &t1.token, "4002", 12_000);
+    // 5. Meanwhile the hub sells 3 and throws away 2 from the later batch.
+    hub.core.shift_open(&ht, 0, &op()).unwrap();
+    sell(&hub.core, &ht, "4002", 3_000);
+    let later: String =
+        hub.core.db.read(|c| Ok(c.query_row("SELECT lot_id FROM stock_lots WHERE lot_number='L-00001'", [], |r| r.get(0))?)).unwrap();
+    hub.core
+        .waste_record(
+            &ht,
+            serde_json::from_value(
+                serde_json::json!({ "product_id": pid, "lot_id": later, "qty_milli": 2000, "reason": "damaged", "operation_id": op() }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    // 6–7. The till comes back; the sale reaches the hub (twice: lost reply, retry).
+    sync_once(&hub.core, &t1.core, true);
+    sync_once(&hub.core, &t1.core, false);
+    // 8–10. Stock is right everywhere; batches are worked out the same way
+    // every time and never make or lose stock.
+    let branch: String = hub.core.db.read(|c| Ok(c.query_row("SELECT branch_id FROM branches LIMIT 1", [], |r| r.get(0))?)).unwrap();
+    let a = hub.core.db.read(|c| amwapos_core::lots::replay(c, &pid, &branch)).unwrap();
+    let b = hub.core.db.read(|c| amwapos_core::lots::replay(c, &pid, &branch)).unwrap();
+    assert_eq!(stock(&hub.core, "4002"), 3_000);
+    assert_eq!(stock(&t1.core, "4002"), 3_000);
+    let total: i64 = a.lots.iter().map(|l| l.balance_milli).sum::<i64>() + a.unlotted_milli;
+    assert_eq!(total, 3_000);
+    assert_eq!(serde_json::to_value(&a.lots).unwrap(), serde_json::to_value(&b.lots).unwrap());
+    let est: i64 = a.lots.iter().map(|l| l.estimated_out_milli).sum();
+    let rec: i64 = a.lots.iter().map(|l| l.explicit_out_milli).sum();
+    assert_eq!((est, rec), (15_000, 2_000), "sales are estimates; the waste is the only recorded removal");
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM stock_movements WHERE type='sale'"), 2);
+}

@@ -105,6 +105,9 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("cases.view", "Trading day", "See cases such as cash differences"),
     ("cases.manage", "Trading day", "Acknowledge, assign and add notes to cases"),
     ("cases.resolve", "Trading day", "Resolve or dismiss cases"),
+    ("lots.manage", "Inventory", "Correct batch and expiry details and count stock into a batch"),
+    ("waste.record", "Inventory", "Record waste (expired, damaged, spoiled and other stock that left unsold)"),
+    ("waste.approve", "Inventory", "Approve large waste and reverse waste recorded by mistake"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -181,6 +184,8 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "barcodes.resolve",
         "ocr.scan",
         "inventory.transfer",
+        "lots.manage",
+        "waste.record",
     ];
     let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view", "whatsapp.send", "orders.manage"];
     vec![
@@ -196,6 +201,9 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// Permissions added to the catalogue after the first release. Built-in
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "lots.manage",
+    "waste.record",
+    "waste.approve",
     "day.x_report",
     "day.close",
     "registers.manage",

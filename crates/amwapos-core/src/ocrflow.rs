@@ -962,6 +962,7 @@ impl AppCore {
                         po_item_id: l.po_item_id.clone(),
                         qty_milli: l.qty_remaining_milli,
                         unit_cost_minor: Some(l.unit_cost_minor),
+                        lot: None,
                     })
                     .collect(),
                 operation_id: format!("invscan-{id}"),
