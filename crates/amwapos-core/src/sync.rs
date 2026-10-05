@@ -72,6 +72,8 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("suppliers", &["supplier_id"], Policy::Hub),
     ("stock_locations", &["location_id"], Policy::Hub),
     ("user_branches", &["user_id", "branch_id"], Policy::Hub),
+    ("registers", &["register_id"], Policy::Hub),
+    ("cash_drawers", &["drawer_id"], Policy::Hub),
     ("customers", &["customer_id"], Policy::Shared),
     ("customer_notes", &["note_id"], Policy::Shared),
     ("customer_addresses", &["address_id"], Policy::Shared),
@@ -125,6 +127,11 @@ pub const DEFAULT_PORT: u16 = 47800;
 /// quietly kept on one computer when it should be shared, or the reverse.
 pub const LOCAL_TABLES: &[&str] = &[
     // Back office: written on the hub only (`require_back_office_writable`).
+    // The Z close is the hub's record; a terminal never keeps a private one.
+    "day_closes",
+    "day_close_items",
+    "cases",
+    "case_events",
     "purchase_orders",
     "purchase_order_items",
     "goods_receipts",
@@ -1039,35 +1046,37 @@ impl AppCore {
         if req.changes.len() > 2000 {
             return Err(AppError::validation("Push at most 2,000 changes per request."));
         }
-        self.db.write(|tx| {
-            set_control(tx, false, Some(device_id))?;
-            let mut accepted = 0;
-            let mut rejected = vec![];
-            let mut up_to = 0;
-            for ch in &req.changes {
-                up_to = up_to.max(ch.seq);
-                tx.execute_batch("SAVEPOINT change")?;
-                match apply_change(tx, ch, &ApplySide::Hub(device_id)) {
-                    Ok(_) => {
-                        tx.execute_batch("RELEASE change")?;
-                        accepted += 1;
-                    }
-                    Err(e) => {
-                        tx.execute_batch("ROLLBACK TO change; RELEASE change")?;
-                        record_dead_letter(tx, "apply", Some(device_id), ch, &e.message)?;
-                        rejected.push(Rejected { seq: ch.seq, table: ch.table.clone(), pk: ch.pk.clone(), error: e.message });
+        self.db
+            .write(|tx| {
+                set_control(tx, false, Some(device_id))?;
+                let mut accepted = 0;
+                let mut rejected = vec![];
+                let mut up_to = 0;
+                for ch in &req.changes {
+                    up_to = up_to.max(ch.seq);
+                    tx.execute_batch("SAVEPOINT change")?;
+                    match apply_change(tx, ch, &ApplySide::Hub(device_id)) {
+                        Ok(_) => {
+                            tx.execute_batch("RELEASE change")?;
+                            accepted += 1;
+                        }
+                        Err(e) => {
+                            tx.execute_batch("ROLLBACK TO change; RELEASE change")?;
+                            record_dead_letter(tx, "apply", Some(device_id), ch, &e.message)?;
+                            rejected.push(Rejected { seq: ch.seq, table: ch.table.clone(), pk: ch.pk.clone(), error: e.message });
+                        }
                     }
                 }
-            }
-            set_control(tx, false, None)?;
-            let now = time::now_str();
-            tx.execute(
-                "INSERT INTO device_heartbeats(device_id, last_seen_at, last_push_at) VALUES (?1,?2,?2)
+                set_control(tx, false, None)?;
+                let now = time::now_str();
+                tx.execute(
+                    "INSERT INTO device_heartbeats(device_id, last_seen_at, last_push_at) VALUES (?1,?2,?2)
                  ON CONFLICT(device_id) DO UPDATE SET last_seen_at=?2, last_push_at=?2",
-                params![device_id, now],
-            )?;
-            Ok(PushResponse { accepted, rejected, up_to_seq: up_to })
-        })
+                    params![device_id, now],
+                )?;
+                Ok(PushResponse { accepted, rejected, up_to_seq: up_to })
+            })
+            .inspect(|_| self.sweep_cases())
     }
 
     pub fn hub_pull(&self, device_id: &str, req: PullRequest) -> AppResult<PullResponse> {

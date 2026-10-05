@@ -52,6 +52,7 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 25, name: "order_reservations", sql: include_str!("migrations/0025_order_reservations.sql") },
     Migration { version: 26, name: "accounts_payable", sql: include_str!("migrations/0026_accounts_payable.sql") },
     Migration { version: 27, name: "wave1_finance", sql: include_str!("migrations/0027_wave1_finance.sql") },
+    Migration { version: 28, name: "wave2_trading_day", sql: include_str!("migrations/0028_wave2_trading_day.sql") },
 ];
 
 pub fn latest_schema_version() -> i64 {
@@ -280,6 +281,14 @@ fn current_version(c: &Connection) -> AppResult<i64> {
 }
 
 pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationReport> {
+    migrate_until(conn, path, i64::MAX)
+}
+
+/// Apply migrations up to `max_version` only. The app always migrates to the
+/// latest; upgrade tests use this to build a database as an older release
+/// left it.
+#[doc(hidden)]
+pub fn migrate_until(conn: &Connection, path: &Path, max_version: i64) -> AppResult<MigrationReport> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,
@@ -314,7 +323,7 @@ pub(crate) fn migrate(conn: &Connection, path: &Path) -> AppResult<MigrationRepo
         }
     }
     let from = applied.last().map(|a| a.0).unwrap_or(0);
-    let pending: Vec<&Migration> = MIGRATIONS.iter().filter(|m| m.version > from).collect();
+    let pending: Vec<&Migration> = MIGRATIONS.iter().filter(|m| m.version > from && m.version <= max_version).collect();
     let mut report = MigrationReport { from_version: from, to_version: from, applied: vec![], safety_backup: None };
     if pending.is_empty() {
         return Ok(report);

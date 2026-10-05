@@ -99,6 +99,12 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("expenses.pay", "Finance", "Record expense payments"),
     ("petty_cash.manage", "Finance", "Open, top up and count petty cash"),
     ("reports.profit", "Reports", "See operating profit (sales, cost of goods and expenses)"),
+    ("day.x_report", "Trading day", "See the current totals (X report), the opening and closing checks"),
+    ("day.close", "Trading day", "Close the trading day (Z close)"),
+    ("registers.manage", "Trading day", "Add, rename and move registers and cash drawers"),
+    ("cases.view", "Trading day", "See cases such as cash differences"),
+    ("cases.manage", "Trading day", "Acknowledge, assign and add notes to cases"),
+    ("cases.resolve", "Trading day", "Resolve or dismiss cases"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -160,6 +166,8 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "expenses.create",
         "expenses.pay",
         "reports.profit",
+        "day.x_report",
+        "cases.view",
     ];
     let inventory = vec![
         "admin.access",
@@ -188,6 +196,12 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// Permissions added to the catalogue after the first release. Built-in
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "day.x_report",
+    "day.close",
+    "registers.manage",
+    "cases.view",
+    "cases.manage",
+    "cases.resolve",
     "pos.void_sale",
     "expenses.view",
     "expenses.create",

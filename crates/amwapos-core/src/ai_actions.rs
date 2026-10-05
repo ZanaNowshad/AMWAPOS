@@ -134,7 +134,9 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "expenses.pay"
         | "expenses.void"
         | "petty.entry"
-        | "petty.count" => CommitFinancial,
+        | "petty.count"
+        | "day.close"
+        | "cases.act" => CommitFinancial,
         "ap.invoice_create"
         | "ap.invoice_approve"
         | "supplier_invoices.set_status"
@@ -259,6 +261,14 @@ fn is_read_command(c: &str) -> bool {
         "dashboard.get",
         "sales.get",
         "sales.void_check",
+        "day.x",
+        "day.checks",
+        "day.closes",
+        "day.close_get",
+        "day.opening",
+        "cases.list",
+        "cases.get",
+        "registers.list",
         "customers.statement",
         "customers.receivables",
         "expenses.list",

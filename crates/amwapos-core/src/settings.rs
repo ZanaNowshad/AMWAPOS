@@ -50,10 +50,19 @@ pub struct ShiftSettings {
     /// Minutes after local midnight when the trading day ends (0 = midnight,
     /// at most 06:00). Applies to records made after it is changed.
     pub day_cutoff_minutes: i64,
+    /// A counted drawer that differs from the expected amount by more than
+    /// this gets a case to look into (0 = any difference).
+    pub variance_case_minor: i64,
 }
 impl Default for ShiftSettings {
     fn default() -> Self {
-        Self { blind_close: true, variance_approval_minor: 1000, paid_out_approval_minor: 0, day_cutoff_minutes: 0 }
+        Self {
+            blind_close: true,
+            variance_approval_minor: 1000,
+            paid_out_approval_minor: 0,
+            day_cutoff_minutes: 0,
+            variance_case_minor: 1000,
+        }
     }
 }
 
@@ -600,6 +609,9 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             let v: ShiftSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if !(0..=crate::time::MAX_CUTOFF_MINUTES).contains(&v.day_cutoff_minutes) {
                 return Err(AppError::validation("The trading day must end between midnight and 06:00."));
+            }
+            if v.variance_case_minor < 0 || v.variance_approval_minor < 0 || v.paid_out_approval_minor < 0 {
+                return Err(AppError::validation("The amount cannot be negative."));
             }
             serde_json::to_value(v)?
         }

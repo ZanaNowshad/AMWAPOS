@@ -342,6 +342,38 @@ fn arabic(en: &str) -> Option<&'static str> {
         "CR" => "س.ت",
         "VAT No" => "الرقم الضريبي",
         "was" => "كان",
+        "Z CLOSE" => "إغلاق اليوم (Z)",
+        "X REPORT - NOT A CLOSE" => "تقرير X - ليس إغلاقًا",
+        "Trading day" => "يوم التداول",
+        "Branch" => "الفرع",
+        "Day ends at" => "ينتهي اليوم",
+        "Closed by" => "أغلقه",
+        "Printed" => "طُبع",
+        "Sales" => "المبيعات",
+        "Before discounts" => "قبل الخصومات",
+        "Discounts" => "الخصومات",
+        "Refunds" => "الاسترجاعات",
+        "Voids" => "الإلغاءات",
+        "NET SALES" => "صافي المبيعات",
+        "Net of VAT" => "بدون الضريبة",
+        "Tenders" => "طرق الدفع",
+        "VAT by rate" => "الضريبة حسب النسبة",
+        "After-close adjustments" => "تعديلات بعد الإغلاق",
+        "Arrived after their day was closed" => "وصلت بعد إغلاق يومها",
+        "Drawers" => "الأدراج",
+        "Float" => "الفكة",
+        "Cash sales" => "مبيعات نقدية",
+        "Cash refunds" => "استرجاع نقدي",
+        "Cash in" => "إيداع نقدي",
+        "Cash out" => "سحب نقدي",
+        "Safe drops" => "إيداع في الخزنة",
+        "Delivery collections" => "تحصيل التوصيل",
+        "Expected" => "المتوقع",
+        "Counted" => "المعدود",
+        "Difference" => "الفرق",
+        "Still open" => "ما زال مفتوحًا",
+        "TOTAL IN THIS CLOSE" => "الإجمالي في هذا الإغلاق",
+        "Fingerprint" => "البصمة",
         _ => return None,
     })
 }
@@ -766,5 +798,101 @@ pub fn statement_doc(c: &Connection, branch_id: &str, st: &crate::credit::Statem
     for f in &cfg.footer_lines {
         doc.center(f.clone(), false, false);
     }
+    Ok(doc)
+}
+
+/// The X or Z report as a printable document (always English and Arabic).
+/// Built only from the report, so a stored close prints the same forever.
+pub fn day_close_doc(c: &Connection, rep: &crate::dayclose::DayReport) -> AppResult<ReceiptDoc> {
+    let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
+    let cfg: ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
+    let mut bi = cfg.clone();
+    bi.language = "bilingual".into();
+    let l = Labels::new(&bi);
+    let m = |v: i64| format_decimal(v, rep.digits);
+    let mut doc = ReceiptDoc::new(width_for(printer.paper_width_mm.min(cfg.paper_width_mm)));
+    doc.center(rep.business_name.clone(), true, true);
+    if let Some(v) = &rep.vat_number {
+        doc.center(format!("{}: {v}", l.t("VAT No")), false, false);
+    }
+    doc.rule();
+    let title = if rep.kind == "z" { l.t("Z CLOSE") } else { l.t("X REPORT - NOT A CLOSE") };
+    doc.center(title, true, false);
+    if let Some(n) = &rep.close_number {
+        doc.center(n.clone(), true, false);
+    }
+    doc.pair(l.t("Branch"), rep.branch_name.clone());
+    doc.pair(l.t("Trading day"), rep.business_date.clone());
+    doc.pair(l.t("Day ends at"), format!("{:02}:{:02}", rep.cutoff_minutes / 60, rep.cutoff_minutes % 60));
+    if let Some(who) = &rep.closed_by_name {
+        doc.pair(l.t("Closed by"), who.clone());
+    }
+    doc.pair(l.t("Printed"), time::display(&rep.generated_at, &rep.timezone));
+    let section = |doc: &mut ReceiptDoc, t: &crate::dayclose::Totals| {
+        doc.pair(format!("{} ({})", l.t("Sales"), t.sale_count), m(t.sales_minor));
+        doc.pair(format!("  {}", l.t("Before discounts")), m(t.gross_minor));
+        doc.pair(format!("  {}", l.t("Discounts")), m(t.discount_minor));
+        doc.pair(format!("{} ({})", l.t("Refunds"), t.refund_count), format!("-{}", m(t.refunds_minor)));
+        doc.pair(format!("{} ({})", l.t("Voids"), t.void_count), format!("-{}", m(t.voids_minor)));
+        doc.pair_b(l.t("NET SALES"), m(t.net_sales_minor), false);
+        doc.pair(l.t("VAT"), m(t.tax_minor));
+        doc.pair(l.t("Net of VAT"), m(t.net_ex_vat_minor));
+    };
+    doc.rule();
+    section(&mut doc, &rep.day);
+    if rep.after_close.sale_count + rep.after_close.refund_count + rep.after_close.void_count > 0 {
+        doc.rule();
+        doc.center(l.t("After-close adjustments"), true, false);
+        doc.left(l.t("Arrived after their day was closed"));
+        section(&mut doc, &rep.after_close);
+        for x in &rep.late {
+            let sign = if x.kind == "sale" { "" } else { "-" };
+            doc.pair(format!("  {} {}", x.business_date, x.number), format!("{sign}{}", m(x.total_minor)));
+        }
+        doc.rule();
+        doc.pair_b(l.t("TOTAL IN THIS CLOSE"), format!("{} {}", rep.currency, m(rep.total.net_sales_minor)), true);
+    } else {
+        doc.pair_b(l.t("TOTAL"), format!("{} {}", rep.currency, m(rep.total.net_sales_minor)), true);
+    }
+    doc.rule();
+    doc.center(l.t("Tenders"), true, false);
+    for t in &rep.total.tenders {
+        doc.pair(l.t(&method_label(&t.method)), m(t.net_minor));
+    }
+    if !rep.total.vat.is_empty() {
+        doc.rule();
+        doc.center(l.t("VAT by rate"), true, false);
+        for v in &rep.total.vat {
+            let rate = format_decimal(v.rate_bp, 2);
+            let rate = rate.trim_end_matches('0').trim_end_matches('.');
+            doc.pair(format!("{rate}%  {}", m(v.net_minor)), m(v.tax_minor));
+        }
+    }
+    doc.rule();
+    doc.center(l.t("Drawers"), true, false);
+    for d in &rep.drawers {
+        let name = d.register_name.clone().or(d.device_name.clone()).unwrap_or_default();
+        doc.left(format!("{} {} - {}", d.shift_number, name, d.cashier_name));
+        doc.pair(format!("  {}", l.t("Expected")), m(d.expected_cash_minor));
+        match (d.status.as_str(), d.counted_cash_minor) {
+            ("closed", Some(n)) => {
+                doc.pair(format!("  {}", l.t("Counted")), m(n));
+                doc.pair(format!("  {}", l.t("Difference")), m(d.variance_minor.unwrap_or(0)));
+            }
+            _ => doc.left(format!("  {}", l.t("Still open"))),
+        }
+    }
+    let ct = &rep.cash;
+    doc.pair(l.t("Float"), m(ct.opening_float_minor));
+    doc.pair(l.t("Cash sales"), m(ct.cash_sales_minor));
+    doc.pair(l.t("Cash refunds"), format!("-{}", m(ct.cash_refunds_minor)));
+    doc.pair(l.t("Cash in"), m(ct.paid_in_minor));
+    doc.pair(l.t("Cash out"), format!("-{}", m(ct.paid_out_minor)));
+    doc.pair(l.t("Safe drops"), format!("-{}", m(ct.safe_drop_minor)));
+    doc.pair(l.t("Delivery collections"), m(ct.delivery_collections_minor + ct.rider_handover_minor));
+    doc.pair_b(l.t("Expected"), m(ct.expected_cash_minor), false);
+    doc.pair(l.t("Counted"), m(ct.counted_cash_minor));
+    doc.pair_b(l.t("Difference"), m(ct.variance_minor), false);
+    doc.blocks.push(Block::Feed { lines: 2 });
     Ok(doc)
 }

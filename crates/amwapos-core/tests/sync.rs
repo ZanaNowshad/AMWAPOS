@@ -354,3 +354,66 @@ fn payables_and_supplier_documents_are_hub_only_because_they_do_not_sync() {
     assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM expenses"), 0);
     hub.core.expense_save(&ht, None, exp()).unwrap();
 }
+
+#[test]
+fn a_till_offline_during_the_close_sends_its_sales_into_the_next_close() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    hub.product("Laban 200ml", "4001", 150, 90, 100_000);
+    let t1 = pair(&hub, "Till 2", "T02");
+    // The terminal knows its register (made from its device on the hub and copied).
+    let dev = t1.core.device().unwrap().device_id;
+    assert_eq!(count(&t1.core, &format!("SELECT COUNT(*) FROM registers WHERE register_id='reg_{dev}' AND device_id='{dev}'")), 1);
+    t1.core.shift_open(&t1.token, 1_000, &op()).unwrap();
+    assert_eq!(t1.core.shift_current(&t1.token).unwrap().unwrap().register_id.as_deref(), Some(format!("reg_{dev}").as_str()));
+    // Offline: two sales on the till; the till keeps selling whatever the hub does.
+    sell(&t1.core, &t1.token, "4001", 1_000);
+    sell(&t1.core, &t1.token, "4001", 1_000);
+
+    // The terminal cannot close the day or keep a private close.
+    let today = hub.core.db.read(|c| amwapos_core::time::business_date(amwapos_core::time::now(), &amwapos_core::time::day(c)?)).unwrap();
+    let req = |op_id: String| amwapos_core::dayclose::CloseRequest {
+        business_date: today.clone(),
+        branch_id: None,
+        operation_id: op_id,
+        acknowledge_warnings: true,
+    };
+    assert_eq!(t1.core.day_close(&t1.token, req(op())).unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(t1.core.day_x(&t1.token, None, None).unwrap_err().code, ErrorCode::Conflict);
+
+    // The hub closes today without the till's sales (it has not seen them).
+    let checks = hub.core.day_checks(&ht, None, None).unwrap();
+    assert!(checks.checks.iter().any(|c| c.code == "terminal_silent" && c.level == "warning"));
+    let z = hub.core.day_close(&ht, req(op())).unwrap();
+    assert_eq!(z.report.total.sale_count, 0);
+
+    // The till comes back and sends them: kept, with their own date and time.
+    sync_once(&hub.core, &t1.core, false);
+    assert_eq!(count(&hub.core, &format!("SELECT COUNT(*) FROM sales WHERE business_date='{today}'")), 2);
+    let x = hub.core.day_x(&ht, None, None).unwrap();
+    assert!(x.day_closed);
+    assert_eq!((x.day.sale_count, x.after_close.sale_count, x.late.len()), (0, 2, 2), "shown as after-close for the next close");
+    assert_eq!(x.drawers.iter().filter(|d| d.status == "open").count(), 1, "the till's open drawer is visible");
+    let again = hub.core.day_close_get(&ht, &z.close_id).unwrap();
+    assert!(again.verified);
+    assert_eq!(again.report, z.report, "the closed day did not change");
+    assert!(hub.core.day_close(&ht, req(op())).is_err(), "the day stays closed once");
+
+    // The till counts its drawer 0.500 short; the hub opens a case when it arrives.
+    let sid = t1.core.shift_current(&t1.token).unwrap().unwrap().shift_id;
+    let exp = 1_000 + 2 * 150; // float + two cash sales
+    t1.core
+        .shift_close(
+            &t1.token,
+            &sid,
+            serde_json::from_value(serde_json::json!({ "counted_cash_minor": exp - 500, "operation_id": op() })).unwrap(),
+        )
+        .unwrap();
+    let mut shift = hub.core.settings_get(&ht, "shift").unwrap();
+    shift["variance_case_minor"] = serde_json::json!(100);
+    hub.core.settings_save(&ht, "shift", shift).unwrap();
+    sync_once(&hub.core, &t1.core, false);
+    assert_eq!(count(&hub.core, &format!("SELECT COUNT(*) FROM cases WHERE entity_id='{sid}'")), 1);
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM cases"), 0, "cases live on the hub");
+}

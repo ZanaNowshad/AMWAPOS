@@ -65,6 +65,15 @@ pub struct ShiftSummary {
     pub expected_visible: bool,
     pub close_note: Option<String>,
     pub variance_approved_by_name: Option<String>,
+    /// Register and drawer (shifts opened before registers existed have none).
+    #[serde(default)]
+    pub register_id: Option<String>,
+    #[serde(default)]
+    pub register_name: Option<String>,
+    #[serde(default)]
+    pub drawer_id: Option<String>,
+    #[serde(default)]
+    pub drawer_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -105,9 +114,12 @@ pub fn shift_summary(c: &Connection, shift_id: &str) -> AppResult<ShiftSummary> 
     let mut s = c
         .query_row(
             "SELECT s.shift_id, s.shift_number, s.user_id, COALESCE(u.display_name,''), s.device_id, d.name, s.status, s.business_date,
-                    s.opened_at, s.closed_at, s.opening_float_minor, s.counted_cash_minor, s.variance_minor, s.close_note, a.display_name
+                    s.opened_at, s.closed_at, s.opening_float_minor, s.counted_cash_minor, s.variance_minor, s.close_note, a.display_name,
+                    s.register_id, rg.name, s.drawer_id, dr.name
              FROM shifts s LEFT JOIN users u ON u.user_id=s.user_id LEFT JOIN devices d ON d.device_id=s.device_id
-             LEFT JOIN users a ON a.user_id=s.variance_approved_by WHERE s.shift_id=?1",
+             LEFT JOIN users a ON a.user_id=s.variance_approved_by
+             LEFT JOIN registers rg ON rg.register_id=s.register_id LEFT JOIN cash_drawers dr ON dr.drawer_id=s.drawer_id
+             WHERE s.shift_id=?1",
             [shift_id],
             |r| {
                 Ok(ShiftSummary {
@@ -126,6 +138,10 @@ pub fn shift_summary(c: &Connection, shift_id: &str) -> AppResult<ShiftSummary> 
                     variance_minor: r.get(12)?,
                     close_note: r.get(13)?,
                     variance_approved_by_name: r.get(14)?,
+                    register_id: r.get(15)?,
+                    register_name: r.get(16)?,
+                    drawer_id: r.get(17)?,
+                    drawer_name: r.get(18)?,
                     sale_count: 0,
                     sales_total_minor: 0,
                     discount_total_minor: 0,
@@ -256,10 +272,12 @@ impl AppCore {
             let now = time::now();
             let id = new_id();
             let number = format!("{}-S{:05}", device.device_code, next_seq(tx, &format!("shift:{}", device.device_id))?);
+            // The register this computer currently stands for, and its drawer.
+            let (register, drawer) = crate::registers::for_device(tx, &s.device_id)?;
             tx.execute(
-                "INSERT INTO shifts(shift_id, shift_number, user_id, branch_id, device_id, business_date, opening_float_minor, opened_at, status)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'open')",
-                params![id, number, s.user_id, s.branch_id, s.device_id, time::business_date(now, &day)?, opening_float_minor, time::fmt(now)],
+                "INSERT INTO shifts(shift_id, shift_number, user_id, branch_id, device_id, business_date, opening_float_minor, opened_at, status, register_id, drawer_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'open',?9,?10)",
+                params![id, number, s.user_id, s.branch_id, s.device_id, time::business_date(now, &day)?, opening_float_minor, time::fmt(now), register, drawer],
             )?;
             // Attach the cashier's active cart to the new shift.
             tx.execute(
@@ -344,6 +362,8 @@ impl AppCore {
             Ok(())
         })?;
         self.print_pending_for(&id);
+        // Where cases live (hub or a single computer), a large difference opens one now.
+        self.sweep_cases();
         let sm = self.db.read(|c| shift_summary(c, &id))?;
         let po = self.db.read(|c| crate::printing::latest_job_outcome(c, "shift_report", &id))?.unwrap_or_else(PrintOutcome::queued);
         Ok((sm, po))
