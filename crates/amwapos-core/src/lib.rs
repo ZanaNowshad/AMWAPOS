@@ -24,6 +24,7 @@ pub mod db;
 pub mod docintel;
 pub mod eod;
 pub mod error;
+pub mod expenses;
 pub mod idempotency;
 pub mod ids;
 pub mod importer;

@@ -57,6 +57,15 @@ impl Default for ShiftSettings {
     }
 }
 
+/// Expenses: who has to approve. An expense entered by someone who may
+/// approve, or at or below this amount, is approved on entry (recorded as
+/// such); anything else waits for an approver. 0 = only approvers' own.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ExpenseSettings {
+    pub auto_approve_up_to_minor: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct TenderConfig {
@@ -428,6 +437,7 @@ impl Default for LoyaltySettings {
     }
 }
 pub const KEY_LOYALTY: &str = "loyalty";
+pub const KEY_EXPENSES: &str = "expenses";
 
 /// Where to look for signed updates. The verifying key is built into the app.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -539,6 +549,7 @@ pub const EDITABLE_KEYS: &[&str] = &[
     KEY_WHATSAPP,
     KEY_LOYALTY,
     KEY_DELIVERY,
+    KEY_EXPENSES,
 ];
 
 pub fn get<T: DeserializeOwned + Default>(conn: &Connection, key: &str) -> AppResult<T> {
@@ -593,6 +604,13 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             serde_json::to_value(v)?
         }
         KEY_FEATURES => roundtrip::<FeatureFlags>(value)?,
+        KEY_EXPENSES => {
+            let v: ExpenseSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            if v.auto_approve_up_to_minor < 0 {
+                return Err(AppError::validation("The amount cannot be negative."));
+            }
+            serde_json::to_value(v)?
+        }
         KEY_UPDATES => {
             let u: UpdateSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             let f = u.feed_url.trim();

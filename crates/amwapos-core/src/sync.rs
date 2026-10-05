@@ -149,6 +149,12 @@ pub const LOCAL_TABLES: &[&str] = &[
     "product_aliases",
     "report_presets",
     "companion_tokens",
+    "expense_categories",
+    "expenses",
+    "expense_attachments",
+    "expense_recurring",
+    "petty_cash_funds",
+    "petty_cash_entries",
     // WhatsApp and AI live on the computer that runs them.
     "wa_outbox",
     "wa_inbox",

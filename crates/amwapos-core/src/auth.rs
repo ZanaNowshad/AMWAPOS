@@ -93,6 +93,12 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("payables.review", "Finance", "Enter and approve supplier invoices for posting"),
     ("payables.post", "Finance", "Post and reverse supplier invoices and credit notes"),
     ("payables.pay", "Finance", "Record, allocate and reverse supplier payments"),
+    ("expenses.view", "Finance", "See expenses and petty cash"),
+    ("expenses.create", "Finance", "Enter and submit expenses"),
+    ("expenses.approve", "Finance", "Approve, reject and void expenses"),
+    ("expenses.pay", "Finance", "Record expense payments"),
+    ("petty_cash.manage", "Finance", "Open, top up and count petty cash"),
+    ("reports.profit", "Reports", "See operating profit (sales, cost of goods and expenses)"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -120,6 +126,7 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
                     // Money owed to suppliers is posted and paid by the owner unless granted.
                     | "payables.post"
                     | "payables.pay"
+                    | "expenses.pay"
             )
         })
         .collect();
@@ -149,6 +156,10 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "inventory.view",
         "customers.view",
         "payables.view",
+        "expenses.view",
+        "expenses.create",
+        "expenses.pay",
+        "reports.profit",
     ];
     let inventory = vec![
         "admin.access",
@@ -178,6 +189,12 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
     "pos.void_sale",
+    "expenses.view",
+    "expenses.create",
+    "expenses.approve",
+    "expenses.pay",
+    "petty_cash.manage",
+    "reports.profit",
     "customers.credit",
     "customers.credit_override",
     "whatsapp.send",

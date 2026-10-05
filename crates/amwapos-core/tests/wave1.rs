@@ -346,3 +346,181 @@ fn voiding_an_account_sale_returns_the_customer_balance() {
     e.core.sale_void(t, void_req(&sale.sale_id, None)).unwrap();
     assert_eq!(bal(&e), 0, "the account charge is reversed, the ledger is not edited");
 }
+
+fn expense(e: &Env, t: &str, total: i64, vat: i64, cat: &str) -> amwapos_core::expenses::ExpenseRow {
+    e.core
+        .expense_save(
+            t,
+            None,
+            serde_json::from_value(
+                json!({ "category_id": cat, "description": "October", "total_minor": total, "vat_minor": vat, "payee": "Landlord" }),
+            )
+            .unwrap(),
+        )
+        .unwrap()
+}
+
+#[test]
+fn expense_lifecycle_and_operating_profit() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 10_000);
+    // A sale: 2 × 1.100 incl. 10% VAT (net 1.000 each), cost 0.600 each.
+    e.product("Juice", "7301", 1_100, 600, 50_000);
+    sell(&e, "7301", 2000, "cash");
+
+    // Draft → (owner may approve) approved on entry → paid by bank.
+    let x = expense(&e, t, 105_000, 5_000, "exp_rent");
+    assert_eq!((x.status.as_str(), x.net_minor, x.vat_minor), ("draft", 100_000, 5_000));
+    let x = e.core.expense_submit(t, &x.expense_id).unwrap();
+    assert_eq!(x.status, "approved");
+    // Amounts are frozen once submitted (by the database itself).
+    let frozen = e.core.db.write(|tx| Ok(tx.execute("UPDATE expenses SET total_minor=1, net_minor=1, vat_minor=0", [])?));
+    assert!(frozen.is_err());
+    let pay = |method: &str| -> amwapos_core::expenses::PayInput {
+        serde_json::from_value(json!({ "method": method, "operation_id": op() })).unwrap()
+    };
+    let p = pay("bank_transfer");
+    let x = e.core.expense_pay(t, &x.expense_id, p.clone()).unwrap();
+    assert_eq!(x.status, "paid");
+    // A lost reply retried returns the same payment.
+    assert_eq!(e.core.expense_pay(t, &x.expense_id, p).unwrap().status, "paid");
+
+    // A drafted expense is not counted; a voided one stops counting.
+    expense(&e, t, 9_000, 0, "exp_cleaning");
+    let y = expense(&e, t, 20_000, 0, "exp_transport");
+    let y = e.core.expense_submit(t, &y.expense_id).unwrap();
+    let rep = e.core.report_run(t, "operating_profit", Default::default()).unwrap();
+    let k = |label: &str| rep.kpis.iter().find(|k| k.label == label).unwrap().value;
+    assert_eq!(k("Revenue"), 2_000);
+    assert_eq!(k("Gross profit"), 2_000 - 1_200);
+    assert_eq!(k("Operating expenses"), 100_000 + 20_000);
+    assert_eq!(k("Operating profit"), 800 - 120_000);
+    e.core.expense_void(t, &y.expense_id, "Entered twice", &op()).unwrap();
+    let rep = e.core.report_run(t, "operating_profit", Default::default()).unwrap();
+    assert_eq!(rep.kpis.iter().find(|k| k.label == "Operating expenses").unwrap().value, 100_000);
+    assert!(rep.notes.iter().any(|n| n.contains("not net profit")));
+}
+
+#[test]
+fn expenses_need_an_approver_unless_within_the_limit() {
+    let e = env();
+    let t = &e.owner_token;
+    let (_a, at) = e.user("Accounts", amwapos_core::auth::ROLE_ACCOUNTANT, "7531");
+    // The accountant enters and pays but does not approve.
+    let x = expense(&e, &at, 30_000, 0, "exp_repairs");
+    let x = e.core.expense_submit(&at, &x.expense_id).unwrap();
+    assert_eq!(x.status, "submitted");
+    assert_eq!(e.core.expense_decide(&at, &x.expense_id, true, None).unwrap_err().code, ErrorCode::Forbidden);
+    let pay: amwapos_core::expenses::PayInput = serde_json::from_value(json!({ "method": "card", "operation_id": op() })).unwrap();
+    assert_eq!(e.core.expense_pay(&at, &x.expense_id, pay.clone()).unwrap_err().code, ErrorCode::Conflict, "not approved yet");
+    // A rejection needs a reason.
+    assert_eq!(e.core.expense_decide(t, &x.expense_id, false, None).unwrap_err().code, ErrorCode::Validation);
+    e.core.expense_decide(t, &x.expense_id, true, None).unwrap();
+    assert_eq!(e.core.expense_pay(&at, &x.expense_id, pay).unwrap().status, "paid");
+
+    // Small amounts can be approved on entry by store policy.
+    e.core.settings_save(t, "expenses", json!({ "auto_approve_up_to_minor": 5_000 })).unwrap();
+    let small = expense(&e, &at, 4_000, 0, "exp_supplies");
+    assert_eq!(e.core.expense_submit(&at, &small.expense_id).unwrap().status, "approved");
+    let big = expense(&e, &at, 6_000, 0, "exp_supplies");
+    assert_eq!(e.core.expense_submit(&at, &big.expense_id).unwrap().status, "submitted");
+
+    // A cashier cannot see expenses at all.
+    let (_c, ct) = e.user("Cashier X", amwapos_core::auth::ROLE_CASHIER, "8642");
+    assert_eq!(e.core.expenses_list(&ct, None, None, None).unwrap_err().code, ErrorCode::Forbidden);
+}
+
+#[test]
+fn petty_cash_balance_follows_its_entries() {
+    let e = env();
+    let t = &e.owner_token;
+    let f = e.core.petty_fund_save(t, None, "Front desk", None, true).unwrap();
+    let fid = f["fund_id"].as_str().unwrap().to_string();
+    e.core.petty_entry(t, &fid, "open", 50_000, None, &op()).unwrap();
+    let bal = |e: &Env| e.core.petty_funds(t).unwrap().into_iter().find(|x| x.fund_id == fid).unwrap().balance_minor;
+    assert_eq!(bal(&e), 50_000);
+
+    // Paying more than the fund holds is refused.
+    let x = expense(&e, t, 60_000, 0, "exp_supplies");
+    e.core.expense_submit(t, &x.expense_id).unwrap();
+    let pay = |fid: &str| -> amwapos_core::expenses::PayInput {
+        serde_json::from_value(json!({ "method": "petty_cash", "fund_id": fid, "operation_id": op() })).unwrap()
+    };
+    assert_eq!(e.core.expense_pay(t, &x.expense_id, pay(&fid)).unwrap_err().code, ErrorCode::Conflict);
+    e.core.expense_void(t, &x.expense_id, "Wrong amount", &op()).unwrap();
+
+    // Paid from the fund, then voided: the money goes back, nothing deleted.
+    let y = expense(&e, t, 12_500, 0, "exp_cleaning");
+    e.core.expense_submit(t, &y.expense_id).unwrap();
+    e.core.expense_pay(t, &y.expense_id, pay(&fid)).unwrap();
+    assert_eq!(bal(&e), 37_500);
+    e.core.expense_void(t, &y.expense_id, "Supplier refunded", &op()).unwrap();
+    assert_eq!(bal(&e), 50_000);
+
+    // A count records the difference; the balance is then what was counted.
+    let c = e.core.petty_count(t, &fid, 49_000, Some("1 BD short".into()), &op()).unwrap();
+    assert_eq!(c["difference_minor"], -1_000);
+    assert_eq!(bal(&e), 49_000);
+    let entries = e.core.petty_entries(t, &fid).unwrap();
+    assert_eq!(entries.as_array().unwrap().last().unwrap()["balance_minor"], 49_000);
+    // Entries can never be edited.
+    assert!(e.core.db.write(|tx| Ok(tx.execute("UPDATE petty_cash_entries SET amount_minor=0", [])?)).is_err());
+}
+
+#[test]
+fn a_till_paid_out_backs_one_expense_only() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 50_000);
+    let ce = e
+        .core
+        .cash_event(
+            t,
+            serde_json::from_value(json!({ "kind": "paid_out", "amount_minor": 3_000, "reason": "Water delivery", "operation_id": op() }))
+                .unwrap(),
+        )
+        .unwrap();
+    let ce_id =
+        ce["cash_event_id"].as_str().map(str::to_string).unwrap_or_else(|| ce["cash_event"]["cash_event_id"].as_str().unwrap().to_string());
+    let link = |x: &amwapos_core::expenses::ExpenseRow| {
+        e.core.expense_submit(t, &x.expense_id).unwrap();
+        e.core.expense_pay(
+            t,
+            &x.expense_id,
+            serde_json::from_value(json!({ "method": "till_paid_out", "cash_event_id": ce_id, "operation_id": op() })).unwrap(),
+        )
+    };
+    let wrong = expense(&e, t, 2_500, 0, "exp_water");
+    assert_eq!(link(&wrong).unwrap_err().code, ErrorCode::Validation, "amount must match");
+    let a = expense(&e, t, 3_000, 0, "exp_water");
+    assert_eq!(link(&a).unwrap().status, "paid");
+    let b = expense(&e, t, 3_000, 0, "exp_water");
+    assert_eq!(link(&b).unwrap_err().code, ErrorCode::Conflict, "a paid-out backs one expense");
+}
+
+#[test]
+fn recurring_expenses_make_drafts_never_payments() {
+    let e = env();
+    let t = &e.owner_token;
+    let today = e.core.db.read(|c| amwapos_core::time::business_date(amwapos_core::time::now(), &amwapos_core::time::day(c)?)).unwrap();
+    let r = e
+        .core
+        .expense_recurring_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "Shop rent", "category_id": "exp_rent", "description": "Monthly rent", "total_minor": 400_000, "cadence": "monthly", "day": 1 })).unwrap(),
+        )
+        .unwrap();
+    // Make it due today.
+    e.core.db.write(|tx| Ok(tx.execute("UPDATE expense_recurring SET next_date=?1", [&today])?)).unwrap();
+    let l = e.core.expenses_list(t, None, None, None).unwrap();
+    let drafts: Vec<_> = l["rows"].as_array().unwrap().iter().filter(|x| x["recurring_id"] == r["recurring_id"]).collect();
+    assert_eq!(drafts.len(), 1);
+    assert_eq!(drafts[0]["status"], "draft");
+    // Opening the list again does not make a second one.
+    let l = e.core.expenses_list(t, None, None, None).unwrap();
+    assert_eq!(l["rows"].as_array().unwrap().iter().filter(|x| x["recurring_id"] == r["recurring_id"]).count(), 1);
+    // Drafts are not expenses yet.
+    assert_eq!(l["spent_minor"], 0);
+}

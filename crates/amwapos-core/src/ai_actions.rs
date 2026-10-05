@@ -128,8 +128,19 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "ap.payment_reverse"
         | "ap.allocate"
         | "ap.allocation_reverse"
-        | "legacy.price_change" => CommitFinancial,
-        "ap.invoice_create" | "ap.invoice_approve" | "supplier_invoices.set_status" => Draft,
+        | "legacy.price_change"
+        | "sales.void"
+        | "expenses.decide"
+        | "expenses.pay"
+        | "expenses.void"
+        | "petty.entry"
+        | "petty.count" => CommitFinancial,
+        "ap.invoice_create"
+        | "ap.invoice_approve"
+        | "supplier_invoices.set_status"
+        | "expenses.save"
+        | "expenses.submit"
+        | "expenses.recurring_save" => Draft,
         // ---- stock --------------------------------------------------------
         "inventory.receive"
         | "inventory.adjust"
@@ -247,6 +258,13 @@ fn is_read_command(c: &str) -> bool {
     const READS: &[&str] = &[
         "dashboard.get",
         "sales.get",
+        "sales.void_check",
+        "expenses.list",
+        "expenses.get",
+        "expenses.categories",
+        "expenses.recurring",
+        "petty.funds",
+        "petty.entries",
         "sales.find_receipt",
         "sales.list",
         "refunds.lookup",

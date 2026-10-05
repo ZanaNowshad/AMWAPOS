@@ -340,4 +340,17 @@ fn payables_and_supplier_documents_are_hub_only_because_they_do_not_sync() {
     // …while it can still read (empty) and the hub records it normally.
     t1.core.ap_overview(&t1.token).unwrap();
     hub.core.ap_invoice_create_manual(&ht, input()).unwrap();
+
+    // Expenses and petty cash are back office too: one ledger, on the hub.
+    let exp = || {
+        serde_json::from_value::<amwapos_core::expenses::ExpenseInput>(
+            serde_json::json!({ "category_id": "exp_rent", "description": "Rent", "total_minor": 100_000 }),
+        )
+        .unwrap()
+    };
+    let err = t1.core.expense_save(&t1.token, None, exp()).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict, "{}", err.message);
+    assert_eq!(t1.core.petty_fund_save(&t1.token, None, "Desk", None, true).unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM expenses"), 0);
+    hub.core.expense_save(&ht, None, exp()).unwrap();
 }

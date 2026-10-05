@@ -83,6 +83,8 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
     ("payments", "Payment methods", "Financial", "Tenders recorded per method, net of refunds"),
     ("tax", "VAT", "Financial", "Taxable amounts and VAT by rate, net of refunds"),
     ("margin", "Margin & profit", "Financial", "Revenue, cost and gross profit per product"),
+    ("operating_profit", "Operating profit", "Financial", "Sales, cost of goods and expenses: what the business really made"),
+    ("expenses", "Expenses", "Financial", "Approved and paid expenses by category"),
     ("refunds", "Refunds", "Sales", "Refunds with reasons and approvals"),
     ("cash", "Cash & shifts", "Financial", "Shift reconciliation and cash variances"),
     ("inventory", "Stock valuation", "Inventory", "On-hand quantity and value at average cost"),
@@ -97,6 +99,8 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
 fn permission_for(key: &str) -> &'static str {
     match key {
         "margin" | "cash" | "payments" => "reports.financial",
+        "operating_profit" => "reports.profit",
+        "expenses" => "expenses.view",
         "tax" => "reports.tax",
         "audit" => "audit.view",
         "inventory" | "dead_stock" | "stock_movements" => "inventory.view",
@@ -203,6 +207,8 @@ impl AppCore {
             "payments" => self.rep_payments(c, p),
             "tax" => self.rep_tax(c, p),
             "refunds" => self.rep_refunds(c, p),
+            "operating_profit" => self.rep_operating_profit(c, p),
+            "expenses" => self.rep_expenses(c, p),
             "cash" => self.rep_cash(c, p),
             "inventory" => self.rep_inventory(c, s, p),
             "dead_stock" => self.rep_dead_stock(c, s, p),
@@ -551,6 +557,105 @@ impl AppCore {
         })
     }
 
+    /// Operating profit for a business-date range. Definitions (stated on
+    /// the report): revenue = sales less refunds and voids, excluding VAT;
+    /// cost of goods = cost at sale less cost of goods returned; gross
+    /// profit = revenue − cost of goods; operating expenses = approved and
+    /// paid expenses excluding VAT; operating profit = gross profit −
+    /// operating expenses. Taxes on profit, depreciation and interest are
+    /// not modelled, so this is not called net profit.
+    fn rep_operating_profit(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let (_, total, tax, cost, _, _) = sales_totals(c, &r.a, &r.b, None)?;
+        let (_, rtotal, rtax, rcost) = refund_totals(c, &r.a, &r.b)?;
+        let revenue = (total - tax) - (rtotal - rtax);
+        let cogs = cost - rcost;
+        let gross = revenue - cogs;
+        let branch: Option<String> = c.query_row("SELECT amw_rbranch()", [], |row| row.get(0)).ok().flatten();
+        let (opex, by_cat) = crate::expenses::operating_expenses(c, &r.from, &r.to, branch.as_deref())?;
+        let operating = gross - opex;
+        let mut rows = vec![
+            json!({ "line": "Revenue (excluding VAT)", "amount": revenue }),
+            json!({ "line": "Cost of goods sold", "amount": -cogs }),
+            json!({ "line": "Gross profit", "amount": gross, "strong": true }),
+        ];
+        for (_, name, _, v) in &by_cat {
+            rows.push(json!({ "line": name, "amount": -v, "indent": true }));
+        }
+        rows.push(json!({ "line": "Operating expenses", "amount": -opex }));
+        rows.push(json!({ "line": "Operating profit", "amount": operating, "strong": true }));
+        let pct = |v: i64| if revenue != 0 { v * 10_000 / revenue } else { 0 };
+        Ok(Report {
+            key: "operating_profit".into(),
+            title: "Operating profit".into(),
+            from: r.from.clone(),
+            to: r.to.clone(),
+            kpis: vec![
+                kpi("Revenue", revenue, "money", None),
+                kpi("Gross profit", gross, "money", None),
+                kpi("Operating expenses", opex, "money", None),
+                kpi("Operating profit", operating, "money", None),
+                kpi("Operating margin", pct(operating), "percent_bp", None),
+            ],
+            columns: vec![col("line", "", "text"), col("amount", "Amount", "money")],
+            totals: None,
+            series: Some(by_cat.iter().map(|(_, n, _, v)| json!({ "label": n, "value": v })).collect()),
+            rows,
+            notes: vec![
+                "Revenue is sales less refunds and voids, without VAT. Cost of goods is the cost recorded at each sale, less goods returned.".into(),
+                "Operating expenses are approved and paid expenses without VAT, by the date they belong to.".into(),
+                "Tax on profit, depreciation and interest are not included, so this is operating profit, not net profit.".into(),
+            ],
+        })
+    }
+
+    fn rep_expenses(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let mut st = c.prepare(
+            "SELECT e.number, e.business_date, c.name, COALESCE(e.payee, s.name), e.description, e.net_minor, e.vat_minor, e.total_minor, e.status, e.payment_method
+             FROM expenses e JOIN expense_categories c ON c.category_id=e.category_id LEFT JOIN suppliers s ON s.supplier_id=e.supplier_id
+             WHERE e.status IN ('approved','paid') AND e.business_date>=?1 AND e.business_date<=?2 AND (amw_rbranch() IS NULL OR e.branch_id=amw_rbranch())
+             ORDER BY e.business_date, e.number LIMIT 20000",
+        )?;
+        let rows: Vec<Value> = st
+            .query_map(params![r.from, r.to], |row| {
+                Ok(json!({ "number": row.get::<_, String>(0)?, "date": row.get::<_, String>(1)?, "category": row.get::<_, String>(2)?,
+                    "payee": row.get::<_, Option<String>>(3)?, "description": row.get::<_, String>(4)?, "net": row.get::<_, i64>(5)?,
+                    "vat": row.get::<_, i64>(6)?, "total": row.get::<_, i64>(7)?, "status": row.get::<_, String>(8)?, "method": row.get::<_, Option<String>>(9)? }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let net: i64 = rows.iter().map(|x| x["net"].as_i64().unwrap_or(0)).sum();
+        let vat: i64 = rows.iter().map(|x| x["vat"].as_i64().unwrap_or(0)).sum();
+        let branch: Option<String> = c.query_row("SELECT amw_rbranch()", [], |row| row.get(0)).ok().flatten();
+        let (_, by_cat) = crate::expenses::operating_expenses(c, &r.from, &r.to, branch.as_deref())?;
+        Ok(Report {
+            key: "expenses".into(),
+            title: "Expenses".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![
+                kpi("Expenses", net, "money", None),
+                kpi("VAT paid on expenses", vat, "money", None),
+                kpi("Entries", rows.len() as i64, "int", None),
+            ],
+            columns: vec![
+                col("number", "No.", "text"),
+                col("date", "Date", "date"),
+                col("category", "Category", "text"),
+                col("payee", "Paid to", "text"),
+                col("description", "Description", "text"),
+                col("status", "Status", "status"),
+                col("net", "Without VAT", "money"),
+                col("vat", "VAT", "money"),
+                col("total", "Total", "money"),
+            ],
+            totals: Some(json!({ "number": "Total", "net": net, "vat": vat, "total": net + vat })),
+            series: Some(by_cat.iter().map(|(_, n, _, v)| json!({ "label": n, "value": v })).collect()),
+            rows,
+            notes: vec![],
+        })
+    }
+
     fn rep_refunds(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
         let r = range(c, self, p)?;
         let mut st = c.prepare(
@@ -562,12 +667,12 @@ impl AppCore {
             .query_map(params![r.a, r.b], |row| {
                 Ok(json!({ "refund": row.get::<_, String>(0)?, "receipt": row.get::<_, String>(1)?, "at": row.get::<_, String>(2)?, "user": row.get::<_, Option<String>>(3)?,
                     "approver": row.get::<_, Option<String>>(4)?, "reason": row.get::<_, String>(5)?, "total": row.get::<_, i64>(6)?, "tax": row.get::<_, i64>(7)?,
-                    "kind": row.get::<_, String>(8)? }))
+                    "kind": if row.get::<_, String>(8)? == "void" { "voided_sale" } else { "refund" } }))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let total: i64 = rows.iter().map(|r| r["total"].as_i64().unwrap_or(0)).sum();
         // Voids (whole sale cancelled the same day) are counted apart from refunds.
-        let voids: Vec<&Value> = rows.iter().filter(|r| r["kind"] == "void").collect();
+        let voids: Vec<&Value> = rows.iter().filter(|r| r["kind"] == "voided_sale").collect();
         let void_total: i64 = voids.iter().map(|r| r["total"].as_i64().unwrap_or(0)).sum();
         let mut reasons: std::collections::BTreeMap<String, i64> = Default::default();
         for row in &rows {

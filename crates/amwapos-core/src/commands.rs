@@ -467,6 +467,64 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "supplier_invoices.set_status" => {
             out(core.supplier_invoice_set_status(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "status")?))
         }
+        // Expenses and petty cash (back office)
+        "expenses.list" => out(core.expenses_list(tk()?, opt(&args, "from")?, opt(&args, "to")?, opt(&args, "status")?)),
+        "expenses.get" => out(core.expense_get(tk()?, &req::<String>(&args, "expense_id")?)),
+        "expenses.save" => out(core.expense_save(tk()?, opt(&args, "expense_id")?, req(&args, "expense")?)),
+        "expenses.delete_draft" => out(core.expense_delete_draft(tk()?, &req::<String>(&args, "expense_id")?)),
+        "expenses.submit" => out(core.expense_submit(tk()?, &req::<String>(&args, "expense_id")?)),
+        "expenses.decide" => {
+            out(core.expense_decide(tk()?, &req::<String>(&args, "expense_id")?, req(&args, "approve")?, opt(&args, "note")?))
+        }
+        "expenses.pay" => out(core.expense_pay(tk()?, &req::<String>(&args, "expense_id")?, req(&args, "payment")?)),
+        "expenses.void" => out(core.expense_void(
+            tk()?,
+            &req::<String>(&args, "expense_id")?,
+            &req::<String>(&args, "reason")?,
+            &req::<String>(&args, "operation_id")?,
+        )),
+        "expenses.attach" => out(core.expense_attach(
+            tk()?,
+            &req::<String>(&args, "expense_id")?,
+            &req::<String>(&args, "file_name")?,
+            &req::<String>(&args, "data")?,
+        )),
+        "expenses.attachment" => out(core.expense_attachment(tk()?, &req::<String>(&args, "attachment_id")?)),
+        "expenses.categories" => out(core.expense_categories(tk()?)),
+        "expenses.category_save" => out(core.expense_category_save(
+            tk()?,
+            opt(&args, "category_id")?,
+            &req::<String>(&args, "name")?,
+            opt(&args, "name_ar")?,
+            opt(&args, "active")?.unwrap_or(true),
+        )),
+        "expenses.recurring" => out(core.expense_recurring_list(tk()?)),
+        "expenses.recurring_save" => out(core.expense_recurring_save(tk()?, opt(&args, "recurring_id")?, req(&args, "recurring")?)),
+        "expenses.unlinked_paid_outs" => out(core.expense_unlinked_paid_outs(tk()?)),
+        "petty.funds" => out(core.petty_funds(tk()?)),
+        "petty.fund_save" => out(core.petty_fund_save(
+            tk()?,
+            opt(&args, "fund_id")?,
+            &req::<String>(&args, "name")?,
+            opt(&args, "custodian_user_id")?,
+            opt(&args, "active")?.unwrap_or(true),
+        )),
+        "petty.entry" => out(core.petty_entry(
+            tk()?,
+            &req::<String>(&args, "fund_id")?,
+            &req::<String>(&args, "kind")?,
+            req(&args, "amount_minor")?,
+            opt(&args, "note")?,
+            &req::<String>(&args, "operation_id")?,
+        )),
+        "petty.count" => out(core.petty_count(
+            tk()?,
+            &req::<String>(&args, "fund_id")?,
+            req(&args, "counted_minor")?,
+            opt(&args, "note")?,
+            &req::<String>(&args, "operation_id")?,
+        )),
+        "petty.entries" => out(core.petty_entries(tk()?, &req::<String>(&args, "fund_id")?)),
         // Accounts Payable (posting, payments, allocations, balances)
         "ap.overview" => out(core.ap_overview(tk()?)),
         "ap.supplier" => out(core.ap_supplier(tk()?, &req::<String>(&args, "supplier_id")?)),
