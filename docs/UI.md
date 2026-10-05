@@ -97,6 +97,22 @@ button, because at 1024×700 the change panel can be below the fold.
 - Every order page starts with the journey bar (Messages → To confirm → To pack & send → On the way →
   Payments to check), showing only the steps this person can act on.
 
+## Wave 1 surfaces
+
+- The till's Recent sales has **Void sale** (`void-sale`). The void dialog (`void-dialog`)
+  offers reason chips, shows the amount, and asks for a manager when needed. A voided sale
+  stays in the list with a **Voided** chip.
+- Admin → Business → **Expenses** has KPIs (spent this month, waiting for approval, approved
+  but not paid) and three tabs:
+  Expenses, Petty cash and Repeats.
+  - Expenses: the editor (VAT only behind "The bill shows VAT") and a drawer with
+    Approve / Reject / Pay / Void.
+  - Pay dialog: the method as chips.
+- Customer → **Account**: the statement card (`statement`) shows ageing buckets (late ones in
+  red), the ledger table, PDF and WhatsApp, and **Days to pay**.
+- Admin → Sales → receipt preview shows the receipt fingerprint, or "reconstructed" for old
+  records.
+
 ## Display size
 
 Settings → Appearance → Display size (90, 100, 110, 125, 150 %) zooms the whole

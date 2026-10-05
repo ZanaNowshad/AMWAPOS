@@ -66,6 +66,24 @@ from a second process under another Windows account, which conflicts with the pe
 store and the data-folder ACLs, and it cannot be verified without Windows hardware. This will be
 revisited after the Windows soak.
 
+## Voids, expenses and petty cash
+
+- **Rung up by mistake?** Go to More → Recent sales → the sale → **Void sale**, and pick a reason.
+  This works only for today's sales in the open shift, with nothing refunded or sent for
+  delivery; anything else is a refund. A cashier needs a manager's approval, which covers only
+  that void.
+- **Trading past midnight?** Set Settings → Shift → **Trading day ends at** (up to 06:00) so
+  late sales count for the day that opened.
+- **Bills** (Admin → Business → Expenses, on the hub):
+  1. Add the expense and attach the bill.
+  2. It is approved on entry for approvers, or waits to be approved.
+  3. Record the payment. If the money came from the till, record a **Paid out** at the till first,
+     then pick **Till paid-out** and that paid-out.
+- **Petty cash:** top up the fund, count it weekly (**Count**), and explain any adjustment. A fund
+  closes only at zero.
+- **Monthly:** run Reports → **Operating profit**, and Reports → **Receivables** for customers who
+  are late. Send each late customer their statement (Customer → Account → PDF or WhatsApp).
+
 ## Paying suppliers (Payables)
 
 Admin → Purchasing → Payables, on the hub computer.

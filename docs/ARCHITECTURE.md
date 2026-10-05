@@ -56,6 +56,9 @@ The same id with a different payload fails with `idempotency_mismatch`.
 - Permissions belong to roles and are enforced by `AppCore::authorize` on every command.
 - A manager approval produces a single-use token, valid for 120 seconds and bound to one
   permission. The audit log records both the cashier and the approver.
+- Refund and void approvals are also bound to one exact request: SHA-256 of action, entity,
+  payload and device, with the summary kept on the server. A changed request needs a new
+  approval. See [FINANCE.md](FINANCE.md).
 - The audit log is a SHA-256 hash chain. Admin → Audit verifies it.
 
 ## Sync (multi-terminal)
@@ -87,6 +90,9 @@ The same id with a different payload fails with `idempotency_mismatch`.
   - Append-only: sales, refunds, cash and stock movements are appended, and the hub checks that the
     device owns each row it pushes.
   - Shared: customers use last writer wins.
+  - Every table is classified either in `sync::TABLES` or in `sync::LOCAL_TABLES`. A test fails
+    when a new table has neither. Expenses and petty cash are hub-local. Receipt snapshots and
+    sale voids are append-only.
 - **Stock:** the hub replays stock movements to recompute balances.
 - **Cycle:** a terminal pushes, then pulls (excluding its own origin). Changes that fail to apply
   go to a dead-letter queue, which can be retried from Admin → Sync.
@@ -105,7 +111,16 @@ Backends:
 - file
 - none
 
+## Business date
+
+Each record carries a business date: the local date in `business.timezone`, less the
+trading-day cutoff (0–6 h, Settings → Shift). Reports use the same bounds (`time::Day`).
+
 ## Receipts and Arabic
+
+Each issued receipt is stored as its exact document, with a SHA-256 (`receipt_snapshots`,
+append-only). Reprints use the stored copy. Records from before the snapshots existed are
+reconstructed and marked as such.
 
 Receipts are built only from committed records (sale lines snapshot the product name, and its
 Arabic name since schema 3). ASCII lines print in the printer's text mode. Any line with Arabic

@@ -559,3 +559,31 @@ cart 0.55 ms, sale commit 6.37 ms).
 | Admin mode survives a reload / language switch for the session | Complete (fixed) | e2e product-pictures flow | — |
 | Supplier invoices have one home (Payables, with Void for unposted records) | Complete | e2e payables flow | — |
 | Plain, sentence-case labels; no-break table dates; date-range "Custom dates"; readable Admin connection pill; one page heading per screen | Complete | vitest `time.test.ts`; sweep | Visual check on the till panel |
+
+## Merchant OS Wave 1: money after the sale, 2026-10-05
+
+Plan: [MERCHANT_OS_PLAN.md](MERCHANT_OS_PLAN.md). Design and rules: [FINANCE.md](FINANCE.md).
+
+Evidence (this environment, Linux):
+- `cargo fmt --check`, `clippy -D warnings`;
+- `cargo test --workspace`: 398 passed, 0 failed, 4 ignored (the benchmark and live-network checks);
+- `tsc`, `eslint`, `prettier --check`, vitest (49), `vite build`;
+- Playwright: 18 flows, including the 3 new Wave 1 flows and the English/Arabic sweep, which now
+  covers Expenses and the new reports;
+- 100k-product benchmark (release build), P95: scan 0.96 ms, search 4.88 ms, cart 0.89 ms,
+  sale commit 9.16 ms. The commit now also writes the receipt snapshot; the target is 500 ms.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| Trading-day cutoff (0–6 h) used by sales, refunds, shifts, EOD, reports, AI and briefings | Complete | `wave1.rs` cutoff test; `time.rs` unit tests | — |
+| Issued receipts stored with SHA-256; reprints are exact copies; older records marked reconstructed | Complete | `wave1.rs` (2); `sync.rs` snapshots reach the hub | Printed copy check on the soak printer |
+| Refund and void approvals bound to one exact request, with the summary kept on the server | Complete | `auth.rs` unit test; `flow.rs` bound refund; `wave1.rs` cashier void | — |
+| Void of a whole sale (today, open shift, nothing refunded or delivered), reason required, restock, tenders and account credit returned | Complete | `wave1.rs` (4); e2e "void at the till" | — |
+| Every table classified as replicated or hub-local | Complete | `wave1.rs` replication-decision test | — |
+| Expenses: categories, VAT, attachments, approval (limit), payment (petty cash, till paid-out linked once, bank, card, cheque), void, repeats as drafts | Complete | `wave1.rs` (5); e2e "expense … operating profit" | — |
+| Petty cash funds with immutable entries, counts and adjustments | Complete | `wave1.rs` petty cash test | — |
+| Operating profit report (explicitly not net profit), Expenses report, refunds report shows voids | Complete | `wave1.rs` lifecycle test; e2e | — |
+| Customer statements (bilingual PDF, WhatsApp), ageing with per-customer days to pay, Receivables report | Complete | `wave1.rs` statements test; `credit.rs` ageing unit tests; e2e statement + PDF | Live WhatsApp send |
+| Expenses and petty cash hub-only; refused on a terminal | Complete | `sync.rs` hub-only test | — |
+| AI: read tools for expenses, petty cash, statements, receivables and void eligibility; voids, payments and approvals stay with people | Complete | `ai_admin.rs` command coverage; `ai_actions.rs` classes | — |
+| Migration 0027: one `stock_movements` rebuild checked for unchanged rows and quantities; nothing invented for the past | Complete | migration tests; `wave1.rs` | Upgrade of a real store copy during the soak |
