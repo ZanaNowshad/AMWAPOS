@@ -84,6 +84,56 @@ export const api = {
     void: (sale_id: string, reason: string, operation_id: string, approval_token: string | null) =>
       call<T.VoidResult>("sales.void", { void: { sale_id, reason, operation_id, approval_token } }),
   },
+  expenses: {
+    list: (from?: string | null, to?: string | null, status?: string | null) =>
+      call<T.ExpenseList>("expenses.list", { from: from ?? null, to: to ?? null, status: status ?? null }),
+    get: (expense_id: string) =>
+      call<{ expense: T.Expense; attachments: T.ExpenseAttachment[] }>("expenses.get", { expense_id }),
+    save: (expense_id: string | null, expense: T.ExpenseInput) =>
+      call<T.Expense>("expenses.save", { expense_id, expense }),
+    deleteDraft: (expense_id: string) => call<null>("expenses.delete_draft", { expense_id }),
+    submit: (expense_id: string) => call<T.Expense>("expenses.submit", { expense_id }),
+    decide: (expense_id: string, approve: boolean, note: string | null) =>
+      call<T.Expense>("expenses.decide", { expense_id, approve, note }),
+    pay: (
+      expense_id: string,
+      payment: {
+        method: string;
+        fund_id?: string | null;
+        cash_event_id?: string | null;
+        reference?: string | null;
+        operation_id: string;
+      },
+    ) => call<T.Expense>("expenses.pay", { expense_id, payment }),
+    void: (expense_id: string, reason: string, operation_id: string) =>
+      call<T.Expense>("expenses.void", { expense_id, reason, operation_id }),
+    attach: (expense_id: string, file_name: string, data: string) =>
+      call<{ attachment_id: string }>("expenses.attach", { expense_id, file_name, data }),
+    attachment: (attachment_id: string) =>
+      call<{ file_name: string; mime: string; base64: string }>("expenses.attachment", { attachment_id }),
+    categories: () => call<T.ExpenseCategory[]>("expenses.categories", {}),
+    categorySave: (category_id: string | null, name: string, name_ar: string | null, active: boolean) =>
+      call<{ category_id: string }>("expenses.category_save", { category_id, name, name_ar, active }),
+    recurring: () => call<T.ExpenseRecurring[]>("expenses.recurring", {}),
+    recurringSave: (recurring_id: string | null, recurring: T.ExpenseRecurringInput) =>
+      call<{ recurring_id: string; next_date: string }>("expenses.recurring_save", { recurring_id, recurring }),
+    unlinkedPaidOuts: () => call<T.TillPaidOut[]>("expenses.unlinked_paid_outs", {}),
+  },
+  petty: {
+    funds: () => call<T.PettyFund[]>("petty.funds", {}),
+    fundSave: (fund_id: string | null, name: string, custodian_user_id: string | null, active: boolean) =>
+      call<{ fund_id: string }>("petty.fund_save", { fund_id, name, custodian_user_id, active }),
+    entry: (fund_id: string, kind: string, amount_minor: number, note: string | null, operation_id: string) =>
+      call<{ balance_minor: number }>("petty.entry", { fund_id, kind, amount_minor, note, operation_id }),
+    count: (fund_id: string, counted_minor: number, note: string | null, operation_id: string) =>
+      call<{ expected_minor: number; counted_minor: number; difference_minor: number }>("petty.count", {
+        fund_id,
+        counted_minor,
+        note,
+        operation_id,
+      }),
+    entries: (fund_id: string) => call<T.PettyEntry[]>("petty.entries", { fund_id }),
+  },
   refunds: {
     lookup: (receipt_number: string) => call<T.SaleDetail>("refunds.lookup", { receipt_number }),
     preview: (req: Record<string, unknown>) => call<T.RefundPreview>("refunds.preview", req),

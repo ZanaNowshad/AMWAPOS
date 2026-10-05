@@ -597,7 +597,7 @@ impl AppCore {
                 kpi("Operating profit", operating, "money", None),
                 kpi("Operating margin", pct(operating), "percent_bp", None),
             ],
-            columns: vec![col("line", "", "text"), col("amount", "Amount", "money")],
+            columns: vec![col("line", "", "label"), col("amount", "Amount", "money")],
             totals: None,
             series: Some(by_cat.iter().map(|(_, n, _, v)| json!({ "label": n, "value": v })).collect()),
             rows,
@@ -641,7 +641,7 @@ impl AppCore {
             columns: vec![
                 col("number", "No.", "text"),
                 col("date", "Date", "date"),
-                col("category", "Category", "text"),
+                col("category", "Category", "label"),
                 col("payee", "Paid to", "text"),
                 col("description", "Description", "text"),
                 col("status", "Status", "status"),

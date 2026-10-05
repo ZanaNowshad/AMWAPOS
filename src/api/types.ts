@@ -928,7 +928,7 @@ export interface DeliveryRow {
 export interface ReportColumn {
   key: string;
   label: string;
-  kind: "text" | "money" | "qty" | "int" | "percent_bp" | "datetime" | "date" | "status";
+  kind: "text" | "money" | "qty" | "int" | "percent_bp" | "datetime" | "date" | "status" | "label";
 }
 
 export interface Kpi {
@@ -2378,4 +2378,131 @@ export interface VoidResult {
   refund_receipt_number: string;
   total_minor: number;
   replayed: boolean;
+}
+
+export type ExpenseStatus = "draft" | "submitted" | "approved" | "rejected" | "paid" | "void";
+
+export interface Expense {
+  expense_id: string;
+  number: string;
+  business_date: string;
+  category_id: string;
+  category: string;
+  category_ar: string | null;
+  supplier_id: string | null;
+  payee: string | null;
+  description: string;
+  net_minor: number;
+  vat_minor: number;
+  total_minor: number;
+  status: ExpenseStatus;
+  payment_method: string | null;
+  fund_id: string | null;
+  cash_event_id: string | null;
+  reference: string | null;
+  notes: string | null;
+  recurring_id: string | null;
+  created_by_name: string | null;
+  decided_by_name: string | null;
+  decision_note: string | null;
+  paid_at: string | null;
+  void_reason: string | null;
+  attachments: number;
+  created_at: string;
+}
+
+export interface ExpenseInput {
+  category_id: string;
+  business_date?: string | null;
+  supplier_id?: string | null;
+  payee?: string | null;
+  description: string;
+  total_minor: number;
+  vat_minor: number;
+  reference?: string | null;
+  notes?: string | null;
+}
+
+export interface ExpenseList {
+  from: string;
+  to: string;
+  rows: Expense[];
+  spent_minor: number;
+  by_category: { category_id: string; name: string; name_ar: string | null; net_minor: number }[];
+  waiting_approval: number;
+  approved_unpaid: number;
+}
+
+export interface ExpenseAttachment {
+  attachment_id: string;
+  file_name: string;
+  mime: string;
+  added_at: string;
+}
+
+export interface ExpenseCategory {
+  category_id: string;
+  name: string;
+  name_ar: string | null;
+  active: boolean;
+}
+
+export interface ExpenseRecurring {
+  recurring_id: string;
+  name: string;
+  category_id: string;
+  category: string;
+  category_ar: string | null;
+  total_minor: number;
+  vat_minor: number;
+  cadence: "monthly" | "weekly";
+  day: number;
+  next_date: string;
+  active: boolean;
+  payee: string | null;
+  description: string;
+  supplier_id: string | null;
+}
+
+export interface ExpenseRecurringInput {
+  name: string;
+  category_id: string;
+  payee?: string | null;
+  description: string;
+  total_minor: number;
+  vat_minor: number;
+  cadence: "monthly" | "weekly";
+  day: number;
+  active: boolean;
+}
+
+export interface TillPaidOut {
+  cash_event_id: string;
+  amount_minor: number;
+  reason: string;
+  created_at: string;
+  user: string | null;
+}
+
+export interface PettyFund {
+  fund_id: string;
+  name: string;
+  custodian_user_id: string | null;
+  custodian_name: string | null;
+  balance_minor: number;
+  last_count_at: string | null;
+  active: boolean;
+}
+
+export interface PettyEntry {
+  entry_id: string;
+  kind: string;
+  amount_minor: number;
+  counted_minor: number | null;
+  note: string | null;
+  expense_number: string | null;
+  user: string | null;
+  business_date: string;
+  created_at: string;
+  balance_minor: number;
 }

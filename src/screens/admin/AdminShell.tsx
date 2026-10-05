@@ -83,6 +83,7 @@ import { WhatsAppOrdersPage } from "./waOrders";
 import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
 import { PayablesPage } from "./payables";
+import { ExpensesPage } from "./expenses";
 import { t } from "../../i18n";
 import { LanguageToggle } from "../../components/LanguageToggle";
 import { BackupAlert } from "../../components/BackupAlert";
@@ -235,6 +236,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         perm: ["reports.sales", "reports.financial", "reports.tax", "inventory.view"],
         element: ReportsHome,
       },
+      { path: "expenses", label: t("Expenses"), icon: Receipt, perm: "expenses.view", element: ExpensesPage },
       { path: "analytics", label: t("Analytics"), icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
       { path: "end-of-day", label: t("End of day"), icon: CalendarCheck, perm: "reports.sales", element: EndOfDayPage },
       {

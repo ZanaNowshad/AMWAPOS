@@ -63,6 +63,9 @@ export function fmtCell(c: ReportColumn, v: unknown): string {
       return Number(v).toLocaleString("en");
     case "status":
       return codeLabel(String(v));
+    case "label":
+      // Fixed wording from the backend (line names, default categories).
+      return tb(String(v));
     default:
       return String(v).replace(/_/g, " ");
   }
@@ -205,7 +208,7 @@ export function ReportViewer() {
           ) : null}
           {report.notes.map((n) => (
             <Banner key={n} tone="info">
-              {n}
+              {tb(n)}
             </Banner>
           ))}
           <div className="card">

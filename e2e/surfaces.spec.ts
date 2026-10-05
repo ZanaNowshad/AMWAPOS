@@ -64,6 +64,7 @@ const ROUTES = [
   "payables",
   "invoice-scan",
   "reports",
+  "expenses",
   "analytics",
   "end-of-day",
   "phone-view",
@@ -204,6 +205,8 @@ test("every Admin destination renders cleanly in English and Arabic at 1024×768
     const sups = await rpc(page, "suppliers.list", {}, t).catch(() => []);
     if (sups[0]) records.supplier = `suppliers/${sups[0].supplier_id}`;
     records.report = "reports/sales";
+    records.profit = "reports/operating_profit";
+    records.expenseReport = "reports/expenses";
 
     // Signed in through the UI, as a person would.
     await page.goto("/");
