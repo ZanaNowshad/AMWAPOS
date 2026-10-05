@@ -928,7 +928,7 @@ export interface DeliveryRow {
 export interface ReportColumn {
   key: string;
   label: string;
-  kind: "text" | "money" | "qty" | "int" | "percent_bp" | "datetime" | "date";
+  kind: "text" | "money" | "qty" | "int" | "percent_bp" | "datetime" | "date" | "status";
 }
 
 export interface Kpi {
@@ -2362,4 +2362,20 @@ export interface DeliveryZone {
   fee_minor: number;
   free_over_minor: number | null;
   active: boolean;
+}
+
+export interface VoidCheck {
+  allowed: boolean;
+  reason: string | null;
+  requires_approval: boolean;
+  total_minor: number;
+}
+
+export interface VoidResult {
+  void_id: string;
+  sale_id: string;
+  refund_id: string;
+  refund_receipt_number: string;
+  total_minor: number;
+  replayed: boolean;
 }

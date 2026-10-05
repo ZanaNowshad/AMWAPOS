@@ -30,6 +30,7 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("pos.discount", "POS", "Apply discounts within the cashier limit"),
     ("pos.discount_override", "POS", "Approve discounts above the cashier limit"),
     ("pos.price_override", "POS", "Override a selling price at the POS"),
+    ("pos.void_sale", "POS", "Void a completed sale the same day, before the shift closes"),
     ("pos.custom_item", "POS", "Sell a custom (non-catalogue) item"),
     ("pos.cancel_sale", "POS", "Cancel an in-progress sale"),
     ("pos.remove_line", "POS", "Remove scanned lines from a sale"),
@@ -176,6 +177,7 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// Permissions added to the catalogue after the first release. Built-in
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "pos.void_sale",
     "customers.credit",
     "customers.credit_override",
     "whatsapp.send",

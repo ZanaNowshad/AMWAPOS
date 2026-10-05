@@ -98,6 +98,7 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("rider_handovers", &["handover_id"], Policy::Append),
     ("rider_handover_items", &["collection_id"], Policy::Append),
     ("receipt_snapshots", &["ref_kind", "ref_id"], Policy::Append),
+    ("sale_voids", &["void_id"], Policy::Append),
 ];
 
 /// Columns never shipped to other devices.

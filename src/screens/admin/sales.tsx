@@ -265,7 +265,9 @@ export function SalesPage() {
               r.status === "completed" ? (
                 <Chip tone="success">{t("Completed")}</Chip>
               ) : (
-                <Chip tone="warning">{r.status === "refunded" ? t("Refunded") : t("Partly refunded")}</Chip>
+                <Chip tone="warning">
+                  {r.status === "voided" ? t("Voided") : r.status === "refunded" ? t("Refunded") : t("Partly refunded")}
+                </Chip>
               ),
           },
         ]}

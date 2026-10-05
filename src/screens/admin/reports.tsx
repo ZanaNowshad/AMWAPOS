@@ -4,6 +4,7 @@ import { ArrowLeft, Download, FileBarChart2, Printer, Play } from "lucide-react"
 import { api } from "../../api";
 import type { Report, ReportColumn, ReportParams } from "../../api/types";
 import { formatMoney, formatPercent, formatQty } from "../../lib/money";
+import { codeLabel } from "../../i18n/codes";
 import { formatDate, formatShort, todayLocal } from "../../lib/time";
 import { Banner, Button, PageHeader, Skeleton } from "../../components/ui";
 import { DateRange, download, useAction, useLoad } from "./common";
@@ -60,6 +61,8 @@ export function fmtCell(c: ReportColumn, v: unknown): string {
       return formatDate(String(v));
     case "int":
       return Number(v).toLocaleString("en");
+    case "status":
+      return codeLabel(String(v));
     default:
       return String(v).replace(/_/g, " ");
   }

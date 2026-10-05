@@ -100,12 +100,22 @@ pub struct RefundRow {
     pub methods: String,
 }
 
-struct Computed {
+pub(crate) struct Computed {
     lines: Vec<(RefundPreviewLine, Option<String>, i64, bool)>, // preview, product_id, cost, track
     subtotal: i64,
     tax: i64,
     total: i64,
     cost: i64,
+}
+
+impl Computed {
+    pub(crate) fn total_minor(&self) -> i64 {
+        self.total
+    }
+}
+
+pub(crate) fn compute_for(c: &rusqlite::Connection, sale_id: &str, lines: &[RefundLineInput]) -> AppResult<Computed> {
+    compute(c, sale_id, lines)
 }
 
 fn compute(c: &rusqlite::Connection, sale_id: &str, lines: &[RefundLineInput]) -> AppResult<Computed> {
@@ -228,94 +238,31 @@ impl AppCore {
                 }
                 Check::New { payload_hash } => payload_hash,
             };
-            let shift_id = open_shift_for(tx, &s)?.ok_or_else(shift_required)?;
             let comp = compute(tx, &sid, &req.lines)?;
             let tenders = default_tenders(tx, &sid, comp.total, &req.tenders)?;
-            let day = time::day(tx)?;
-            let now = time::now();
-            let now_s = time::fmt(now);
-            let rid = new_id();
-            let rnum = format!("{}-R{:06}", device.device_code, next_seq(tx, &format!("refund:{}", device.device_id))?);
-            tx.execute(
-                "INSERT INTO refunds(refund_id, refund_receipt_number, original_sale_id, branch_id, device_id, shift_id, user_id, approved_by, reason,
-                    subtotal_minor, tax_minor, total_minor, cost_total_minor, operation_id, business_date, created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
-                params![
-                    rid, rnum, sid, s.branch_id, s.device_id, shift_id, s.user_id, approved, reason, comp.subtotal, comp.tax, comp.total,
-                    comp.cost, req.operation_id, time::business_date(now, &day)?, now_s
-                ],
+            let result = write_reversal(
+                tx,
+                &s,
+                &actor,
+                &device,
+                Reversal::Refund,
+                &sid,
+                &comp,
+                &tenders,
+                &reason,
+                &req.operation_id,
+                approved.as_deref(),
             )?;
-            for (pl, pid, cost, track) in &comp.lines {
-                tx.execute(
-                    "INSERT INTO refund_items(refund_item_id, refund_id, original_sale_item_id, product_id, qty_milli, amount_minor, tax_minor, cost_minor, restock)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-                    params![new_id(), rid, pl.sale_item_id, pid, pl.qty_milli, pl.amount_minor, pl.tax_minor, cost, pl.restock as i64],
-                )?;
-                if pl.restock && *track {
-                    if let Some(pid) = pid {
-                        let unit_cost = money::div_round(*cost as i128 * 1000, pl.qty_milli as i128) as i64;
-                        inventory::apply_movement(
-                            tx,
-                            &Movement {
-                                product_id: pid,
-                                branch_id: &s.branch_id,
-                                kind: "refund",
-                                qty_delta_milli: pl.qty_milli,
-                                unit_cost_minor: Some(unit_cost),
-                                source_type: "refund",
-                                source_id: Some(&rid),
-                                reason: Some(&reason),
-                                user_id: Some(&s.user_id),
-                                device_id: Some(&s.device_id),
-                            },
-                        )?;
-                    }
-                }
-            }
-            for t in &tenders {
-                tx.execute(
-                    "INSERT INTO refund_tenders(refund_tender_id, refund_id, method, amount_minor, reference) VALUES (?1,?2,?3,?4,?5)",
-                    params![new_id(), rid, t.method, t.amount_minor, t.reference],
-                )?;
-            }
-            let to_account: i64 = tenders.iter().filter(|t| t.method == "account").map(|t| t.amount_minor).sum();
-            if to_account > 0 {
-                let cid: Option<String> = tx.query_row("SELECT customer_id FROM sales WHERE sale_id=?1", [&sid], |r| r.get(0))?;
-                let cid = cid.ok_or_else(|| AppError::validation("The original sale has no customer account to refund to."))?;
-                crate::credit::post(
-                    tx,
-                    &s,
-                    &cid,
-                    "refund",
-                    -to_account,
-                    Some("refund"),
-                    Some(&rid),
-                    Some("account"),
-                    None,
-                    &crate::credit::refund_op(&req.operation_id),
-                )?;
-            }
-            crate::loyalty::record_refund(tx, &s, &self.actor(&s, None), &sid, &rid, comp.total)?;
-            crate::receipt::snapshot_refund(tx, &rid)?;
-            crate::printing::enqueue(tx, "refund", &rid, None, Some(&s.user_id))?;
-            if tenders.iter().any(|t| t.method == "cash") {
-                crate::printing::enqueue_drawer_pulse(tx, Some(&s.user_id), &rid)?;
-            }
-            let result = RefundResult {
-                refund_id: rid.clone(),
-                refund_receipt_number: rnum.clone(),
-                total_minor: comp.total,
-                tax_minor: comp.tax,
-                tenders: tenders.clone(),
-                created_at: now_s,
-                replayed: false,
-                print: None,
-            };
-            audit::record(tx, &actor, "refund.created", "refund", Some(&rid), None, Some(&json!({
-                "refund_receipt_number": rnum, "original_sale_id": sid, "total_minor": comp.total, "reason": reason,
-                "lines": comp.lines.iter().map(|l| json!({"sale_item_id": l.0.sale_item_id, "qty_milli": l.0.qty_milli, "restock": l.0.restock})).collect::<Vec<_>>()
-            })))?;
-            idempotency::complete(tx, &req.operation_id, "refund.create", Some(&s.user_id), Some(&s.device_id), &hash, Some(&rid), &serde_json::to_value(&result)?)?;
+            idempotency::complete(
+                tx,
+                &req.operation_id,
+                "refund.create",
+                Some(&s.user_id),
+                Some(&s.device_id),
+                &hash,
+                Some(&result.refund_id),
+                &serde_json::to_value(&result)?,
+            )?;
             Ok(result)
         })?;
         let mut result = result;
@@ -376,6 +323,146 @@ impl AppCore {
             load_sale_detail(c, &sid, s.has("products.view_cost"))
         })
     }
+}
+
+/// What a reversal of a completed sale is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reversal {
+    /// Goods come back (some or all), any time later.
+    Refund,
+    /// The whole sale is cancelled the same trading day, before its shift
+    /// closes (`sale_voids` records it).
+    Void,
+}
+
+impl Reversal {
+    fn kind(self) -> &'static str {
+        match self {
+            Reversal::Refund => "refund",
+            Reversal::Void => "void",
+        }
+    }
+}
+
+/// Write a reversal: the refund record, its lines and tenders, restocking
+/// movements, the customer-account and loyalty reversals, the frozen receipt
+/// and the audit row. Shared by refunds and voids so the money, VAT and stock
+/// arithmetic is one piece of code.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_reversal(
+    tx: &rusqlite::Connection,
+    s: &crate::auth::Session,
+    actor: &audit::Actor,
+    device: &crate::service::DeviceIdentity,
+    kind: Reversal,
+    sid: &str,
+    comp: &Computed,
+    tenders: &[RefundTenderInput],
+    reason: &str,
+    operation_id: &str,
+    approved: Option<&str>,
+) -> AppResult<RefundResult> {
+    let shift_id = open_shift_for(tx, s)?.ok_or_else(shift_required)?;
+    let day = time::day(tx)?;
+    let now = time::now();
+    let now_s = time::fmt(now);
+    let rid = new_id();
+    let rnum = match kind {
+        Reversal::Refund => format!("{}-R{:06}", device.device_code, next_seq(tx, &format!("refund:{}", device.device_id))?),
+        Reversal::Void => format!("{}-V{:06}", device.device_code, next_seq(tx, &format!("void:{}", device.device_id))?),
+    };
+    tx.execute(
+        "INSERT INTO refunds(refund_id, refund_receipt_number, original_sale_id, branch_id, device_id, shift_id, user_id, approved_by, reason,
+            subtotal_minor, tax_minor, total_minor, cost_total_minor, operation_id, business_date, created_at, kind)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+        params![
+            rid, rnum, sid, s.branch_id, s.device_id, shift_id, s.user_id, approved, reason, comp.subtotal, comp.tax, comp.total,
+            comp.cost, operation_id, time::business_date(now, &day)?, now_s, kind.kind()
+        ],
+    )?;
+    for (pl, pid, cost, track) in &comp.lines {
+        tx.execute(
+            "INSERT INTO refund_items(refund_item_id, refund_id, original_sale_item_id, product_id, qty_milli, amount_minor, tax_minor, cost_minor, restock)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![new_id(), rid, pl.sale_item_id, pid, pl.qty_milli, pl.amount_minor, pl.tax_minor, cost, pl.restock as i64],
+        )?;
+        if pl.restock && *track {
+            if let Some(pid) = pid {
+                let unit_cost = money::div_round(*cost as i128 * 1000, pl.qty_milli as i128) as i64;
+                inventory::apply_movement(
+                    tx,
+                    &Movement {
+                        product_id: pid,
+                        branch_id: &s.branch_id,
+                        kind: kind.kind(),
+                        qty_delta_milli: pl.qty_milli,
+                        unit_cost_minor: Some(unit_cost),
+                        source_type: kind.kind(),
+                        source_id: Some(&rid),
+                        reason: Some(reason),
+                        user_id: Some(&s.user_id),
+                        device_id: Some(&s.device_id),
+                    },
+                )?;
+            }
+        }
+    }
+    for t in tenders {
+        tx.execute(
+            "INSERT INTO refund_tenders(refund_tender_id, refund_id, method, amount_minor, reference) VALUES (?1,?2,?3,?4,?5)",
+            params![new_id(), rid, t.method, t.amount_minor, t.reference],
+        )?;
+    }
+    let to_account: i64 = tenders.iter().filter(|t| t.method == "account").map(|t| t.amount_minor).sum();
+    if to_account > 0 {
+        let cid: Option<String> = tx.query_row("SELECT customer_id FROM sales WHERE sale_id=?1", [sid], |r| r.get(0))?;
+        let cid = cid.ok_or_else(|| AppError::validation("The original sale has no customer account to refund to."))?;
+        crate::credit::post(
+            tx,
+            s,
+            &cid,
+            "refund",
+            -to_account,
+            Some(kind.kind()),
+            Some(&rid),
+            Some("account"),
+            None,
+            &crate::credit::refund_op(operation_id),
+        )?;
+    }
+    crate::loyalty::record_refund(tx, s, actor, sid, &rid, comp.total)?;
+    crate::receipt::snapshot_refund(tx, &rid)?;
+    crate::printing::enqueue(tx, "refund", &rid, None, Some(&s.user_id))?;
+    if tenders.iter().any(|t| t.method == "cash") {
+        crate::printing::enqueue_drawer_pulse(tx, Some(&s.user_id), &rid)?;
+    }
+    let result = RefundResult {
+        refund_id: rid.clone(),
+        refund_receipt_number: rnum.clone(),
+        total_minor: comp.total,
+        tax_minor: comp.tax,
+        tenders: tenders.to_vec(),
+        created_at: now_s,
+        replayed: false,
+        print: None,
+    };
+    let event = match kind {
+        Reversal::Refund => "refund.created",
+        Reversal::Void => "sale.voided",
+    };
+    audit::record(
+        tx,
+        actor,
+        event,
+        "refund",
+        Some(&rid),
+        None,
+        Some(&json!({
+            "refund_receipt_number": rnum, "original_sale_id": sid, "total_minor": comp.total, "reason": reason,
+            "lines": comp.lines.iter().map(|l| json!({"sale_item_id": l.0.sale_item_id, "qty_milli": l.0.qty_milli, "restock": l.0.restock})).collect::<Vec<_>>()
+        })),
+    )?;
+    Ok(result)
 }
 
 fn default_tenders(c: &rusqlite::Connection, sale_id: &str, total: i64, given: &[RefundTenderInput]) -> AppResult<Vec<RefundTenderInput>> {

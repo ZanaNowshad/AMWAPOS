@@ -177,6 +177,8 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "sales.get" => out(core.sale_get(tk()?, &req::<String>(&args, "sale_id")?)),
         "sales.find_receipt" => out(core.sale_find_by_receipt(tk()?, &req::<String>(&args, "receipt_number")?)),
         "sales.reprint" => out(core.sale_reprint(tk()?, &req::<String>(&args, "sale_id")?)),
+        "sales.void_check" => out(core.sale_void_check(tk()?, &req::<String>(&args, "sale_id")?)),
+        "sales.void" => out(core.sale_void(tk()?, req(&args, "void")?)),
         "refunds.lookup" => out(core.refund_lookup(tk()?, &req::<String>(&args, "receipt_number")?)),
         "refunds.preview" => out(core.refund_preview(tk()?, all(&args)?)),
         "refunds.create" => out(core.refund_create(tk()?, all(&args)?)),

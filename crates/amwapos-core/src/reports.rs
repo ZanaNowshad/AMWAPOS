@@ -554,17 +554,21 @@ impl AppCore {
     fn rep_refunds(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
         let r = range(c, self, p)?;
         let mut st = c.prepare(
-            "SELECT rf.refund_receipt_number, s.receipt_number, rf.created_at, u.display_name, a.display_name, rf.reason, rf.total_minor, rf.tax_minor
+            "SELECT rf.refund_receipt_number, s.receipt_number, rf.created_at, u.display_name, a.display_name, rf.reason, rf.total_minor, rf.tax_minor, rf.kind
              FROM refunds rf JOIN sales s ON s.sale_id=rf.original_sale_id LEFT JOIN users u ON u.user_id=rf.user_id LEFT JOIN users a ON a.user_id=rf.approved_by
              WHERE rf.created_at>=?1 AND rf.created_at<?2 AND (amw_rbranch() IS NULL OR rf.branch_id=amw_rbranch()) ORDER BY rf.created_at DESC LIMIT 20000",
         )?;
         let rows: Vec<Value> = st
             .query_map(params![r.a, r.b], |row| {
                 Ok(json!({ "refund": row.get::<_, String>(0)?, "receipt": row.get::<_, String>(1)?, "at": row.get::<_, String>(2)?, "user": row.get::<_, Option<String>>(3)?,
-                    "approver": row.get::<_, Option<String>>(4)?, "reason": row.get::<_, String>(5)?, "total": row.get::<_, i64>(6)?, "tax": row.get::<_, i64>(7)? }))
+                    "approver": row.get::<_, Option<String>>(4)?, "reason": row.get::<_, String>(5)?, "total": row.get::<_, i64>(6)?, "tax": row.get::<_, i64>(7)?,
+                    "kind": row.get::<_, String>(8)? }))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let total: i64 = rows.iter().map(|r| r["total"].as_i64().unwrap_or(0)).sum();
+        // Voids (whole sale cancelled the same day) are counted apart from refunds.
+        let voids: Vec<&Value> = rows.iter().filter(|r| r["kind"] == "void").collect();
+        let void_total: i64 = voids.iter().map(|r| r["total"].as_i64().unwrap_or(0)).sum();
         let mut reasons: std::collections::BTreeMap<String, i64> = Default::default();
         for row in &rows {
             *reasons.entry(row["reason"].as_str().unwrap_or("").to_string()).or_default() += row["total"].as_i64().unwrap_or(0);
@@ -574,9 +578,15 @@ impl AppCore {
             title: "Refunds".into(),
             from: r.from,
             to: r.to,
-            kpis: vec![kpi("Refunds", rows.len() as i64, "int", None), kpi("Refunded", total, "money", None)],
+            kpis: vec![
+                kpi("Refunds", (rows.len() - voids.len()) as i64, "int", None),
+                kpi("Refunded", total - void_total, "money", None),
+                kpi("Voided sales", voids.len() as i64, "int", None),
+                kpi("Voided", void_total, "money", None),
+            ],
             columns: vec![
                 col("refund", "Refund", "text"),
+                col("kind", "Type", "status"),
                 col("receipt", "Original receipt", "text"),
                 col("at", "Time", "datetime"),
                 col("user", "By", "text"),

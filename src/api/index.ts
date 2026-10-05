@@ -80,6 +80,9 @@ export const api = {
     get: (sale_id: string) => call<T.SaleDetail>("sales.get", { sale_id }),
     findReceipt: (receipt_number: string) => call<T.SaleDetail>("sales.find_receipt", { receipt_number }),
     reprint: (sale_id: string) => call<T.PrintOutcome>("sales.reprint", { sale_id }),
+    voidCheck: (sale_id: string) => call<T.VoidCheck>("sales.void_check", { sale_id }),
+    void: (sale_id: string, reason: string, operation_id: string, approval_token: string | null) =>
+      call<T.VoidResult>("sales.void", { void: { sale_id, reason, operation_id, approval_token } }),
   },
   refunds: {
     lookup: (receipt_number: string) => call<T.SaleDetail>("refunds.lookup", { receipt_number }),

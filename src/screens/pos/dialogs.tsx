@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { Lock, Plus, Printer, Search, UserPlus, X } from "lucide-react";
 import { api } from "../../api";
-import type { Cart, CartLine, CustomerRef, CustomerRow, HeldCart, PrintJobRow, SaleRow } from "../../api/types";
+import type {
+  Cart,
+  CartLine,
+  CustomerRef,
+  CustomerRow,
+  HeldCart,
+  PrintJobRow,
+  SaleRow,
+  VoidCheck,
+} from "../../api/types";
 import { useApproval, ApprovalCancelled } from "../../components/approval";
 import { useToast } from "../../components/toast";
 import { explain } from "../../lib/errors";
@@ -19,6 +28,7 @@ import { formatShort } from "../../lib/time";
 import { Banner, Button, Chip, Keypad, Modal, TextInput } from "../../components/ui";
 import { methodLabel } from "./labels";
 import { t } from "../../i18n";
+import { codeLabel } from "../../i18n/codes";
 
 function useErr() {
   const [error, setError] = useState<string | null>(null);
@@ -689,19 +699,52 @@ export function CashEventDialog({
   );
 }
 
+const VOID_REASONS = [() => t("Rang up twice"), () => t("Wrong items"), () => t("Customer changed their mind")];
+
 export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
   const toast = useToast();
+  const approval = useApproval();
   const [rows, setRows] = useState<SaleRow[]>([]);
   const [receipt, setReceipt] = useState("");
   const [preview, setPreview] = useState<{ id: string; text: string } | null>(null);
+  const [voiding, setVoiding] = useState<{ id: string; check: VoidCheck } | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [op, setOp] = useState(newOperationId);
   const { error, handle } = useErr();
-  useEffect(() => {
+  const reload = () =>
     api.sales
       .list({ receipt: receipt || undefined, limit: 30 })
       .then((p) => setRows(p.rows))
       .catch(handle);
+  useEffect(() => {
+    void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt]);
+  const askVoid = async (id: string) => {
+    try {
+      setReason("");
+      setOp(newOperationId());
+      setVoiding({ id, check: await api.sales.voidCheck(id) });
+    } catch (e) {
+      handle(e);
+    }
+  };
+  const doVoid = async () => {
+    if (!voiding || !reason.trim()) return;
+    setBusy(true);
+    try {
+      const r = await approval((tok) => api.sales.void(voiding.id, reason.trim(), op, tok));
+      toast("success", t("Sale voided"), t("{0} returned as it was paid.", formatMoney(r.total_minor)));
+      setVoiding(null);
+      setPreview(null);
+      await reload();
+    } catch (e) {
+      if (!(e instanceof ApprovalCancelled)) handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Modal title={t("Recent sales")} size="xl" onClose={onClose}>
       <div className="grid-2">
@@ -733,9 +776,7 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
                     <td>{formatShort(s.completed_at)}</td>
                     <td>{s.methods.split(",").map(methodLabel).join(", ")}</td>
                     <td className="num">{formatMoney(s.total_minor)}</td>
-                    <td>
-                      {s.status !== "completed" ? <Chip tone="warning">{s.status.replace("_", " ")}</Chip> : null}
-                    </td>
+                    <td>{s.status !== "completed" ? <Chip tone="warning">{codeLabel(s.status)}</Chip> : null}</td>
                   </tr>
                 ))}
               </tbody>
@@ -768,6 +809,11 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
               >
                 {t("Reprint (copy)")}
               </Button>
+              {rows.find((r) => r.sale_id === preview.id)?.status === "completed" ? (
+                <Button variant="danger-outline" onClick={() => askVoid(preview.id)} data-testid="void-sale">
+                  {t("Void sale")}
+                </Button>
+              ) : null}
             </>
           ) : (
             <div className="empty">{t("Select a sale to preview its receipt.")}</div>
@@ -775,6 +821,47 @@ export function RecentSalesDialog({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
+      {voiding ? (
+        <Modal title={t("Void this sale?")} onClose={() => setVoiding(null)}>
+          {voiding.check.allowed ? (
+            <div className="col gap-16" data-testid="void-dialog">
+              <div>
+                {t(
+                  "The whole sale is cancelled and {0} goes back the way it was paid. The items return to stock. The sale stays in the records, marked voided.",
+                  formatMoney(voiding.check.total_minor),
+                )}
+              </div>
+              <div className="row wrap">
+                {VOID_REASONS.map((r) => (
+                  <button
+                    key={r()}
+                    className={`filter-chip ${reason === r() ? "active" : ""}`}
+                    aria-pressed={reason === r()}
+                    onClick={() => setReason(r())}
+                  >
+                    {r()}
+                  </button>
+                ))}
+              </div>
+              <TextInput label={t("Reason")} value={reason} onChange={(e) => setReason(e.target.value)} />
+              {voiding.check.requires_approval ? (
+                <div className="tiny">{t("A manager approves this void with their PIN.")}</div>
+              ) : null}
+              <div className="row">
+                <Button onClick={() => setVoiding(null)}>{t("Keep the sale")}</Button>
+                <Button variant="danger" className="right" loading={busy} disabled={!reason.trim()} onClick={doVoid}>
+                  {t("Void sale")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="col gap-16">
+              <Banner tone="info">{voiding.check.reason}</Banner>
+              <Button onClick={() => setVoiding(null)}>{t("Close")}</Button>
+            </div>
+          )}
+        </Modal>
+      ) : null}
     </Modal>
   );
 }

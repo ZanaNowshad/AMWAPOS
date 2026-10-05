@@ -59,6 +59,7 @@ pub mod time;
 pub mod transfers;
 pub mod users;
 pub mod validate;
+pub mod voids;
 pub mod wa_catalog;
 pub mod wa_contacts;
 pub mod waorders;

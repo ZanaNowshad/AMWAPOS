@@ -4341,4 +4341,32 @@ export const AR: Record<string, string> = {
     "موافقة المدير لا تشمل هذا الطلب بعينه (تغيّر أو انتهت صلاحية الموافقة). يرجى الموافقة مرة أخرى.",
   "This request is no longer waiting for approval. Try the action again.":
     "لم يعد هذا الطلب بانتظار الموافقة. أعد المحاولة.",
+  "Voided sale": "بيع ملغى",
+  Voided: "ملغى",
+  "Rang up twice": "سُجّل مرتين",
+  "Wrong items": "أصناف خاطئة",
+  "Customer changed their mind": "غيّر العميل رأيه",
+  "Sale voided": "تم إلغاء البيع",
+  "{0} returned as it was paid.": "أُعيد {0} بطريقة الدفع نفسها.",
+  "Void sale": "إلغاء البيع",
+  "Void this sale?": "إلغاء هذا البيع؟",
+  "The whole sale is cancelled and {0} goes back the way it was paid. The items return to stock. The sale stays in the records, marked voided.":
+    "يُلغى البيع كاملًا ويُعاد {0} بطريقة الدفع نفسها. تعود الأصناف إلى المخزون. يبقى البيع في السجلات مع علامة ملغى.",
+  "A manager approves this void with their PIN.": "يوافق المدير على هذا الإلغاء برمزه.",
+  "Keep the sale": "إبقاء البيع",
+  "Voided sales": "المبيعات الملغاة",
+  "Void a completed sale the same day, before the shift closes": "إلغاء بيع مكتمل في اليوم نفسه قبل إغلاق الوردية",
+  "This sale was made at another branch.": "تم هذا البيع في فرع آخر.",
+  "This sale has already been voided.": "تم إلغاء هذا البيع مسبقًا.",
+  "Only today's sales can be voided. Use a refund for earlier sales.":
+    "يمكن إلغاء مبيعات اليوم فقط. استخدم الاسترجاع للمبيعات السابقة.",
+  "The shift that took this sale is closed. Use a refund instead.":
+    "الوردية التي سجّلت هذا البيع مغلقة. استخدم الاسترجاع بدلًا من ذلك.",
+  "Part of this sale has been refunded. Use a refund for the rest.":
+    "تم استرجاع جزء من هذا البيع. استخدم الاسترجاع للباقي.",
+  "This sale was sent for delivery. Use the delivery's not-delivered step or a refund.":
+    "أُرسل هذا البيع للتوصيل. استخدم خطوة «لم يُسلَّم» أو الاسترجاع.",
+  "This sale's payments do not add up to its total; use a refund.":
+    "مدفوعات هذا البيع لا تساوي إجماليه؛ استخدم الاسترجاع.",
+  "Void receipt {0} ({1} {2})": "إلغاء الإيصال {0} ({1} {2})",
 };

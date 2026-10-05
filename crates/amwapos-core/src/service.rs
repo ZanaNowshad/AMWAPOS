@@ -146,6 +146,7 @@ impl AppCore {
     /// once, before it expires. Without permission and without a matching
     /// approval, the error carries a `binding` the client passes to
     /// `auth.approve`; the summary the manager sees is kept on the server.
+    #[allow(clippy::too_many_arguments)]
     pub fn authorize_bound(
         &self,
         s: &Session,

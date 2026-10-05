@@ -313,6 +313,7 @@ fn arabic(en: &str) -> Option<&'static str> {
         "Pay on delivery" => "الدفع عند الاستلام",
         "Collected on delivery" => "محصّل عند التوصيل",
         "REFUND / CREDIT NOTE" => "إشعار دائن",
+        "SALE VOIDED" => "إلغاء البيع",
         "Refund" => "استرجاع",
         "Original receipt" => "الإيصال الأصلي",
         "Processed by" => "بواسطة",
@@ -496,7 +497,7 @@ pub fn method_label(m: &str) -> String {
 fn build_refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
     let cfg: ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
     let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
-    let (rn, orig, branch, user, approver, reason, total, tax, at): (
+    let (rn, orig, branch, user, approver, reason, total, tax, at, kind): (
         String,
         String,
         String,
@@ -506,14 +507,15 @@ fn build_refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str
         i64,
         i64,
         String,
+        String,
     ) = c
         .query_row(
             "SELECT r.refund_receipt_number, s.receipt_number, r.branch_id, COALESCE(u.display_name,''), a.display_name, r.reason,
-                    r.total_minor, r.tax_minor, r.created_at
+                    r.total_minor, r.tax_minor, r.created_at, r.kind
              FROM refunds r JOIN sales s ON s.sale_id=r.original_sale_id LEFT JOIN users u ON u.user_id=r.user_id
              LEFT JOIN users a ON a.user_id=r.approved_by WHERE r.refund_id=?1",
             [refund_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?, r.get(9)?)),
         )
         .optional()?
         .ok_or_else(|| AppError::not_found("Refund"))?;
@@ -523,7 +525,7 @@ fn build_refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str
     let mut doc = ReceiptDoc::new(width_for(printer.paper_width_mm.min(cfg.paper_width_mm)));
     header(&mut doc, &info, &cfg);
     doc.rule();
-    doc.center(l.t("REFUND / CREDIT NOTE"), true, false);
+    doc.center(if kind == "void" { l.t("SALE VOIDED") } else { l.t("REFUND / CREDIT NOTE") }, true, false);
     if let Some(l) = copy_label {
         doc.center(format!("*** {l} ***"), true, false);
     }

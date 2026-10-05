@@ -741,7 +741,8 @@ impl AppCore {
             let sql = format!(
                 "SELECT s.sale_id, s.receipt_number, s.completed_at, COALESCE(u.display_name,''), d.name, cu.name, s.item_count_milli, s.total_minor,
                     COALESCE((SELECT group_concat(DISTINCT method) FROM payments p WHERE p.sale_id=s.sale_id),''),
-                    COALESCE((SELECT SUM(total_minor) FROM refunds r WHERE r.original_sale_id=s.sale_id),0)
+                    COALESCE((SELECT SUM(total_minor) FROM refunds r WHERE r.original_sale_id=s.sale_id),0),
+                    EXISTS (SELECT 1 FROM sale_voids v WHERE v.sale_id=s.sale_id)
                  FROM sales s LEFT JOIN users u ON u.user_id=s.cashier_user_id LEFT JOIN devices d ON d.device_id=s.device_id
                  LEFT JOIN customers cu ON cu.customer_id=s.customer_id
                  WHERE {w} ORDER BY s.completed_at DESC LIMIT {limit} OFFSET {offset}"
@@ -762,7 +763,9 @@ impl AppCore {
                         total_minor: total,
                         methods: r.get(8)?,
                         refunded_minor: refunded,
-                        status: if refunded == 0 {
+                        status: if r.get::<_, i64>(10)? == 1 {
+                            "voided".into()
+                        } else if refunded == 0 {
                             "completed".into()
                         } else if refunded >= total {
                             "refunded".into()
