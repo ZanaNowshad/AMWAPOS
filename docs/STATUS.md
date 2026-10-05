@@ -620,3 +620,31 @@ Evidence (this environment, Linux):
 Note: `crates/amwapos-hub/tests/whatsapp_catalog.rs` "unreachable capability check" timed out
 once during a fully parallel workspace run. It has a 30-second polling limit and passed on its own
 and in the final full run. It is not related to Wave 2.
+
+## Merchant OS Wave 3: inventory truth, 2026-10-05
+
+Design and rules: [INVENTORY.md](INVENTORY.md).
+Branch `claude/amwapos-merchant-os-wave3`, based on `main` at `586fe10` (Wave 2).
+
+Evidence (this environment, Linux):
+- `cargo fmt --check`, `clippy -D warnings`;
+- `cargo test --workspace`: 428 passed, 0 failed, 4 ignored (the benchmark and live-network checks);
+- `tsc`, `eslint`, `prettier --check`, vitest (49), `vite build`;
+- Playwright: 20 flows, including the Wave 3 flow and the English/Arabic sweep, which now covers
+  Expiry, Waste and Days of stock left;
+- 100k-product benchmark (release build), P95: scan 0.89 ms, search 4.99 ms, cart 0.73 ms,
+  sale commit 9.26 ms (Wave 2: 8.83 ms; Wave 1: 9.16 ms). Nothing was added to the sale path, so
+  this is run-to-run noise.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| One stock truth: a batch has no quantity of its own; balances are replayed from movements; batches + stock in no batch = stock on hand | Complete | `wave3.rs` (every test asserts it) | — |
+| Batches from receiving (direct, PO, drafts), retry-safe; old stock left in no batch; nothing invented at upgrade | Complete | `wave3.rs` receiving and upgrade tests | — |
+| First-expiring-first-out estimate for sales without a batch (older stock first, ties by received date then id), never stored, labelled as an estimate; recorded evidence moves it | Complete | `wave3.rs` (3) | — |
+| Offline tills sell without batches; hub batches converge; arrival order does not matter | Complete | `sync.rs` offline till + waste; `wave3.rs` order test | Real store Wi-Fi |
+| Expiry states (expired / past best-before / urgent / soon / later), expired is not disposed, at-risk vs already-lost figures, markdown scenarios as options only | Complete | `wave3.rs`; e2e | — |
+| Date checks: impossible refused, suspicious need confirming; document-read dates need a person | Complete | `wave3.rs` (2); `lots.rs` unit tests | Real supplier labels and documents |
+| Waste: reasons incl. neutral shrinkage, one movement per operation, approval above value or for shrinkage (bound), reversal by compensation, record kept | Complete | `wave3.rs` (2) | Store disposal routine |
+| Waste summary with defined ratios; days of stock left (7/30/60/90, holds, stock on order apart, no stock / no demand / not enough history, branch-scoped, refunds and voids counted as in reports) | Complete | `wave3.rs` days-of-stock test; `lots.rs` unit tests | — |
+| Permissions `lots.manage`, `waste.record`, `waste.approve`; hub-only tables; AI reads only | Complete | `wave3.rs`; `sync.rs`; `ai_admin.rs` | — |
+| English and Arabic for all new screens, messages, permissions and settings | Complete | vitest coverage; e2e sweep | Visual check on the till panel |
