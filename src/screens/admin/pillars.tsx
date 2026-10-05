@@ -998,7 +998,8 @@ function MiniReport({ rep }: { rep: Report }) {
   );
 }
 
-export function EndOfDayPage() {
+/** The day pack (all figures as CSV). `embedded`: shown inside End of day. */
+export function EndOfDayPage({ embedded }: { embedded?: boolean } = {}) {
   const nav = useNavigate();
   const aiOn = useFeature("ai.enabled");
   const { has } = useSession();
@@ -1013,12 +1014,13 @@ export function EndOfDayPage() {
   }, [data]);
   return (
     <div>
-      <PageHeader
-        title={t("End of day")}
-        subtitle={t(
-          "Sales, payments, shift variances, refunds and low stock for one day. Every figure comes from recorded transactions.",
-        )}
-        actions={
+      {embedded ? (
+        <div className="row wrap" style={{ marginBottom: 16 }}>
+          <div className="grow muted">
+            {t(
+              "Sales, payments, shift variances, refunds and low stock for one day. Every figure comes from recorded transactions.",
+            )}
+          </div>
           <Button
             icon={<Download size={16} />}
             loading={act.busy}
@@ -1029,8 +1031,27 @@ export function EndOfDayPage() {
           >
             {t("Download CSV pack (zip)")}
           </Button>
-        }
-      />
+        </div>
+      ) : (
+        <PageHeader
+          title={t("End of day")}
+          subtitle={t(
+            "Sales, payments, shift variances, refunds and low stock for one day. Every figure comes from recorded transactions.",
+          )}
+          actions={
+            <Button
+              icon={<Download size={16} />}
+              loading={act.busy}
+              onClick={async () => {
+                const z = await act.run(() => api.reports.eodZip(date, branch || null));
+                if (z) downloadBase64(z.file_name, z.base64, "application/zip");
+              }}
+            >
+              {t("Download CSV pack (zip)")}
+            </Button>
+          }
+        />
+      )}
       <div className="row wrap" style={{ marginBottom: 16 }}>
         <input
           type="date"

@@ -1523,6 +1523,7 @@ const LABELS: Record<string, Record<string, () => string>> = {
     variance_approval_minor: () => t("Cash difference that needs a manager"),
     day_cutoff_minutes: () => t("Trading day ends at"),
     paid_out_approval_minor: () => t("Paid-out that needs a manager"),
+    variance_case_minor: () => t("Cash difference that opens a case"),
   },
   inventory: {
     costing_method: () => t("How cost is kept"),
@@ -1599,6 +1600,9 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
       "Sales after midnight and before this time count for the previous day, for stores open late. Changing it affects new sales only.",
     ),
     paid_out_approval_minor: t("Paying out more than this from the drawer needs a manager (0 = never)."),
+    variance_case_minor: t(
+      "When a counted drawer differs by more than this, a case is opened to look into it (0 = any difference).",
+    ),
   },
   inventory: {
     costing_method: t(

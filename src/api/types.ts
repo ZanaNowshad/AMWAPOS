@@ -604,6 +604,10 @@ export interface ShiftSummary {
   expected_visible: boolean;
   close_note: string | null;
   variance_approved_by_name: string | null;
+  register_id?: string | null;
+  register_name?: string | null;
+  drawer_id?: string | null;
+  drawer_name?: string | null;
 }
 
 export interface ProductRow {
@@ -2552,4 +2556,252 @@ export interface Receivables {
   total: Ageing;
   balance_minor: number;
   overdue_minor: number;
+}
+
+// ---- Trading day (X / Z), registers, cases --------------------------------
+
+export interface DayTender {
+  method: string;
+  sales_minor: number;
+  refunds_minor: number;
+  net_minor: number;
+}
+
+export interface DayTotals {
+  sale_count: number;
+  gross_minor: number;
+  discount_minor: number;
+  sales_minor: number;
+  refund_count: number;
+  refunds_minor: number;
+  void_count: number;
+  voids_minor: number;
+  net_sales_minor: number;
+  tax_minor: number;
+  net_ex_vat_minor: number;
+  cash_sales_minor: number;
+  non_cash_sales_minor: number;
+  pay_on_delivery_minor: number;
+  account_sales_minor: number;
+  tenders: DayTender[];
+  vat: { rate_bp: number; gross_minor: number; tax_minor: number; net_minor: number }[];
+}
+
+export interface DayDrawer {
+  shift_id: string;
+  shift_number: string;
+  business_date: string;
+  status: "open" | "closed";
+  register_name: string | null;
+  drawer_name: string | null;
+  device_name: string | null;
+  cashier_name: string;
+  opened_at: string;
+  closed_at: string | null;
+  opening_float_minor: number;
+  cash_sales_minor: number;
+  cash_refunds_minor: number;
+  paid_in_minor: number;
+  paid_out_minor: number;
+  safe_drop_minor: number;
+  delivery_collections_minor: number;
+  rider_handover_minor: number;
+  expected_cash_minor: number;
+  counted_cash_minor: number | null;
+  variance_minor: number | null;
+  late: boolean;
+}
+
+export interface DayCash {
+  opening_float_minor: number;
+  cash_sales_minor: number;
+  cash_refunds_minor: number;
+  paid_in_minor: number;
+  paid_out_minor: number;
+  safe_drop_minor: number;
+  delivery_collections_minor: number;
+  rider_handover_minor: number;
+  expected_cash_minor: number;
+  counted_cash_minor: number;
+  variance_minor: number;
+  counted_drawers: number;
+  open_drawers: number;
+  expenses_from_till_minor: number;
+  account_payments_cash_minor: number;
+}
+
+export interface DayLateLine {
+  kind: "sale" | "refund" | "void";
+  number: string;
+  business_date: string;
+  at: string;
+  total_minor: number;
+  device_name: string | null;
+}
+
+export interface DayReport {
+  kind: "x" | "z";
+  business_name: string;
+  vat_number: string | null;
+  branch_id: string;
+  branch_name: string;
+  currency: string;
+  digits: number;
+  timezone: string;
+  cutoff_minutes: number;
+  business_date: string;
+  day_closed: boolean;
+  day: DayTotals;
+  after_close: DayTotals;
+  total: DayTotals;
+  late: DayLateLine[];
+  drawers: DayDrawer[];
+  cash: DayCash;
+  generated_at: string;
+  close_number: string | null;
+  closed_by_name: string | null;
+}
+
+export interface DayCheck {
+  code: string;
+  level: "blocking" | "warning" | "info" | "ok";
+  message: string;
+}
+
+export interface DayChecks {
+  business_date: string;
+  branch_id: string;
+  can_close: boolean;
+  needs_acknowledgement: boolean;
+  checks: DayCheck[];
+  last_close: { close_id: string; close_number: string; business_date: string; closed_at: string } | null;
+}
+
+export interface Opening {
+  business_date: string;
+  verdict: "ready" | "attention";
+  checks: DayCheck[];
+}
+
+export interface DayClose {
+  close_id: string;
+  close_number: string;
+  branch_id: string;
+  business_date: string;
+  closed_at: string;
+  closed_by_name: string | null;
+  sha256: string;
+  verified: boolean;
+  report: DayReport;
+}
+
+export interface DayCloseRow {
+  close_id: string;
+  close_number: string;
+  branch_id: string;
+  branch_name: string;
+  business_date: string;
+  sale_count: number;
+  net_sales_minor: number;
+  tax_minor: number;
+  late_count: number;
+  variance_minor: number;
+  closed_by_name: string | null;
+  closed_at: string;
+}
+
+export interface Register {
+  register_id: string;
+  branch_id: string;
+  branch_name: string;
+  code: string;
+  name: string;
+  active: boolean;
+  device_id: string | null;
+  device_name: string | null;
+  drawers: { drawer_id: string; name: string; active: boolean; is_default: boolean }[];
+  open_shift: { shift_id: string; shift_number: string; cashier_name: string; opened_at: string } | null;
+}
+
+export interface RegisterInput {
+  name: string;
+  code?: string | null;
+  branch_id?: string | null;
+  device_id?: string | null;
+  active?: boolean;
+}
+
+export interface DrawerInput {
+  register_id: string;
+  name: string;
+  active?: boolean;
+  make_default?: boolean;
+}
+
+export type CaseStatus = "new" | "acknowledged" | "in_progress" | "resolved" | "dismissed";
+
+export interface CaseRow {
+  case_id: string;
+  case_number: string;
+  kind: "cash_variance";
+  severity: "low" | "medium" | "high";
+  status: CaseStatus;
+  branch_id: string;
+  entity_type: string;
+  entity_id: string;
+  title: string;
+  facts: Record<string, unknown> & {
+    shift_number?: string;
+    business_date?: string;
+    register_name?: string | null;
+    drawer_name?: string | null;
+    device_name?: string | null;
+    cashier_name?: string;
+    opened_at?: string;
+    closed_at?: string | null;
+    opening_float_minor?: number;
+    cash_sales_minor?: number;
+    cash_refunds_minor?: number;
+    paid_in_minor?: number;
+    paid_out_minor?: number;
+    safe_drop_minor?: number;
+    delivery_collections_minor?: number;
+    expected_cash_minor?: number;
+    counted_cash_minor?: number;
+    variance_minor?: number;
+    approved_by_name?: string | null;
+    close_note?: string | null;
+    cash_movements?: {
+      kind: string;
+      amount_minor: number;
+      reason: string;
+      at: string;
+      by: string | null;
+      approved_by: string | null;
+    }[];
+  };
+  assignee_user_id: string | null;
+  assignee_name: string | null;
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+  resolution_code: string | null;
+  resolution_note: string | null;
+  resolved_by_name: string | null;
+  resolved_at: string | null;
+}
+
+export interface CaseEvent {
+  seq: number;
+  kind: "created" | "status" | "note" | "assigned" | "evidence";
+  from_status: CaseStatus | null;
+  to_status: CaseStatus | null;
+  note: string | null;
+  evidence: { file_id?: string; file_name?: string; resolution_code?: string; assignee_user_id?: string | null } | null;
+  user_name: string | null;
+  at: string;
+}
+
+export interface CaseDetail extends CaseRow {
+  events: CaseEvent[];
 }

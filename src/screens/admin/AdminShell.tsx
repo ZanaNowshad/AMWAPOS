@@ -50,9 +50,13 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
+  Calculator,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
-import { BranchesPage, BranchSwitcher, EndOfDayPage, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
+import { BranchesPage, BranchSwitcher, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
+import { TradingDayPage } from "./tradingDay";
+import { RegistersPage } from "./registers";
+import { CasesPage } from "./cases";
 import { useSession } from "../../state/session";
 import { initials } from "../login/Login";
 import { Logo } from "../../components/Logo";
@@ -238,7 +242,14 @@ const NAV: { group: string; items: NavItem[] }[] = [
       },
       { path: "expenses", label: t("Expenses"), icon: Receipt, perm: "expenses.view", element: ExpensesPage },
       { path: "analytics", label: t("Analytics"), icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
-      { path: "end-of-day", label: t("End of day"), icon: CalendarCheck, perm: "reports.sales", element: EndOfDayPage },
+      {
+        path: "end-of-day",
+        label: t("End of day"),
+        icon: CalendarCheck,
+        perm: ["day.x_report", "reports.sales"],
+        element: TradingDayPage,
+      },
+      { path: "cases", label: t("Cases"), icon: ClipboardList, perm: "cases.view", element: CasesPage },
       {
         path: "phone-view",
         label: t("Phone view"),
@@ -274,6 +285,14 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: t("SYSTEM"),
     items: [
       { path: "users", label: t("Users & Roles"), icon: ShieldCheck, perm: "users.manage", element: UsersPage },
+      {
+        path: "registers",
+        label: t("Registers"),
+        icon: Calculator,
+        perm: "registers.manage",
+        element: RegistersPage,
+        advanced: true,
+      },
       {
         path: "branches",
         label: t("Branches"),

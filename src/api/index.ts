@@ -84,6 +84,54 @@ export const api = {
     void: (sale_id: string, reason: string, operation_id: string, approval_token: string | null) =>
       call<T.VoidResult>("sales.void", { void: { sale_id, reason, operation_id, approval_token } }),
   },
+  day: {
+    x: (date?: string | null, branch_id?: string | null) =>
+      call<T.DayReport>("day.x", { date: date ?? null, branch_id: branch_id ?? null }),
+    xPdf: (date?: string | null, branch_id?: string | null) =>
+      call<{ file_name: string; base64: string; text: string }>("day.x_pdf", {
+        date: date ?? null,
+        branch_id: branch_id ?? null,
+      }),
+    checks: (date?: string | null, branch_id?: string | null) =>
+      call<T.DayChecks>("day.checks", { date: date ?? null, branch_id: branch_id ?? null }),
+    close: (business_date: string, operation_id: string, acknowledge_warnings: boolean, branch_id?: string | null) =>
+      call<T.DayClose>("day.close", {
+        business_date,
+        operation_id,
+        acknowledge_warnings,
+        branch_id: branch_id ?? null,
+      }),
+    closes: (branch_id?: string | null) => call<T.DayCloseRow[]>("day.closes", { branch_id: branch_id ?? null }),
+    get: (close_id: string) => call<T.DayClose>("day.close_get", { close_id }),
+    pdf: (close_id: string) => call<{ file_name: string; base64: string; text: string }>("day.close_pdf", { close_id }),
+    opening: () => call<T.Opening>("day.opening", {}),
+  },
+  registers: {
+    list: () => call<T.Register[]>("registers.list", {}),
+    devices: () => call<{ device_id: string; name: string; device_code: string }[]>("registers.devices", {}),
+    save: (register_id: string | null, register: T.RegisterInput) =>
+      call<T.Register[]>("registers.save", { register_id, register }),
+    saveDrawer: (drawer_id: string | null, drawer: T.DrawerInput) =>
+      call<T.Register[]>("drawers.save", { drawer_id, drawer }),
+  },
+  cases: {
+    list: (status?: string | null) => call<T.CaseRow[]>("cases.list", { status: status ?? null }),
+    get: (case_id: string) => call<T.CaseDetail>("cases.get", { case_id }),
+    openForShift: (shift_id: string, note?: string | null) =>
+      call<T.CaseDetail>("cases.open_for_shift", { shift_id, note: note ?? null }),
+    act: (a: {
+      case_id: string;
+      action: "acknowledge" | "start" | "resolve" | "dismiss" | "note" | "assign";
+      note?: string | null;
+      assignee_user_id?: string | null;
+      resolution_code?: string | null;
+      operation_id: string;
+    }) => call<T.CaseDetail>("cases.act", a),
+    attach: (case_id: string, file_name: string, data_b64: string) =>
+      call<T.CaseDetail>("cases.attach", { case_id, file_name, data_b64 }),
+    evidence: (case_id: string, file_id: string) =>
+      call<{ file_name: string; mime: string; base64: string }>("cases.evidence", { case_id, file_id }),
+  },
   statements: {
     get: (customer_id: string, from?: string | null, to?: string | null) =>
       call<T.CustomerStatement>("customers.statement", { customer_id, from: from ?? null, to: to ?? null }),
