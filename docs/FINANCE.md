@@ -186,3 +186,220 @@ Upgrades add these to existing roles, but never re-add a permission the owner re
 - `tests/flow.rs`: bound refund approval.
 - `tests/sync.rs`: snapshots reach the hub; expenses and petty cash are refused on a terminal.
 - `e2e/wave1.spec.ts`: void at the till; expense to operating profit; statement and PDF.
+
+# Closing the trading day (Wave 2)
+
+## The model in one paragraph
+
+Every sale, refund (including voids) and shift already carries the business
+date it was made on, using the Wave 1 trading-day cutoff. A **Z close** is
+the permanent record of one branch's trading day, made on the hub (or the
+single computer of a one-till shop). It counts every record that no
+earlier close has counted, and it lists exactly which ones in
+`day_close_items`. A record is counted by one close only.
+
+- **X (current totals)** is the same calculation, with nothing written.
+- **Selling never depends on any of this.** A till keeps selling offline
+  whether or not the day is closed.
+
+## X: current totals
+
+End of day → Today, or `day.x` (`day.x_report`). It shows:
+- **Sales:** count, before discounts, discounts, sales, refunds, voids, net
+  sales, VAT and net of VAT.
+- **Payments and VAT:** tenders net of refunds, VAT by rate, and cash and
+  non-cash sales.
+- **Pay on delivery and customer accounts:** pay on delivery not collected
+  at the till, and sales on account.
+- **Drawers:** each drawer (open ones included) with float, cash sales and
+  refunds, cash in and out, safe drops, delivery collections, expected,
+  counted and difference.
+- **Notes on the cash lines:** which cash out paid expenses, and which cash
+  in were customer account payments. These are shown inside the existing
+  lines, never counted again.
+- **After-close records**, if any (see below).
+
+X runs on a read connection only. The test `x_report_shows_the_day_and_changes_nothing`
+compares the row count of every table, the change log and SQLite's
+`total_changes()` before and after repeated X, checks, opening and the X PDF.
+The figures reuse the existing definitions:
+- net sales = sales − refunds − voids;
+- refunds and voids reduce the day they were made;
+- expected cash = `shifts::shift_summary`.
+
+## Z: the close
+
+End of day → **Close trading day** (`day.close`, permission `day.close`,
+refused on a terminal).
+
+- **Scope.** One branch and one business date. UNIQUE(branch, date): a day
+  is closed once. Other branches are untouched; each has its own number
+  `Z-<branch code>-00001`.
+- **Order.** Dates close in order, from the branch's first close. These are
+  refused:
+  - a day before the last close;
+  - a later day while an earlier one still has uncounted records (the
+    message names the day to close first);
+  - a future day.
+
+  Records dated before the first close are not part of any close (the
+  first close says so).
+- **What is kept.** `snapshot_json` holds the full report and the rendered
+  bilingual document, with its SHA-256. The report includes:
+  - business name and VAT number, branch, date, cutoff and time zone;
+  - totals, tenders, VAT by rate, drawers and cash;
+  - after-close records;
+  - who closed it and when.
+
+  Viewing, the PDF and the AI read it from the stored record; nothing is
+  rebuilt from today's settings. The drawer shows "Unchanged since it was
+  closed" when the fingerprint still matches.
+- **Immutable.** Triggers refuse updates and deletes on `day_closes` and
+  `day_close_items`.
+- **Exactly once.** The idempotency check, the checks, the record, its item
+  list and the audit entry are one transaction.
+  - A retry or double click with the same operation id returns the same
+    close, even if the first response was lost.
+  - The same id with another date is refused (`idempotency_mismatch`).
+  - Another id for a closed day is refused.
+  - A failure half-way leaves nothing behind (tested by injecting a failing
+    trigger), and the retry closes once.
+
+## Records that arrive after their day was closed
+
+A till that was offline sends a sale of 5 October after 5 October was closed:
+1. The sale is accepted and kept with its real time and business date. Sync
+   is unchanged.
+2. The close of 5 October is not touched.
+3. X now shows it under **After-close adjustments**, with its original date,
+   receipt and computer. The checks say how many there are.
+4. The next close counts it once, flagged `late`, in a separate section, and
+   prints a total for the close.
+
+`day_close_items.late` and `business_date` record this, so any close can
+be traced back to the records it counted. The same applies to refunds,
+voids and shifts.
+
+## Closing checks
+
+`day.checks` classifies every item. Closing needs no blocking item; any
+warning needs "I have read the items above".
+
+| Level | Checks |
+| --- | --- |
+| Blocking | future day; day already closed; a later day is already closed; an earlier day with records is not closed; a shift still open on **this** computer |
+| Warning | a shift open on another computer (its cash is counted in a later close); a terminal with records still to send or silent for 30 minutes (hub only); sync records that could not be saved; a drawer difference above the approval limit; cash differences still being looked into; riders holding cash; payment screenshots to check; backup overdue |
+| Information | smaller drawer differences; expenses waiting for approval or payment; after-close records in this close; first close; "you can keep selling" when closing today |
+
+Nothing is checked that AMWAPOS cannot know. For example, it cannot see
+cash that was never recorded, or a terminal's work before it syncs.
+
+## Opening the store
+
+`day.opening` (End of day → Today, top card). It is advice and never blocks.
+It checks:
+- whether the last trading day with sales is closed;
+- open medium or high cash cases;
+- backup state;
+- sync failures, or paused sync on a terminal;
+- whether this computer is a register and has a drawer;
+- whether a shift is open with a float;
+- print jobs that failed in the last 24 hours.
+
+The verdict is "Ready to trade" or "Ready, but these need attention".
+
+## Registers, drawers and cash sessions
+
+- **Register:** the checkout as a business thing ("Till 1"). It points at
+  the computer that stands for it now. Choosing a computer moves that
+  computer away from its previous register.
+- **Drawer:** the cash a person is responsible for. A register has a default
+  drawer, and can have more.
+- **Cash session = the existing shift.** It is unchanged (float, events,
+  expected, count, difference, approval) and now also records `register_id`
+  and `drawer_id`.
+- **Migration 0028:**
+  - Creates one register and one drawer for each existing computer, with
+    ids derived from the device id, so the hub and every terminal create
+    the same rows. Inactive computers get an inactive register.
+  - A computer added later gets its register from a trigger.
+  - Past shifts keep `register_id`/`drawer_id` NULL: nobody recorded that,
+    so it is not invented.
+
+  The test `upgrading_keeps_every_shift_and_invents_no_register_history`
+  builds a schema-27 store and upgrades it.
+- Registers and drawers are hub-owned and copied to terminals. Changes need
+  `registers.manage`. A register with an open shift cannot be switched off.
+
+## Cash-difference cases
+
+- **When a case opens.** A counted drawer that differs from expected by more
+  than Settings → Shift → **Cash difference that opens a case** (default
+  BHD 1.000) gets one case. A manager can also open one for any shift.
+- **Where it is made.** Cases are made where they live: on the hub when the
+  shift arrives by sync, or on a single computer at the shift close. Shifts
+  closed before the upgrade are never swept.
+- **Facts.** Fixed at opening:
+  - shift, date, register, drawer, computer and cashier;
+  - float, cash sales, refunds, in and out, safe drops, collections;
+  - expected, counted and difference;
+  - who accepted the count and the note at the count;
+  - every cash movement of the shift.
+
+  The title states the fact: "Drawer is BHD 6.250 short".
+- **Steps.** new → seen → looking into it → resolved, or dismissed.
+  - Notes, files (stored as originals) and the assignee can be added before
+    the end.
+  - Resolving or dismissing needs a note.
+  - Resolving takes an outcome: counting mistake, cash found, wrong change,
+    not explained, other.
+- **Permanence.** Every step is a `case_events` row. Facts, history and
+  finished cases cannot change (triggers). One case per shift (UNIQUE). A
+  retried step changes nothing.
+- **Permissions.** View with `cases.view`. Seen, start, note, assign and
+  files need `cases.manage`. Resolve and dismiss need `cases.resolve`.
+
+## Permissions and ownership (Wave 2)
+
+| Permission | Owner | Manager | Accountant | Cashier |
+| --- | --- | --- | --- | --- |
+| `day.x_report` (X, checks, opening, closed days) | ✓ | ✓ | ✓ | |
+| `day.close` | ✓ | ✓ | | |
+| `registers.manage` | ✓ | ✓ | | |
+| `cases.view` | ✓ | ✓ | ✓ | |
+| `cases.manage`, `cases.resolve` | ✓ | ✓ | | |
+
+Upgrades add these to built-in roles once and respect removals.
+
+| Table | Where |
+| --- | --- |
+| `registers`, `cash_drawers` | Hub-owned, copied to terminals |
+| `shifts.register_id`, `drawer_id` | With the shift (shared) |
+| `day_closes`, `day_close_items`, `cases`, `case_events` | Hub only; terminals refuse to close or act on cases |
+
+The AI may read X, checks, closes, opening, cases and registers. It cannot
+close or reopen a day, act on a case, change a count or change a register:
+`NO_TOOL` lists each, and `ai_actions` classes them as financial commits.
+
+## Tests (Wave 2)
+
+- `tests/wave2.rs` (14):
+  - X changes nothing;
+  - Z once, with retry and mismatch;
+  - Z independent of later settings and immutable;
+  - late sale counted once in the next close;
+  - days close in order;
+  - the cutoff boundary uses the stored date;
+  - branches close separately;
+  - expected cash through sales, refunds, voids, cash in and out, safe
+    drops, an expense paid out of the till, and a pay-on-delivery
+    collection;
+  - registers and moving them;
+  - upgrade from schema 27;
+  - case lifecycle and permanence;
+  - permissions;
+  - failure half-way and retry;
+  - opening.
+- `tests/sync.rs`: a till offline during the close sends its sales into the
+  next close, and the hub opens its variance case.
+- `e2e/wave2.spec.ts`: a short drawer becomes a case; the day is closed once.

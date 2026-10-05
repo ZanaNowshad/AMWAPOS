@@ -92,7 +92,8 @@ The same id with a different payload fails with `idempotency_mismatch`.
   - Shared: customers use last writer wins.
   - Every table is classified either in `sync::TABLES` or in `sync::LOCAL_TABLES`. A test fails
     when a new table has neither. Expenses and petty cash are hub-local. Receipt snapshots and
-    sale voids are append-only.
+    sale voids are append-only. Registers and cash drawers are hub-owned and copied to
+    terminals. Day closes and cases are hub-local, and a terminal refuses to close a day.
 - **Stock:** the hub replays stock movements to recompute balances.
 - **Cycle:** a terminal pushes, then pulls (excluding its own origin). Changes that fail to apply
   go to a dead-letter queue, which can be retried from Admin → Sync.
@@ -111,10 +112,18 @@ Backends:
 - file
 - none
 
-## Business date
+## Business date and the Z close
 
 Each record carries a business date: the local date in `business.timezone`, less the
 trading-day cutoff (0–6 h, Settings → Shift). Reports use the same bounds (`time::Day`).
+
+The Z close (`dayclose.rs`) runs on the hub. It counts every sale, refund
+and shift that no close has counted yet, and lists them in
+`day_close_items` (one close per record). The full report and printable
+document are stored with a SHA-256. A record that syncs in after its day
+was closed is counted by the next close as an after-close adjustment; the
+earlier close never changes. X is the same calculation, read-only. See
+[FINANCE.md](FINANCE.md).
 
 ## Receipts and Arabic
 

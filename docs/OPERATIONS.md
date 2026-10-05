@@ -84,6 +84,43 @@ revisited after the Windows soak.
 - **Monthly:** run Reports → **Operating profit**, and Reports → **Receivables** for customers who
   are late. Send each late customer their statement (Customer → Account → PDF or WhatsApp).
 
+## Opening and closing the trading day
+
+On the hub computer (or the only computer), go to Admin → Business → End of day.
+
+- **Opening:** look at the top card. "Ready to trade" means nothing is
+  waiting. Otherwise it lists:
+  - yesterday not closed;
+  - cash differences still open;
+  - a backup that is due;
+  - sync problems;
+  - a computer that is not a register;
+  - no shift open;
+  - failed printing.
+
+  Selling never waits for these.
+- **During the day:** **View current totals** (X) as often as you like. It
+  changes nothing.
+- **Closing:**
+  1. Every till counts its drawer and closes its shift. A shift still open
+     on this computer must be closed first. One open on another till can
+     wait; its cash counts in a later close.
+  2. Read **Check these** and tick "I have read the items above".
+  3. Press **Close trading day**.
+
+  The close is permanent. Download its PDF from Closed days.
+- **Days close in order.** If you missed a day, close it first; the
+  message names it.
+- **Late sales:** a till that was offline may send sales after its day was
+  closed. They appear under **After-close adjustments** and are counted
+  once in the next close. The closed day stays as it was.
+- **Cash differences:** a drawer that differs by more than Settings →
+  Shift → "Cash difference that opens a case" appears in Admin → Business
+  → Cases. Mark it as seen, look into it, add notes or photos, then
+  resolve it with what was found.
+- **New computer replacing a till:** System → More tools → Registers.
+  Open the till's register and choose the new computer.
+
 ## Paying suppliers (Payables)
 
 Admin → Purchasing → Payables, on the hub computer.

@@ -126,11 +126,12 @@ transitions are audited.
 - `sale_voids(void_id, void_number, sale_id UNIQUE, reason, approved_by, user_id, device_id, shift_id, business_date, operation_id UNIQUE, created_at)` + `sale_void_tenders` — append-only.
 - `customer_ledger` unchanged; ageing derived (FIFO) — no new table.
 
-### Wave 2
-- settings `trading_day.cutoff_minutes` (0 = midnight) — hub setting, prospective.
-- `day_closes(close_id, branch_id, business_date, status[closed|reopened], snapshot_json, sha256, totals columns, closed_by, closed_at, reopened_by/at/reason, supersedes_close_id?, operation_id UNIQUE)` — UNIQUE(branch_id, business_date) WHERE status='closed'.
-- `registers(register_id, branch_id, name, code, active)`; `cash_drawers(drawer_id, branch_id, name, active)`; `shifts` + nullable `register_id`, `drawer_id`.
-- `cases(case_id, kind[cash_variance|…], severity, status[new|acknowledged|investigating|resolved|dismissed], assignee, entity_type, entity_id, branch_id, title, created_at, resolved_*)` + `case_events(case_id, seq, kind, note, evidence_json, user_id, at)` append-only. Shared by cash variance and the alert centre.
+### Wave 2 (as built; see FINANCE.md "Closing the trading day")
+- The trading-day cutoff is Wave 1's (`shift.day_cutoff_minutes`, `time::business_date`); Wave 2 adds no second calculation and never recomputes a stored business date.
+- `day_closes(close_id, close_number, branch_id, business_date, format_version, snapshot_json, sha256, totals…, closed_by, closed_at, operation_id UNIQUE)`, UNIQUE(branch_id, business_date), immutable. No reopen: a correction is never a rewrite; records that arrive late go into the next close.
+- `day_close_items(ref_kind[sale|refund|shift], ref_id, close_id, business_date, late)`, PK(ref_kind, ref_id): each record is counted by exactly one close.
+- `registers(register_id, branch_id, code, name, active, device_id, default_drawer_id)`; `cash_drawers(drawer_id, branch_id, register_id, name, active)`; `shifts` + nullable `register_id`, `drawer_id`. The shift stays the cash session.
+- `cases(… kind[cash_variance], severity, status[new|acknowledged|in_progress|resolved|dismissed], entity, facts_json …)` + `case_events` (append-only). "investigating" was named `in_progress`.
 
 ### Wave 3
 - `stock_movements` rebuilt once: `type` CHECK adds `waste`, `supplier_return`, `void`, `lot_adjust`; new nullable `lot_id`, `business_date`.

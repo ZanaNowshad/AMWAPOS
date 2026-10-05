@@ -587,3 +587,36 @@ Evidence (this environment, Linux):
 | Expenses and petty cash hub-only; refused on a terminal | Complete | `sync.rs` hub-only test | — |
 | AI: read tools for expenses, petty cash, statements, receivables and void eligibility; voids, payments and approvals stay with people | Complete | `ai_admin.rs` command coverage; `ai_actions.rs` classes | — |
 | Migration 0027: one `stock_movements` rebuild checked for unchanged rows and quantities; nothing invented for the past | Complete | migration tests; `wave1.rs` | Upgrade of a real store copy during the soak |
+
+## Merchant OS Wave 2: the trading day, 2026-10-05
+
+Design and rules: [FINANCE.md](FINANCE.md), "Closing the trading day".
+Branch `claude/amwapos-merchant-os-wave2`, based on `main` at `e8204ff` (Wave 1).
+
+Evidence (this environment, Linux):
+- `cargo fmt --check`, `clippy -D warnings`;
+- `cargo test --workspace`: 413 passed, 0 failed, 4 ignored (the benchmark and live-network checks);
+- `tsc`, `eslint`, `prettier --check`, vitest (49), `vite build`;
+- Playwright: 19 flows, including the Wave 2 flow and the English/Arabic sweep, which now covers
+  End of day, Cases and Registers;
+- 100k-product benchmark (release build), P95: scan 1.16 ms, search 5.07 ms, cart 0.66 ms,
+  sale commit 8.83 ms. Nothing from Wave 2 runs during a sale.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| X report (current totals): sales, refunds, voids, discounts, VAT, tenders, cash and non-cash, pay on delivery, account sales, drawers, expected / counted / difference, cash in and out, safe drops, delivery collections; writes nothing | Complete | `wave2.rs` X test (row counts, change log and `total_changes()` unchanged) | — |
+| Z close: one per branch and business date; idempotent (retry, lost response, duplicate, mismatched id); stored snapshot + document + SHA-256; immutable; independent of later settings; PDF from the stored document | Complete | `wave2.rs` (3) | Printed copy on the soak printer |
+| Records arriving after their day was closed: kept with their own date and time, closed day unchanged, counted once in the next close as after-close adjustments | Complete | `wave2.rs` late-sale test; `sync.rs` till offline during the close | — |
+| Days close in order; Wave 1 cutoff reused (no second calculation); boundary at the cutoff | Complete | `wave2.rs` (2) | — |
+| Branches close separately | Complete | `wave2.rs` branch test | — |
+| Closing checks as blocking / warning / information; opening checklist that never blocks | Complete | `wave2.rs`; e2e | — |
+| Registers and drawers; shift records both; migration from schema 27 keeps every shift and attributes none | Complete | `wave2.rs` (2) | Replacing a computer on site |
+| Cash-difference cases: facts, steps, notes, files, outcomes, permanent history; one per shift; made on the hub when a terminal's shift arrives | Complete | `wave2.rs` case test; `sync.rs`; e2e | — |
+| Permissions `day.x_report`, `day.close`, `registers.manage`, `cases.view`, `cases.manage`, `cases.resolve`; terminals refuse to close or act on cases | Complete | `wave2.rs` permissions; `sync.rs` | — |
+| Failure handling: close interrupted half-way (nothing kept, retry closes once), repeated cash count, repeated case step, duplicate case | Complete | `wave2.rs` | — |
+| AI reads X, checks, closes, opening, cases and registers; it never closes, resolves or changes counts | Complete | `ai_admin.rs` coverage; `ai_actions.rs` | — |
+| English and Arabic for every new screen, message and check | Complete | vitest coverage; e2e sweep | Visual check on the till panel |
+
+Note: `crates/amwapos-hub/tests/whatsapp_catalog.rs` "unreachable capability check" timed out
+once during a fully parallel workspace run. It has a 30-second polling limit and passed on its own
+and in the final full run. It is not related to Wave 2.

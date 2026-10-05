@@ -113,6 +113,36 @@ button, because at 1024×700 the change panel can be below the fold.
 - Admin → Sales → receipt preview shows the receipt fingerprint, or "reconstructed" for old
   records.
 
+## Wave 2 surfaces
+
+- Admin → Business → **End of day** has three tabs: Today, Closed days and
+  Day pack.
+  - **Today:**
+    - the opening card ("Ready to trade" / "Ready, but these need
+      attention");
+    - the date and branch, **View current totals** and PDF;
+    - the X figures: net sales, VAT, expected cash, difference, this day,
+      how customers paid, VAT by rate, after-close adjustments, drawers and
+      cash lines;
+    - the **Close trading day** card. Its checks are grouped as "Do these
+      first" (blocking, button disabled), "Check these" (warnings, needs
+      "I have read the items above") and "Good to know". It says plainly
+      that a close is permanent and that selling continues.
+  - **Closed days:** the list; the drawer shows the stored close,
+    "Unchanged since it was closed", the fingerprint and the PDF.
+- Admin → Business → **Cases**:
+  - Open / Finished / All, with case, what, register, cashier, day, size
+    and status.
+  - The drawer shows the facts, the cash movements, the permanent history,
+    and the steps (seen, start, note, file, who is looking into it, outcome
+    + Resolve / Dismiss).
+  - Wording states facts ("Drawer is BHD 2.500 short") and never blames.
+- System → More tools → **Registers:** register, computer, drawers and
+  "now" (who is on it). The editor moves a register to another computer.
+- Test ids: `opening`, `close-day`, `close-day-button`, `checks-blocking`,
+  `checks-warning`, `checks-info`, `close-view`, `day-drawers`,
+  `after-close`, `case-drawer`, `case-ack`, `case-resolve`.
+
 ## Display size
 
 Settings → Appearance → Display size (90, 100, 110, 125, 150 %) zooms the whole
