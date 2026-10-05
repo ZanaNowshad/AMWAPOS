@@ -467,6 +467,15 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "supplier_invoices.set_status" => {
             out(core.supplier_invoice_set_status(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "status")?))
         }
+        // Customer statements and receivables
+        "customers.statement" => {
+            out(core.customer_statement(tk()?, &req::<String>(&args, "customer_id")?, opt(&args, "from")?, opt(&args, "to")?))
+        }
+        "customers.statement_pdf" => {
+            out(core.customer_statement_pdf(tk()?, &req::<String>(&args, "customer_id")?, opt(&args, "from")?, opt(&args, "to")?))
+        }
+        "customers.receivables" => out(core.receivables(tk()?, opt(&args, "as_of")?)),
+        "customers.terms_set" => out(core.customer_terms_set(tk()?, &req::<String>(&args, "customer_id")?, req(&args, "terms_days")?)),
         // Expenses and petty cash (back office)
         "expenses.list" => out(core.expenses_list(tk()?, opt(&args, "from")?, opt(&args, "to")?, opt(&args, "status")?)),
         "expenses.get" => out(core.expense_get(tk()?, &req::<String>(&args, "expense_id")?)),

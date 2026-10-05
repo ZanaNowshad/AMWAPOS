@@ -2506,3 +2506,50 @@ export interface PettyEntry {
   created_at: string;
   balance_minor: number;
 }
+
+export interface Ageing {
+  current_minor: number;
+  d1_30_minor: number;
+  d31_60_minor: number;
+  d61_90_minor: number;
+  d90_plus_minor: number;
+}
+
+export interface CustomerStatement {
+  customer_id: string;
+  customer_name: string;
+  phone: string | null;
+  from: string;
+  to: string;
+  opening_minor: number;
+  lines: {
+    date: string;
+    kind: string;
+    reference: string | null;
+    note: string | null;
+    method: string | null;
+    charge_minor: number;
+    credit_minor: number;
+    balance_minor: number;
+  }[];
+  closing_minor: number;
+  terms_days: number;
+  credit_limit_minor: number;
+  ageing: Ageing;
+}
+
+export interface Receivables {
+  as_of: string;
+  rows: {
+    customer_id: string;
+    name: string;
+    phone: string | null;
+    limit_minor: number;
+    balance_minor: number;
+    overdue_minor: number;
+    ageing: Ageing;
+  }[];
+  total: Ageing;
+  balance_minor: number;
+  overdue_minor: number;
+}

@@ -84,6 +84,19 @@ export const api = {
     void: (sale_id: string, reason: string, operation_id: string, approval_token: string | null) =>
       call<T.VoidResult>("sales.void", { void: { sale_id, reason, operation_id, approval_token } }),
   },
+  statements: {
+    get: (customer_id: string, from?: string | null, to?: string | null) =>
+      call<T.CustomerStatement>("customers.statement", { customer_id, from: from ?? null, to: to ?? null }),
+    pdf: (customer_id: string, from?: string | null, to?: string | null) =>
+      call<{ file_name: string; base64: string; text: string }>("customers.statement_pdf", {
+        customer_id,
+        from: from ?? null,
+        to: to ?? null,
+      }),
+    receivables: (as_of?: string | null) => call<T.Receivables>("customers.receivables", { as_of: as_of ?? null }),
+    setTerms: (customer_id: string, terms_days: number) =>
+      call<{ terms_days: number }>("customers.terms_set", { customer_id, terms_days }),
+  },
   expenses: {
     list: (from?: string | null, to?: string | null, status?: string | null) =>
       call<T.ExpenseList>("expenses.list", { from: from ?? null, to: to ?? null, status: status ?? null }),

@@ -362,3 +362,308 @@ impl AppCore {
         })
     }
 }
+
+// ------------------------------------------------------------ ageing and statements
+
+/// Balance by how late it is. The buckets always add up to the balance:
+/// payments, refunds and credits are applied to the oldest charges first
+/// (first in, first out), and what is left of each charge is aged from the
+/// date of that charge plus the account's terms. Unapplied credit is shown
+/// in `current` as a negative amount.
+#[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+pub struct Ageing {
+    pub current_minor: i64,
+    pub d1_30_minor: i64,
+    pub d31_60_minor: i64,
+    pub d61_90_minor: i64,
+    pub d90_plus_minor: i64,
+}
+
+impl Ageing {
+    pub fn total(&self) -> i64 {
+        self.current_minor + self.d1_30_minor + self.d31_60_minor + self.d61_90_minor + self.d90_plus_minor
+    }
+    pub fn overdue(&self) -> i64 {
+        self.d1_30_minor + self.d31_60_minor + self.d61_90_minor + self.d90_plus_minor
+    }
+}
+
+/// Pure ageing over (business date, signed amount) entries in date order.
+pub fn age(entries: &[(String, i64)], as_of: &str, terms_days: i64) -> Ageing {
+    use chrono::NaiveDate;
+    let mut charges: std::collections::VecDeque<(String, i64)> = Default::default();
+    let mut credit = 0i64;
+    for (date, amt) in entries {
+        if date.as_str() > as_of {
+            continue;
+        }
+        if *amt > 0 {
+            charges.push_back((date.clone(), *amt));
+        } else {
+            credit += -amt;
+        }
+        // Apply any credit to the oldest open charges.
+        while credit > 0 {
+            match charges.front_mut() {
+                Some(front) => {
+                    let take = credit.min(front.1);
+                    front.1 -= take;
+                    credit -= take;
+                    if front.1 == 0 {
+                        charges.pop_front();
+                    }
+                }
+                None => break,
+            }
+        }
+    }
+    let as_of_d = NaiveDate::parse_from_str(as_of, "%Y-%m-%d").ok();
+    let mut a = Ageing { current_minor: -credit, ..Default::default() };
+    for (date, left) in charges {
+        let late = match (as_of_d, NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()) {
+            (Some(now), Some(d)) => (now - d).num_days() - terms_days,
+            _ => 0,
+        };
+        match late {
+            i64::MIN..=0 => a.current_minor += left,
+            1..=30 => a.d1_30_minor += left,
+            31..=60 => a.d31_60_minor += left,
+            61..=90 => a.d61_90_minor += left,
+            _ => a.d90_plus_minor += left,
+        }
+    }
+    a
+}
+
+/// A customer's ledger as (business date, amount, kind, reference, note, method).
+type LedgerLine = (String, i64, String, Option<String>, Option<String>, Option<String>);
+
+fn ledger_lines(c: &Connection, customer_id: &str) -> AppResult<Vec<LedgerLine>> {
+    let day = time::day(c)?;
+    let mut st = c.prepare(
+        "SELECT l.created_at, l.amount_minor, l.kind,
+                COALESCE(s.receipt_number, r.refund_receipt_number), l.note, l.method
+         FROM customer_ledger l
+         LEFT JOIN sales s ON l.ref_type='sale' AND s.sale_id=l.ref_id
+         LEFT JOIN refunds r ON l.ref_type IN ('refund','void') AND r.refund_id=l.ref_id
+         WHERE l.customer_id=?1 ORDER BY l.created_at, l.rowid",
+    )?;
+    let rows = st
+        .query_map([customer_id], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?, r.get(3)?, r.get(4)?, r.get(5)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.into_iter()
+        .map(|(at, amt, kind, rf, note, method)| Ok((time::business_date(time::parse(&at)?, &day)?, amt, kind, rf, note, method)))
+        .collect()
+}
+
+pub fn terms_days(c: &Connection, customer_id: &str) -> AppResult<i64> {
+    Ok(c.query_row("SELECT terms_days FROM customer_accounts WHERE customer_id=?1", [customer_id], |r| r.get(0)).optional()?.unwrap_or(30))
+}
+
+pub fn customer_ageing(c: &Connection, customer_id: &str, as_of: &str) -> AppResult<Ageing> {
+    let lines = ledger_lines(c, customer_id)?;
+    let entries: Vec<(String, i64)> = lines.iter().map(|l| (l.0.clone(), l.1)).collect();
+    Ok(age(&entries, as_of, terms_days(c, customer_id)?))
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StatementLine {
+    pub date: String,
+    pub kind: String,
+    pub reference: Option<String>,
+    pub note: Option<String>,
+    pub method: Option<String>,
+    /// Charges (positive ledger amounts).
+    pub charge_minor: i64,
+    /// Payments, refunds and credits (negative ledger amounts, shown positive).
+    pub credit_minor: i64,
+    pub balance_minor: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Statement {
+    pub customer_id: String,
+    pub customer_name: String,
+    pub phone: Option<String>,
+    pub from: String,
+    pub to: String,
+    pub opening_minor: i64,
+    pub lines: Vec<StatementLine>,
+    pub closing_minor: i64,
+    pub terms_days: i64,
+    pub credit_limit_minor: i64,
+    pub ageing: Ageing,
+}
+
+pub fn statement(c: &Connection, customer_id: &str, from: &str, to: &str) -> AppResult<Statement> {
+    time::validate_date(from)?;
+    time::validate_date(to)?;
+    if to < from {
+        return Err(AppError::validation("The end date is before the start date."));
+    }
+    let (name, phone): (String, Option<String>) = c
+        .query_row("SELECT name, phone FROM customers WHERE customer_id=?1", [customer_id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()?
+        .ok_or_else(|| AppError::not_found("Customer"))?;
+    let lines = ledger_lines(c, customer_id)?;
+    let opening: i64 = lines.iter().filter(|l| l.0.as_str() < from).map(|l| l.1).sum();
+    let mut bal = opening;
+    let mut out = vec![];
+    for (date, amt, kind, rf, note, method) in lines.iter().filter(|l| l.0.as_str() >= from && l.0.as_str() <= to) {
+        bal += amt;
+        out.push(StatementLine {
+            date: date.clone(),
+            kind: kind.clone(),
+            reference: rf.clone(),
+            note: note.clone(),
+            method: method.clone(),
+            charge_minor: (*amt).max(0),
+            credit_minor: (-amt).max(0),
+            balance_minor: bal,
+        });
+    }
+    let entries: Vec<(String, i64)> = lines.iter().map(|l| (l.0.clone(), l.1)).collect();
+    let terms = terms_days(c, customer_id)?;
+    let acc = account(c, customer_id)?;
+    Ok(Statement {
+        customer_id: customer_id.into(),
+        customer_name: name,
+        phone,
+        from: from.into(),
+        to: to.into(),
+        opening_minor: opening,
+        lines: out,
+        closing_minor: bal,
+        terms_days: terms,
+        credit_limit_minor: acc.credit_limit_minor,
+        ageing: age(&entries, to, terms),
+    })
+}
+
+impl AppCore {
+    fn statement_range(&self, c: &Connection, from: Option<String>, to: Option<String>) -> AppResult<(String, String)> {
+        let today = time::business_date(time::now(), &time::day(c)?)?;
+        let to = to.filter(|x| !x.is_empty()).unwrap_or(today);
+        let from = from.filter(|x| !x.is_empty()).unwrap_or_else(|| format!("{}-01", &to[..7]));
+        Ok((from, to))
+    }
+
+    pub fn customer_statement(&self, token: &str, customer_id: &str, from: Option<String>, to: Option<String>) -> AppResult<Statement> {
+        let s = self.session(token)?;
+        s.require("customers.view")?;
+        let cid = validate::id(customer_id, "Customer")?;
+        self.db.read(|c| {
+            let (from, to) = self.statement_range(c, from, to)?;
+            statement(c, &cid, &from, &to)
+        })
+    }
+
+    /// The statement as a bilingual PDF (for printing or sending).
+    pub fn customer_statement_pdf(&self, token: &str, customer_id: &str, from: Option<String>, to: Option<String>) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("customers.view")?;
+        let cid = validate::id(customer_id, "Customer")?;
+        let (doc, st) = self.db.read(|c| {
+            let (from, to) = self.statement_range(c, from, to)?;
+            let st = statement(c, &cid, &from, &to)?;
+            Ok((crate::receipt::statement_doc(c, &s.branch_id, &st)?, st))
+        })?;
+        let bytes = crate::pdf::bitmap_pdf(&doc.to_bitmap(), &format!("Statement {}", st.customer_name));
+        let safe: String = st.customer_name.chars().map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' }).collect();
+        Ok(json!({ "file_name": format!("Statement-{safe}-{}.pdf", st.to), "base64": crate::ids::b64(&bytes), "text": doc.to_text() }))
+    }
+
+    /// Every customer who owes, by how late it is (receivables ageing).
+    pub fn receivables(&self, token: &str, as_of: Option<String>) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("customers.view")?;
+        self.db.read(|c| {
+            let today = time::business_date(time::now(), &time::day(c)?)?;
+            let as_of = as_of.filter(|x| !x.is_empty()).unwrap_or(today);
+            time::validate_date(&as_of)?;
+            let mut st = c.prepare(
+                "SELECT cu.customer_id, cu.name, cu.phone, COALESCE(a.credit_limit_minor,0)
+                 FROM customers cu LEFT JOIN customer_accounts a ON a.customer_id=cu.customer_id
+                 WHERE EXISTS (SELECT 1 FROM customer_ledger l WHERE l.customer_id=cu.customer_id) ORDER BY cu.name",
+            )?;
+            let custs = st
+                .query_map([], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, i64>(3)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut rows = vec![];
+            let mut total = Ageing::default();
+            for (id, name, phone, limit) in custs {
+                let a = customer_ageing(c, &id, &as_of)?;
+                if a.total() == 0 {
+                    continue;
+                }
+                total.current_minor += a.current_minor;
+                total.d1_30_minor += a.d1_30_minor;
+                total.d31_60_minor += a.d31_60_minor;
+                total.d61_90_minor += a.d61_90_minor;
+                total.d90_plus_minor += a.d90_plus_minor;
+                rows.push(json!({ "customer_id": id, "name": name, "phone": phone, "limit_minor": limit, "balance_minor": a.total(),
+                    "overdue_minor": a.overdue(), "ageing": a }));
+            }
+            rows.sort_by_key(|r| -r["overdue_minor"].as_i64().unwrap_or(0));
+            Ok(json!({ "as_of": as_of, "rows": rows, "total": total, "balance_minor": total.total(), "overdue_minor": total.overdue() }))
+        })
+    }
+
+    pub fn customer_terms_set(&self, token: &str, customer_id: &str, terms_days: i64) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("customers.credit")?;
+        let cid = validate::id(customer_id, "Customer")?;
+        if !(0..=365).contains(&terms_days) {
+            return Err(AppError::validation("Terms must be between 0 and 365 days."));
+        }
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let n = tx.execute("UPDATE customer_accounts SET terms_days=?2 WHERE customer_id=?1", params![cid, terms_days])?;
+            if n == 0 {
+                return Err(AppError::conflict("This customer does not have an account yet."));
+            }
+            audit::record(tx, &actor, "customer.terms_set", "customer", Some(&cid), None, Some(&json!({ "terms_days": terms_days })))?;
+            Ok(json!({ "terms_days": terms_days }))
+        })
+    }
+}
+
+#[cfg(test)]
+mod ageing_tests {
+    use super::*;
+    fn e(d: &str, a: i64) -> (String, i64) {
+        (d.to_string(), a)
+    }
+    #[test]
+    fn payments_clear_the_oldest_charges_first() {
+        // 100 on 1 Jul, 50 on 20 Aug, paid 120 on 1 Sep; as of 30 Sep, 30-day terms.
+        let a = age(&[e("2026-07-01", 100), e("2026-08-20", 50), e("2026-09-01", -120)], "2026-09-30", 30);
+        // 1 Jul is fully paid; 30 of 20 Aug remains: 41 days old, 11 days late.
+        assert_eq!(a, Ageing { d1_30_minor: 30, ..Default::default() });
+        assert_eq!(a.total(), 30);
+    }
+    #[test]
+    fn buckets_always_add_up_to_the_balance() {
+        let entries = vec![e("2026-01-10", 500), e("2026-04-01", 300), e("2026-06-15", -100), e("2026-08-01", 200), e("2026-09-20", 50)];
+        let a = age(&entries, "2026-09-30", 30);
+        assert_eq!(a.total(), 950);
+        assert_eq!(a.d90_plus_minor, 700, "Jan 400 left + Apr 300");
+        // 1 Aug is 60 days old: 30 days past 30-day terms.
+        assert_eq!(a.d1_30_minor, 200);
+        assert_eq!(a.current_minor, 50);
+    }
+    #[test]
+    fn an_overpayment_is_a_credit_not_a_late_amount() {
+        let a = age(&[e("2026-09-01", 100), e("2026-09-02", -150)], "2026-12-31", 30);
+        assert_eq!(a, Ageing { current_minor: -50, ..Default::default() });
+    }
+    #[test]
+    fn future_entries_do_not_count() {
+        let a = age(&[e("2026-09-01", 100), e("2026-10-15", -100)], "2026-09-30", 30);
+        assert_eq!(a.total(), 100);
+    }
+}

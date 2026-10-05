@@ -314,6 +314,21 @@ fn arabic(en: &str) -> Option<&'static str> {
         "Collected on delivery" => "محصّل عند التوصيل",
         "REFUND / CREDIT NOTE" => "إشعار دائن",
         "SALE VOIDED" => "إلغاء البيع",
+        "ACCOUNT STATEMENT" => "كشف حساب",
+        "Period" => "الفترة",
+        "Opening balance" => "الرصيد الافتتاحي",
+        "Closing balance" => "الرصيد الختامي",
+        "Sale" => "بيع",
+        "Payment" => "دفعة",
+        "Adjustment" => "تعديل",
+        "Owed by how late" => "المستحق حسب التأخير",
+        "Not due yet" => "غير مستحق بعد",
+        "1-30 days late" => "متأخر 1-30 يومًا",
+        "31-60 days late" => "متأخر 31-60 يومًا",
+        "61-90 days late" => "متأخر 61-90 يومًا",
+        "Over 90 days late" => "متأخر أكثر من 90 يومًا",
+        "Terms" => "مدة السداد",
+        "days" => "يومًا",
         "Refund" => "استرجاع",
         "Original receipt" => "الإيصال الأصلي",
         "Processed by" => "بواسطة",
@@ -704,4 +719,52 @@ pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> 
 /// The refund receipt (credit note), as it was issued.
 pub fn refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
     with_copy(c, "refund", refund_id, copy_label)
+}
+
+/// A customer account statement (always English and Arabic), printed or
+/// saved as PDF. Built only from the ledger; nothing here is stored.
+pub fn statement_doc(c: &Connection, branch_id: &str, st: &crate::credit::Statement) -> AppResult<ReceiptDoc> {
+    let cfg: ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
+    let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
+    let info = store_info(c, branch_id)?;
+    let m = |v: i64| format_decimal(v, info.digits);
+    let mut bi = cfg.clone();
+    bi.language = "bilingual".into();
+    let l = Labels::new(&bi);
+    let mut doc = ReceiptDoc::new(width_for(printer.paper_width_mm.min(cfg.paper_width_mm)));
+    header(&mut doc, &info, &cfg);
+    doc.rule();
+    doc.center(l.t("ACCOUNT STATEMENT"), true, false);
+    doc.left(format!("{}: {}", l.t("Customer"), st.customer_name));
+    if let Some(p) = &st.phone {
+        doc.left(p.clone());
+    }
+    doc.left(format!("{}: {} → {}", l.t("Period"), st.from, st.to));
+    doc.rule();
+    doc.pair(l.t("Opening balance"), m(st.opening_minor));
+    for line in &st.lines {
+        let what = match line.kind.as_str() {
+            "sale" => l.t("Sale"),
+            "payment" => l.t("Payment"),
+            "refund" => l.t("Refund"),
+            _ => l.t("Adjustment"),
+        };
+        doc.left(format!("{} {}{}", line.date, what, line.reference.as_ref().map(|r| format!(" {r}")).unwrap_or_default()));
+        let amt = if line.charge_minor > 0 { m(line.charge_minor) } else { format!("-{}", m(line.credit_minor)) };
+        doc.pair(format!("  {amt}"), m(line.balance_minor));
+    }
+    doc.rule();
+    doc.pair_b(l.t("Closing balance"), format!("{} {}", info.currency, m(st.closing_minor)), true);
+    doc.rule();
+    doc.center(l.t("Owed by how late"), true, false);
+    doc.pair(l.t("Not due yet"), m(st.ageing.current_minor));
+    doc.pair(l.t("1-30 days late"), m(st.ageing.d1_30_minor));
+    doc.pair(l.t("31-60 days late"), m(st.ageing.d31_60_minor));
+    doc.pair(l.t("61-90 days late"), m(st.ageing.d61_90_minor));
+    doc.pair(l.t("Over 90 days late"), m(st.ageing.d90_plus_minor));
+    doc.left(format!("{}: {} {}", l.t("Terms"), st.terms_days, l.t("days")));
+    for f in &cfg.footer_lines {
+        doc.center(f.clone(), false, false);
+    }
+    Ok(doc)
 }

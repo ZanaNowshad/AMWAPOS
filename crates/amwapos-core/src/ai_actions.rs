@@ -259,6 +259,8 @@ fn is_read_command(c: &str) -> bool {
         "dashboard.get",
         "sales.get",
         "sales.void_check",
+        "customers.statement",
+        "customers.receivables",
         "expenses.list",
         "expenses.get",
         "expenses.categories",

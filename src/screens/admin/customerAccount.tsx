@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Star, Trash2 } from "lucide-react";
 import { api } from "../../api";
-import type { CustomerAddress } from "../../api/types";
+import type { Ageing, CustomerAddress } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { Banner, Button, Checkbox, Chip, Field, Skeleton, TextInput } from "../../components/ui";
-import { Confirm, DataTable, useAction, useLoad } from "./common";
+import { Confirm, DataTable, DateRange, downloadBase64, useAction, useLoad } from "./common";
 import { formatAmount, formatMoney, parseMoney } from "../../lib/money";
-import { formatDateTime } from "../../lib/time";
+import { formatDate, formatDateTime, todayLocal } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
 import { methodLabel } from "../pos/labels";
 import { t } from "../../i18n";
@@ -225,6 +225,7 @@ export function AccountTab({ customerId }: { customerId: string }) {
           { key: "amt", label: t("Amount"), num: true, render: (r) => formatMoney(r.amount_minor) },
         ]}
       />
+      <StatementCard customerId={customerId} canCredit={canCredit} />
       {pay ? (
         <Confirm
           title={t("Take payment")}
@@ -318,6 +319,149 @@ export function AccountTab({ customerId }: { customerId: string }) {
           </div>
         </Confirm>
       ) : null}
+    </div>
+  );
+}
+
+const AGE_LABELS: [keyof Ageing, () => string][] = [
+  ["current_minor", () => t("Not due yet")],
+  ["d1_30_minor", () => t("1–30 days late")],
+  ["d31_60_minor", () => t("31–60 days late")],
+  ["d61_90_minor", () => t("61–90 days late")],
+  ["d90_plus_minor", () => t("Over 90 days late")],
+];
+
+/** Account statement for a period: opening balance, every entry with the
+ *  running balance, closing balance and how late what is owed is. */
+function StatementCard({ customerId, canCredit }: { customerId: string; canCredit: boolean }) {
+  const { has } = useSession();
+  const toast = useToast();
+  const [from, setFrom] = useState(todayLocal().slice(0, 8) + "01");
+  const [to, setTo] = useState(todayLocal());
+  const st = useLoad(() => api.statements.get(customerId, from, to), [customerId, from, to]);
+  const act = useAction();
+  const [terms, setTerms] = useState<string | null>(null);
+  const d = st.data;
+  const kindLabel = (k: string) => KIND[k]?.() ?? k;
+  return (
+    <div className="card card-pad col gap-16" data-testid="statement">
+      <div className="row wrap">
+        <h3 className="grow">{t("Statement")}</h3>
+        <Button
+          size="sm"
+          loading={act.busy}
+          onClick={async () => {
+            const f = await act.run(() => api.statements.pdf(customerId, from, to));
+            if (f) downloadBase64(f.file_name, f.base64, "application/pdf");
+          }}
+        >
+          {t("PDF")}
+        </Button>
+        {has("whatsapp.manage") && d?.phone ? (
+          <Button
+            size="sm"
+            loading={act.busy}
+            onClick={async () => {
+              const f = await act.run(() => api.statements.pdf(customerId, from, to));
+              if (!f || !d.phone) return;
+              const r = await act.run(() =>
+                api.whatsapp.queue({
+                  operation_id: newOperationId(),
+                  kind: "document",
+                  customer_id: customerId,
+                  to_phone: d.phone,
+                  document_b64: f.base64,
+                  document_name: f.file_name,
+                  text: t("Your account statement, {0} to {1}.", formatDate(from), formatDate(to)),
+                }),
+              );
+              if (r) toast("success", t("Statement queued for WhatsApp"));
+            }}
+          >
+            {t("Send on WhatsApp")}
+          </Button>
+        ) : null}
+      </div>
+      <DateRange from={from} to={to} onChange={(a, b) => (setFrom(a), setTo(b))} />
+      {st.error ? <Banner tone="danger">{st.error}</Banner> : null}
+      {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      {!d ? (
+        <Skeleton />
+      ) : (
+        <>
+          <div className="ap-ageing" aria-label={t("Owed by how late it is")}>
+            {AGE_LABELS.map(([k, label]) => (
+              <div key={k} className={`ap-age ${k !== "current_minor" && d.ageing[k] ? "late" : ""}`}>
+                <span className="tiny">{label()}</span>
+                <strong className="money">{formatMoney(d.ageing[k])}</strong>
+              </div>
+            ))}
+          </div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>{t("Date")}</th>
+                <th>{t("Type")}</th>
+                <th>{t("Reference")}</th>
+                <th className="num">{t("Charged")}</th>
+                <th className="num">{t("Paid or credited")}</th>
+                <th className="num">{t("Balance")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{formatDate(d.from)}</td>
+                <td colSpan={4}>{t("Opening balance")}</td>
+                <td className="num">{formatMoney(d.opening_minor)}</td>
+              </tr>
+              {d.lines.map((l, i) => (
+                <tr key={i}>
+                  <td>{formatDate(l.date)}</td>
+                  <td>{kindLabel(l.kind)}</td>
+                  <td className="mono">{l.reference ?? (l.method ? methodLabel(l.method) : "")}</td>
+                  <td className="num">{l.charge_minor ? formatMoney(l.charge_minor) : ""}</td>
+                  <td className="num">{l.credit_minor ? formatMoney(l.credit_minor) : ""}</td>
+                  <td className="num">{formatMoney(l.balance_minor)}</td>
+                </tr>
+              ))}
+              <tr>
+                <td>{formatDate(d.to)}</td>
+                <td colSpan={4}>
+                  <strong>{t("Closing balance")}</strong>
+                </td>
+                <td className="num">
+                  <strong>{formatMoney(d.closing_minor)}</strong>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          {canCredit ? (
+            <div className="row wrap" style={{ alignItems: "flex-end" }}>
+              <TextInput
+                label={t("Days to pay")}
+                hint={t("A charge counts as late after this many days.")}
+                inputMode="numeric"
+                value={terms ?? String(d.terms_days)}
+                onChange={(e) => setTerms(e.target.value.replace(/\D/g, "").slice(0, 3))}
+              />
+              <Button
+                disabled={terms === null || terms === String(d.terms_days)}
+                loading={act.busy}
+                onClick={async () => {
+                  const r = await act.run(() => api.statements.setTerms(customerId, Number(terms)));
+                  if (r) {
+                    setTerms(null);
+                    void st.reload();
+                    toast("success", t("Saved"));
+                  }
+                }}
+              >
+                {t("Save")}
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

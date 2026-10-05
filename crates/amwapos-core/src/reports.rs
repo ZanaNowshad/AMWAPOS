@@ -85,6 +85,7 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
     ("margin", "Margin & profit", "Financial", "Revenue, cost and gross profit per product"),
     ("operating_profit", "Operating profit", "Financial", "Sales, cost of goods and expenses: what the business really made"),
     ("expenses", "Expenses", "Financial", "Approved and paid expenses by category"),
+    ("receivables", "Customer balances", "Financial", "What customers owe, by how late it is"),
     ("refunds", "Refunds", "Sales", "Refunds with reasons and approvals"),
     ("cash", "Cash & shifts", "Financial", "Shift reconciliation and cash variances"),
     ("inventory", "Stock valuation", "Inventory", "On-hand quantity and value at average cost"),
@@ -101,6 +102,7 @@ fn permission_for(key: &str) -> &'static str {
         "margin" | "cash" | "payments" => "reports.financial",
         "operating_profit" => "reports.profit",
         "expenses" => "expenses.view",
+        "receivables" => "reports.financial",
         "tax" => "reports.tax",
         "audit" => "audit.view",
         "inventory" | "dead_stock" | "stock_movements" => "inventory.view",
@@ -209,6 +211,7 @@ impl AppCore {
             "refunds" => self.rep_refunds(c, p),
             "operating_profit" => self.rep_operating_profit(c, p),
             "expenses" => self.rep_expenses(c, p),
+            "receivables" => self.rep_receivables(c, p),
             "cash" => self.rep_cash(c, p),
             "inventory" => self.rep_inventory(c, s, p),
             "dead_stock" => self.rep_dead_stock(c, s, p),
@@ -606,6 +609,57 @@ impl AppCore {
                 "Operating expenses are approved and paid expenses without VAT, by the date they belong to.".into(),
                 "Tax on profit, depreciation and interest are not included, so this is operating profit, not net profit.".into(),
             ],
+        })
+    }
+
+    /// Customer balances aged as of the end of the range (FIFO, see credit.rs).
+    fn rep_receivables(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let mut st = c.prepare(
+            "SELECT cu.customer_id, cu.name, cu.phone FROM customers cu
+             WHERE EXISTS (SELECT 1 FROM customer_ledger l WHERE l.customer_id=cu.customer_id) ORDER BY cu.name",
+        )?;
+        let custs = st
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut rows = vec![];
+        let mut t = crate::credit::Ageing::default();
+        for (id, name, phone) in custs {
+            let a = crate::credit::customer_ageing(c, &id, &r.to)?;
+            if a.total() == 0 {
+                continue;
+            }
+            t.current_minor += a.current_minor;
+            t.d1_30_minor += a.d1_30_minor;
+            t.d31_60_minor += a.d31_60_minor;
+            t.d61_90_minor += a.d61_90_minor;
+            t.d90_plus_minor += a.d90_plus_minor;
+            rows.push(
+                json!({ "customer": name, "phone": phone, "current": a.current_minor, "d1_30": a.d1_30_minor, "d31_60": a.d31_60_minor,
+                "d61_90": a.d61_90_minor, "d90": a.d90_plus_minor, "total": a.total() }),
+            );
+        }
+        Ok(Report {
+            key: "receivables".into(),
+            title: "Customer balances".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![kpi("Owed by customers", t.total(), "money", None), kpi("Overdue", t.overdue(), "money", None), kpi("Customers", rows.len() as i64, "int", None)],
+            columns: vec![
+                col("customer", "Customer", "text"),
+                col("phone", "Phone", "text"),
+                col("current", "Not due yet", "money"),
+                col("d1_30", "1–30 days late", "money"),
+                col("d31_60", "31–60 days late", "money"),
+                col("d61_90", "61–90 days late", "money"),
+                col("d90", "Over 90 days late", "money"),
+                col("total", "Balance", "money"),
+            ],
+            totals: Some(json!({ "customer": "Total", "current": t.current_minor, "d1_30": t.d1_30_minor, "d31_60": t.d31_60_minor,
+                "d61_90": t.d61_90_minor, "d90": t.d90_plus_minor, "total": t.total() })),
+            series: None,
+            rows,
+            notes: vec!["Balances are aged as of the end date. Payments and credits clear the oldest charges first; lateness counts from each charge plus the customer's terms.".into()],
         })
     }
 

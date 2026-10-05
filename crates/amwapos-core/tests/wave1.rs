@@ -524,3 +524,68 @@ fn recurring_expenses_make_drafts_never_payments() {
     // Drafts are not expenses yet.
     assert_eq!(l["spent_minor"], 0);
 }
+
+#[test]
+fn statements_and_ageing_follow_the_ledger() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 10_000);
+    e.product("Ghee", "7401", 5_000, 3_000, 50_000);
+    e.core.settings_save(t, "features", json!({ "customer_credit": true })).unwrap();
+    let mut pay = e.core.settings_get(t, "payments").unwrap();
+    for x in pay["tenders"].as_array_mut().unwrap() {
+        if x["method"] == "account" {
+            x["enabled"] = json!(true);
+        }
+    }
+    e.core.settings_save(t, "payments", pay).unwrap();
+    let cu = e.core.customer_save(t, None, serde_json::from_value(json!({ "name": "Maryam", "phone": "36000002" })).unwrap()).unwrap();
+    let cid = cu.customer_id.clone();
+    e.core.customer_account_set(t, &cid, true, 100_000).unwrap();
+    for _ in 0..2 {
+        e.core.pos_scan(t, "7401", Some(1000)).unwrap();
+        let cart = e.core.pos_set_customer(t, Some(cid.clone())).unwrap();
+        let total = cart.totals.total_minor;
+        e.core
+            .pos_finalize(
+                t,
+                FinalizeRequest {
+                    cart_id: cart.cart_id.unwrap(),
+                    operation_id: op(),
+                    tenders: vec![TenderInput { method: "account".into(), amount_minor: total, reference: None }],
+                    approval_token: None,
+                    expected_total_minor: Some(total),
+                    fulfilment: None,
+                },
+            )
+            .unwrap();
+    }
+    e.core
+        .customer_account_payment(
+            t,
+            serde_json::from_value(json!({ "customer_id": cid, "amount_minor": 3_000, "method": "cash", "operation_id": op() })).unwrap(),
+        )
+        .unwrap();
+    let st = e.core.customer_statement(t, &cid, None, None).unwrap();
+    assert_eq!(st.opening_minor, 0);
+    assert_eq!(st.lines.len(), 3);
+    assert_eq!(st.closing_minor, 7_000);
+    assert_eq!(st.lines.last().unwrap().balance_minor, 7_000);
+    assert!(st.lines[0].reference.is_some(), "a sale line names its receipt");
+    // Today's charges are within terms: nothing is late; buckets = balance.
+    assert_eq!(st.ageing.total(), st.closing_minor);
+    assert_eq!(st.ageing.overdue(), 0);
+    // The same balance, later: with terms of 0 days and the end date 40 days on,
+    // what is left of the first charge is 31–60 days late.
+    e.core.customer_terms_set(t, &cid, 0).unwrap();
+    let later = (chrono::NaiveDate::parse_from_str(&st.to, "%Y-%m-%d").unwrap() + chrono::Duration::days(40)).to_string();
+    let a = e.core.db.read(|c| amwapos_core::credit::customer_ageing(c, &cid, &later)).unwrap();
+    assert_eq!(a.total(), 7_000);
+    assert_eq!(a.d31_60_minor, 7_000);
+    // Receivables list and the printable statement.
+    let r = e.core.receivables(t, None).unwrap();
+    assert_eq!(r["balance_minor"], 7_000);
+    let pdf = e.core.customer_statement_pdf(t, &cid, None, None).unwrap();
+    assert!(pdf["base64"].as_str().unwrap().len() > 100);
+    assert!(pdf["text"].as_str().unwrap().contains("كشف حساب"));
+}

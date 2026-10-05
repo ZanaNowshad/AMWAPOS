@@ -230,3 +230,7 @@ CREATE TABLE petty_cash_entries (
 CREATE INDEX ix_petty_entries ON petty_cash_entries(fund_id, created_at);
 CREATE TRIGGER trg_petty_no_update BEFORE UPDATE ON petty_cash_entries BEGIN SELECT RAISE(ABORT, 'petty cash entries are immutable'); END;
 CREATE TRIGGER trg_petty_no_delete BEFORE DELETE ON petty_cash_entries BEGIN SELECT RAISE(ABORT, 'petty cash entries are immutable'); END;
+
+-- Customer credit terms: days after a charge before it counts as late
+-- (ageing). Existing accounts get the usual 30 days.
+ALTER TABLE customer_accounts ADD COLUMN terms_days INTEGER NOT NULL DEFAULT 30;
