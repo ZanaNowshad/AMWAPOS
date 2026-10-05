@@ -22,9 +22,10 @@ import {
   TextInput,
 } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Pager, useAction, useLoad } from "./common";
-import { t } from "../../i18n";
+import { t, tb } from "../../i18n";
 import { ProductImage } from "../../components/ProductImage";
 import { codeLabel } from "../../i18n/codes";
+import { dateWarnings } from "./stockTruth";
 
 export function AdjustDialog({
   product,
@@ -752,6 +753,8 @@ interface RecvLine {
   product: PosSearchRow;
   qty: string;
   cost: string;
+  lot: string;
+  expires: string;
 }
 
 export function ReceivingPage() {
@@ -766,6 +769,7 @@ export function ReceivingPage() {
   const [scan, setScan] = useState("");
   const [results, setResults] = useState<PosSearchRow[]>([]);
   const [opId, setOpId] = useState(newOperationId);
+  const [dateWarns, setDateWarns] = useState<string[] | null>(null);
   const act = useAction();
   const openPos = (pos.data ?? []).filter((p) => p.status === "ordered" || p.status === "partially_received");
   useEffect(() => {
@@ -784,7 +788,7 @@ export function ReceivingPage() {
     setLines((ls) => {
       const i = ls.findIndex((l) => l.product.product_id === p.product_id);
       if (i >= 0) return ls.map((l, j) => (j === i ? { ...l, qty: formatQty((parseQty(l.qty) ?? 0) + 1000) } : l));
-      return [...ls, { product: p, qty: "1", cost: "" }];
+      return [...ls, { product: p, qty: "1", cost: "", lot: "", expires: "" }];
     });
     setScan("");
     setResults([]);
@@ -882,6 +886,7 @@ export function ReceivingPage() {
                 <th className="num">{t("Quantity")}</th>
                 <th className="num">{t("Unit cost")}</th>
                 <th className="num">{t("Line cost")}</th>
+                <th>{t("Batch and expiry")}</th>
                 <th />
               </tr>
             </thead>
@@ -912,6 +917,29 @@ export function ReceivingPage() {
                       />
                     </td>
                     <td className="num">{q !== null && c !== null ? formatMoney(mulDivRound(c, q, 1000)) : "—"}</td>
+                    <td>
+                      <div className="row gap-4">
+                        <input
+                          className="input"
+                          style={{ width: 100 }}
+                          dir="auto"
+                          placeholder={t("Batch")}
+                          aria-label={t("Batch code")}
+                          value={l.lot}
+                          onChange={(e) => setLines(lines.map((x, j) => (j === i ? { ...x, lot: e.target.value } : x)))}
+                        />
+                        <input
+                          type="date"
+                          className="input"
+                          style={{ width: 150 }}
+                          aria-label={t("Expiry date")}
+                          value={l.expires}
+                          onChange={(e) =>
+                            setLines(lines.map((x, j) => (j === i ? { ...x, expires: e.target.value } : x)))
+                          }
+                        />
+                      </div>
+                    </td>
                     <td className="num">
                       <Button
                         size="sm"
@@ -929,12 +957,22 @@ export function ReceivingPage() {
               <tr>
                 <td colSpan={3}>{t("Total cost")}</td>
                 <td className="num">{formatMoney(total)}</td>
-                <td />
+                <td colSpan={2} />
               </tr>
             </tfoot>
           </table>
         ) : null}
         {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+        {dateWarns ? (
+          <Banner tone="warning" title={t("Check the dates")}>
+            {dateWarns.map((w) => (
+              <div key={w} dir="auto">
+                {tb(w)}
+              </div>
+            ))}
+            <div className="tiny">{t("Press Receive goods again to keep these dates.")}</div>
+          </Banner>
+        ) : null}
         <div className="row">
           <Button
             variant="primary"
@@ -942,22 +980,41 @@ export function ReceivingPage() {
             disabled={!valid || !has("inventory.receive")}
             loading={act.busy}
             onClick={async () => {
-              const r = await act.run(() =>
-                api.inventory.receive({
-                  supplier_id: supplier || null,
-                  reference: reference || null,
-                  operation_id: opId,
-                  lines: lines.map((l) => ({
-                    product_id: l.product.product_id,
-                    qty_milli: parseQty(l.qty)!,
-                    unit_cost_minor: parseMoney(l.cost)!,
-                  })),
-                }),
-              );
+              const confirm = !!dateWarns;
+              const r = await act.run(async () => {
+                try {
+                  return await api.inventory.receive({
+                    supplier_id: supplier || null,
+                    reference: reference || null,
+                    operation_id: opId,
+                    lines: lines.map((l) => ({
+                      product_id: l.product.product_id,
+                      qty_milli: parseQty(l.qty)!,
+                      unit_cost_minor: parseMoney(l.cost)!,
+                      lot:
+                        l.lot.trim() || l.expires
+                          ? {
+                              supplier_lot_code: l.lot.trim() || null,
+                              expires_on: l.expires || null,
+                              confirm_warnings: confirm,
+                            }
+                          : null,
+                    })),
+                  });
+                } catch (e) {
+                  const w = dateWarnings(e);
+                  if (w) {
+                    setDateWarns(w);
+                    return undefined;
+                  }
+                  throw e;
+                }
+              });
               if (r) {
                 toast("success", t("Goods received"), `${lines.length} product(s) added to stock`);
                 setLines([]);
                 setReference("");
+                setDateWarns(null);
                 setOpId(newOperationId());
               }
             }}

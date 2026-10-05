@@ -46,6 +46,7 @@ import { codeLabel } from "../../i18n/codes";
 import { NewProductImageField, ProductImageField } from "./productImageField";
 import { WaCatalogProductLine } from "./waCatalog";
 import { ProductImage } from "../../components/ProductImage";
+import { ProductBatchesCard } from "./stockTruth";
 
 export function ProductsPage() {
   const { has } = useSession();
@@ -701,6 +702,11 @@ export function ProductEditorPage() {
       {tab === "barcodes" && detail ? <BarcodesTab detail={detail} onChanged={setDetail} canEdit={canEdit} /> : null}
       {tab === "pricing" && detail ? <PricingTab detail={detail} onChanged={loadDetail} /> : null}
       {tab === "inventory" && detail ? <InventoryTab detail={detail} onChanged={loadDetail} /> : null}
+      {tab === "inventory" && detail ? (
+        <div style={{ marginTop: 16 }}>
+          <ProductBatchesCard productId={detail.product_id} />
+        </div>
+      ) : null}
       {tab === "history" && detail ? <HistoryTab productId={detail.product_id} /> : null}
       {leave ? (
         <Confirm

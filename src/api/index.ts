@@ -106,6 +106,62 @@ export const api = {
     pdf: (close_id: string) => call<{ file_name: string; base64: string; text: string }>("day.close_pdf", { close_id }),
     opening: () => call<T.Opening>("day.opening", {}),
   },
+  lots: {
+    product: (product_id: string) => call<T.ProductLots>("lots.product", { product_id }),
+    get: (lot_id: string) => call<T.LotDetail>("lots.get", { lot_id }),
+    countIn: (a: { product_id: string; qty_milli: number; lot: T.LotInput; operation_id: string }) =>
+      call<{ lot_id: string; lot_number: string }>("lots.count_in", a),
+    correct: (a: {
+      lot_id: string;
+      supplier_lot_code?: string | null;
+      expires_on?: string | null;
+      expiry_kind?: string | null;
+      reason: string;
+      operation_id: string;
+      confirm_warnings?: boolean;
+    }) => call<T.LotDetail>("lots.correct", a),
+    productSettings: (product_id: string, track_lots: boolean, expiry_kind: string | null) =>
+      call<{ track_lots: boolean; expiry_kind: string | null }>("lots.product_settings", {
+        product_id,
+        track_lots,
+        expiry_kind,
+      }),
+    draftSetLot: (a: {
+      draft_id: string;
+      line_no: number;
+      lot_code?: string | null;
+      expires_on?: string | null;
+      confirm_document_date?: boolean;
+      confirm_warnings?: boolean;
+    }) => call<Record<string, unknown>>("receiving.draft_set_lot", a),
+  },
+  expiry: {
+    overview: (f: { category_id?: string | null; supplier_id?: string | null; product_id?: string | null } = {}) =>
+      call<T.ExpiryOverview>("expiry.overview", f),
+  },
+  stockCover: (f: {
+    window_days?: number;
+    category_id?: string | null;
+    search?: string | null;
+    product_id?: string | null;
+  }) => call<T.StockCover>("stock.cover", f),
+  waste: {
+    record: (a: {
+      product_id: string;
+      lot_id?: string | null;
+      qty_milli: number;
+      reason: string;
+      note?: string | null;
+      operation_id: string;
+      approval_token?: string | null;
+    }) => call<T.WasteRow>("waste.record", a),
+    reverse: (waste_id: string, reason: string, operation_id: string) =>
+      call<T.WasteRow>("waste.reverse", { waste_id, reason, operation_id }),
+    list: (from?: string | null, to?: string | null, reason?: string | null) =>
+      call<T.WasteList>("waste.list", { from: from ?? null, to: to ?? null, reason: reason ?? null }),
+    summary: (from?: string | null, to?: string | null) =>
+      call<T.WasteSummary>("waste.summary", { from: from ?? null, to: to ?? null }),
+  },
   registers: {
     list: () => call<T.Register[]>("registers.list", {}),
     devices: () => call<{ device_id: string; name: string; device_code: string }[]>("registers.devices", {}),

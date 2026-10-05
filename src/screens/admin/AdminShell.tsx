@@ -51,12 +51,16 @@ import {
   ChevronDown,
   ChevronUp,
   Calculator,
+  CalendarClock,
+  Trash2,
+  Hourglass,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
 import { TradingDayPage } from "./tradingDay";
 import { RegistersPage } from "./registers";
 import { CasesPage } from "./cases";
+import { ExpiryPage, StockCoverPage, WastePage } from "./stockTruth";
 import { useSession } from "../../state/session";
 import { initials } from "../login/Login";
 import { Logo } from "../../components/Logo";
@@ -178,6 +182,15 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { path: "inventory", label: t("Inventory"), icon: Warehouse, perm: "inventory.view", element: InventoryPage },
       { path: "movements", label: t("Stock movements"), icon: History, perm: "inventory.view", element: MovementsPage },
+      { path: "expiry", label: t("Expiry"), icon: CalendarClock, perm: "inventory.view", element: ExpiryPage },
+      { path: "waste", label: t("Waste"), icon: Trash2, perm: "inventory.view", element: WastePage },
+      {
+        path: "stock-cover",
+        label: t("Days of stock left"),
+        icon: Hourglass,
+        perm: "inventory.view",
+        element: StockCoverPage,
+      },
       {
         path: "stocktake",
         label: t("Stocktake"),

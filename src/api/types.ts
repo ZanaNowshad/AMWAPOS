@@ -2054,6 +2054,11 @@ export interface ReceivingDraftLine {
   units_per_case: number | null;
   po_item_id: string | null;
   scan_line_no: number | null;
+  lot_code?: string | null;
+  expires_on?: string | null;
+  expiry_source?: "person" | "document" | null;
+  expiry_confirmed?: boolean;
+  track_lots?: boolean;
 }
 
 export interface ReceivingDraft {
@@ -2804,4 +2809,186 @@ export interface CaseEvent {
 
 export interface CaseDetail extends CaseRow {
   events: CaseEvent[];
+}
+
+// ---- Batches, expiry, waste, days of stock left ---------------------------
+
+export interface LotInput {
+  supplier_lot_code?: string | null;
+  expires_on?: string | null;
+  manufactured_on?: string | null;
+  expiry_kind?: "use_by" | "best_before" | null;
+  confirm_warnings?: boolean;
+}
+
+export type ExpiryStatus =
+  "expired" | "past_best_before" | "urgent" | "soon" | "later" | "healthy" | "no_date" | "depleted";
+
+export interface LotState {
+  lot_id: string;
+  lot_number: string;
+  product_id: string;
+  supplier_id: string | null;
+  supplier_lot_code: string | null;
+  received_at: string;
+  manufactured_on: string | null;
+  expires_on: string | null;
+  expiry_kind: "use_by" | "best_before" | null;
+  expiry_source: "person" | "document";
+  qty_received_milli: number;
+  unit_cost_minor: number | null;
+  provenance: "receiving" | "count";
+  corrected: boolean;
+  in_milli: number;
+  explicit_out_milli: number;
+  estimated_out_milli: number;
+  balance_milli: number;
+  status?: ExpiryStatus;
+  days_left?: number | null;
+}
+
+export interface ProductLots {
+  product_id: string;
+  stock_milli: number;
+  unlotted_milli: number;
+  lots: LotState[];
+  track_lots: boolean;
+  expiry_kind: "use_by" | "best_before" | null;
+}
+
+export interface LotDetail extends LotState {
+  product_name: string;
+  supplier_name: string | null;
+  movements: {
+    at: string;
+    kind: string;
+    qty_milli: number;
+    source_type: string;
+    reason: string | null;
+    user_name: string | null;
+  }[];
+  corrections: {
+    at: string;
+    supplier_lot_code: string | null;
+    expires_on: string | null;
+    expiry_kind: string | null;
+    reason: string;
+    user_name: string | null;
+  }[];
+}
+
+export interface ExpiryRow {
+  lot_id: string;
+  lot_number: string;
+  supplier_lot_code: string | null;
+  product_id: string;
+  product_name: string;
+  product_name_ar: string | null;
+  category: string | null;
+  supplier_name: string | null;
+  location_name: string | null;
+  expires_on: string | null;
+  expiry_kind: "use_by" | "best_before" | null;
+  days_left: number | null;
+  status: ExpiryStatus;
+  balance_milli: number;
+  estimated_out_milli: number;
+  unit_cost_minor: number | null;
+  value_minor: number | null;
+  per_day_milli: number;
+  demand_state: "ok" | "no_stock" | "no_demand" | "not_enough_history";
+  likely_left_milli: number;
+  at_risk_minor: number | null;
+  price_minor: number | null;
+  markdowns: { percent_off: number; price_minor: number; margin_minor: number; below_cost: boolean }[];
+}
+
+export interface ExpiryOverview {
+  today: string;
+  rows: ExpiryRow[];
+  buckets: { days: number; qty_milli: number; value_minor: number | null }[];
+  expired_on_hand_milli: number;
+  expired_on_hand_minor: number | null;
+  at_risk_minor: number | null;
+  expired_waste_this_month_minor: number | null;
+  thresholds: { urgent: number; soon: number; later: number };
+}
+
+export interface CoverRow {
+  product_id: string;
+  name: string;
+  name_ar: string | null;
+  category: string | null;
+  on_hand_milli: number;
+  held_milli: number;
+  available_milli: number;
+  net_sold_milli: number;
+  window_days: number;
+  history_days: number;
+  per_day_milli: number;
+  state: "ok" | "no_stock" | "no_demand" | "not_enough_history";
+  cover_tenths: number | null;
+  stockout_on: string | null;
+  inbound_milli: number;
+  cover_with_inbound_tenths: number | null;
+}
+
+export interface StockCover {
+  today: string;
+  window_days: number;
+  rows: CoverRow[];
+}
+
+export interface WasteRow {
+  waste_id: string;
+  waste_number: string;
+  product_id: string;
+  product_name: string;
+  lot_id: string | null;
+  lot_number: string | null;
+  qty_milli: number;
+  unit_cost_minor: number | null;
+  cost_minor: number | null;
+  reason: string;
+  business_date: string;
+  note: string | null;
+  user_name: string | null;
+  approved_by_name: string | null;
+  status: "recorded" | "reversed";
+  reversed_by_name: string | null;
+  reversed_at: string | null;
+  reversal_reason: string | null;
+  created_at: string;
+}
+
+export interface WasteList {
+  from: string;
+  to: string;
+  rows: WasteRow[];
+  count: number;
+  cost_minor: number | null;
+}
+
+export interface WasteGroup {
+  key: string | null;
+  count: number;
+  qty_milli: number;
+  cost_minor: number;
+}
+
+export interface WasteSummary {
+  from: string;
+  to: string;
+  cost_minor: number;
+  qty_milli: number;
+  by_reason: WasteGroup[];
+  by_product: WasteGroup[];
+  by_category: WasteGroup[];
+  by_supplier: WasteGroup[];
+  by_day: WasteGroup[];
+  net_sales_ex_vat_minor: number;
+  purchased_cost_minor: number;
+  pct_of_sales_bp: number | null;
+  pct_of_purchases_bp: number | null;
+  definitions: string[];
 }

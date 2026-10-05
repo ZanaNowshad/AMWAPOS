@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, FileCheck2, PackagePlus, Sparkles } from "lucide-react";
 import { api } from "../../api";
-import type { Band, DocEvidence, DocField, DocLine, ReceivingDraft } from "../../api/types";
+import type { Band, DocEvidence, DocField, DocLine, ReceivingDraft, ReceivingDraftLine } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
 import { FeatureGate, useFeature } from "../../components/FeatureGate";
@@ -15,6 +15,7 @@ import { Banner, Button, Checkbox, Chip, Field, PageHeader, Skeleton, TextInput 
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
 import { formatAmount, formatMoney, formatQty, parseMoney, parseQty } from "../../lib/money";
 import { formatDateTime } from "../../lib/time";
+import { dateWarnings } from "./stockTruth";
 import { newOperationId } from "../../lib/ids";
 import { t, tb } from "../../i18n";
 import { InlineNumber, ProductPick } from "./automation";
@@ -913,6 +914,7 @@ function ReceivingDraftDrawer({ id, onClose, onChanged }: { id: string; onClose:
                   <th>{t("Product")}</th>
                   <th className="num">{t("Qty")}</th>
                   <th className="num">{t("Unit cost")}</th>
+                  <th>{t("Batch and expiry")}</th>
                   <th />
                 </tr>
               </thead>
@@ -951,6 +953,14 @@ function ReceivingDraftDrawer({ id, onClose, onChanged }: { id: string; onClose:
                           );
                           if (r) setData(r);
                         }}
+                      />
+                    </td>
+                    <td>
+                      <DraftLotCell
+                        draftId={id}
+                        line={l}
+                        editable={editable}
+                        onChanged={(r) => setData(r as unknown as ReceivingDraft)}
                       />
                     </td>
                     <td>
@@ -1040,5 +1050,101 @@ function ReceivingDraftDrawer({ id, onClose, onChanged }: { id: string; onClose:
         </Confirm>
       ) : null}
     </Drawer>
+  );
+}
+
+/** Batch and expiry on a draft line. A date read from the document is only a
+ * suggestion: receiving waits until a person confirms or changes it. */
+function DraftLotCell({
+  draftId,
+  line,
+  editable,
+  onChanged,
+}: {
+  draftId: string;
+  line: ReceivingDraftLine;
+  editable: boolean;
+  onChanged: (r: unknown) => void;
+}) {
+  const [code, setCode] = useState(line.lot_code ?? "");
+  const [exp, setExp] = useState(line.expires_on ?? "");
+  const [warnings, setWarnings] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const suggested = line.expiry_source === "document" && !line.expiry_confirmed && !!line.expires_on;
+  const save = async (confirmDoc: boolean, confirmWarnings: boolean) => {
+    setError(null);
+    try {
+      const r = await api.lots.draftSetLot({
+        draft_id: draftId,
+        line_no: line.line_no,
+        lot_code: code || null,
+        expires_on: exp || null,
+        confirm_document_date: confirmDoc,
+        confirm_warnings: confirmWarnings,
+      });
+      setWarnings(null);
+      onChanged(r);
+    } catch (e) {
+      const w = dateWarnings(e);
+      if (w) setWarnings(w);
+      else setError(e instanceof Error ? tb(e.message) : String(e));
+    }
+  };
+  if (!editable) {
+    return (
+      <span className="tiny" dir="auto">
+        {[line.lot_code, line.expires_on].filter(Boolean).join(" · ") || "—"}
+      </span>
+    );
+  }
+  return (
+    <div className="col gap-4" data-testid={`draft-lot-${line.line_no}`}>
+      <div className="row gap-4">
+        <input
+          className="input"
+          style={{ width: 110 }}
+          dir="auto"
+          placeholder={t("Batch")}
+          aria-label={t("Batch code")}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onBlur={() => code !== (line.lot_code ?? "") && void save(false, false)}
+        />
+        <input
+          type="date"
+          className="input"
+          style={{ width: 150 }}
+          aria-label={t("Expiry date")}
+          value={exp}
+          onChange={(e) => setExp(e.target.value)}
+          onBlur={() => exp !== (line.expires_on ?? "") && void save(false, false)}
+        />
+      </div>
+      {suggested ? (
+        <div className="row gap-4">
+          <Chip tone="warning">{t("Read from the document")}</Chip>
+          <Button size="sm" onClick={() => void save(true, false)}>
+            {t("Confirm date")}
+          </Button>
+        </div>
+      ) : null}
+      {warnings ? (
+        <div className="col gap-4">
+          {warnings.map((w) => (
+            <div key={w} className="tiny" dir="auto">
+              {tb(w)}
+            </div>
+          ))}
+          <Button size="sm" onClick={() => void save(suggested, true)}>
+            {t("Keep these dates")}
+          </Button>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="tiny" style={{ color: "var(--danger)" }}>
+          {error}
+        </div>
+      ) : null}
+    </div>
   );
 }

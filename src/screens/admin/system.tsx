@@ -1527,6 +1527,12 @@ const LABELS: Record<string, Record<string, () => string>> = {
   },
   inventory: {
     costing_method: () => t("How cost is kept"),
+    expiry_later_days: () => t("Show batches expiring within (days)"),
+    expiry_soon_days: () => t("Expiring soon within (days)"),
+    expiry_urgent_days: () => t("Urgent within (days)"),
+    expiry_max_years: () => t("Ask to confirm expiry dates further than (years)"),
+    waste_approval_cost_minor: () => t("Waste that needs a manager (value at cost)"),
+    waste_shrinkage_needs_approval: () => t("Shrinkage (unexplained difference) needs a manager"),
     require_adjust_reason: () => t("Ask for a reason on stock adjustments"),
     stocktake_blind_default: () => t("Hide expected quantities while counting"),
     invoice_cost_variance_bp: () => t("Flag supplier prices that differ from the order by more than (%)"),
@@ -1613,6 +1619,8 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
     invoice_cost_variance_bp: t(
       "On a supplier document matched to a purchase order, smaller differences are shown but not flagged.",
     ),
+    expiry_later_days: t("Each batch shows one state: urgent, soon or later, by its days left."),
+    waste_approval_cost_minor: t("Recording waste worth more than this asks a manager to approve (0 = never)."),
   },
   security: {
     pin_min_length: t("Minimum PIN length."),
