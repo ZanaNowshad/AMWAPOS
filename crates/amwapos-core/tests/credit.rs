@@ -99,7 +99,7 @@ fn account_sales_payments_and_refunds() {
     let err = sell(&cashier, 3000, None).unwrap_err(); // 12.000 against 10.000 limit (balance -1.500)
     assert_eq!(err.code, ErrorCode::ApprovalRequired);
     assert_eq!(count(&e, "SELECT SUM(amount_minor) FROM customer_ledger"), -1_500, "nothing posted");
-    let appr = e.core.approve(&cashier, &e.owner_id, OWNER_PIN, "customers.credit_override", "over limit").unwrap();
+    let appr = e.core.approve(&cashier, &e.owner_id, OWNER_PIN, "customers.credit_override", "over limit", None).unwrap();
     e.core.pos_cancel_sale(&cashier, None).ok();
     sell(&cashier, 3000, Some(appr["approval_token"].as_str().unwrap().into())).unwrap();
     assert_eq!(count(&e, "SELECT SUM(amount_minor) FROM customer_ledger"), 10_500);

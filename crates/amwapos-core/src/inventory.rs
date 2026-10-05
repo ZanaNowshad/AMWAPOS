@@ -349,7 +349,7 @@ impl AppCore {
         let limit = validate::limit(q.limit, 100, 1000);
         let offset = validate::offset(q.offset);
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let mut wheres = vec!["m.branch_id = ?1".to_string()];
             let mut args: Vec<rusqlite::types::Value> = vec![s.branch_id.clone().into()];
             if let Some(p) = q.product_id.as_ref().filter(|x| !x.is_empty()) {
@@ -367,7 +367,7 @@ impl AppCore {
             if q.from.is_some() || q.to.is_some() {
                 let from = q.from.clone().unwrap_or_else(|| "2000-01-01".into());
                 let to = q.to.clone().unwrap_or_else(|| "2999-12-31".into());
-                let (a, b) = time::local_date_range_utc(&from, &to, &tz)?;
+                let (a, b) = time::local_date_range_utc(&from, &to, &day)?;
                 args.push(a.into());
                 wheres.push(format!("m.created_at >= ?{}", args.len()));
                 args.push(b.into());

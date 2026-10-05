@@ -60,6 +60,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             &req::<String>(&args, "pin")?,
             &req::<String>(&args, "permission")?,
             &opt::<String>(&args, "summary")?.unwrap_or_default(),
+            opt::<String>(&args, "binding")?.as_deref(),
         )),
         "auth.approvers" => out(core.approvers(tk()?, &req::<String>(&args, "permission")?)),
         "auth.change_pin" => out(core.user_change_own_pin(tk()?, &req::<String>(&args, "current_pin")?, &req::<String>(&args, "new_pin")?)),

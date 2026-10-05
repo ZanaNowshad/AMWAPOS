@@ -1521,6 +1521,7 @@ const LABELS: Record<string, Record<string, () => string>> = {
   shift: {
     blind_close: () => t("Count the drawer before seeing the expected amount"),
     variance_approval_minor: () => t("Cash difference that needs a manager"),
+    day_cutoff_minutes: () => t("Trading day ends at"),
     paid_out_approval_minor: () => t("Paid-out that needs a manager"),
   },
   inventory: {
@@ -1594,6 +1595,9 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
   shift: {
     blind_close: t("Hide the expected drawer amount from cashiers until they have counted."),
     variance_approval_minor: t("When the counted cash differs by more than this, a manager must accept the close."),
+    day_cutoff_minutes: t(
+      "Sales after midnight and before this time count for the previous day, for stores open late. Changing it affects new sales only.",
+    ),
     paid_out_approval_minor: t("Paying out more than this from the drawer needs a manager (0 = never)."),
   },
   inventory: {
@@ -1647,6 +1651,28 @@ function JsonSettings({ k }: { k: string }) {
                 </div>
               ) : null}
             </div>
+          );
+        }
+        if (key === "day_cutoff_minutes") {
+          // Midnight to 06:00 in half hours; stored as minutes after midnight.
+          const options = Array.from({ length: 13 }, (_, i) => i * 30);
+          const hhmm = (m: number) =>
+            `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+          return (
+            <Field key={key} label={label} hint={help}>
+              <select
+                className="select"
+                value={Number(v)}
+                onChange={(e) => setData({ ...data, [key]: Number(e.target.value) })}
+                data-testid="day-cutoff"
+              >
+                {options.map((m) => (
+                  <option key={m} value={m}>
+                    {m === 0 ? t("Midnight") : hhmm(m)}
+                  </option>
+                ))}
+              </select>
+            </Field>
           );
         }
         if (typeof v === "number") {

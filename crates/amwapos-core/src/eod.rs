@@ -68,12 +68,12 @@ impl AppCore {
             return Err(AppError::forbidden("reports.sales"));
         }
         let (date, scope) = self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let d = match date.as_deref().filter(|d| !d.is_empty()) {
                 Some(d) => chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
                     .map_err(|_| AppError::validation("Enter the date as YYYY-MM-DD."))?
                     .to_string(),
-                None => time::business_date(time::now(), &tz)?,
+                None => time::business_date(time::now(), &day)?,
             };
             Ok((d, crate::branches::report_scope(c, &s, branch_id.as_deref())?))
         })?;

@@ -130,6 +130,8 @@ fn hub_and_terminals_converge_without_duplicates() {
 
     // No duplicates anywhere.
     assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM sales"), 5);
+    // Each sale carries its issued receipt; the hub keeps the same fingerprint.
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM receipt_snapshots WHERE ref_kind='sale'"), 5);
     assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM sales"), 5);
     assert_eq!(count(&t2.core, "SELECT COUNT(*) FROM sales"), 5, "t2 pulled t1's and the hub's sales");
     sync_once(&hub.core, &t2.core, false);

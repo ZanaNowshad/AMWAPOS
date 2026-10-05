@@ -141,6 +141,40 @@ impl AppCore {
         Err(AppError::approval_required(perm, summary))
     }
 
+    /// Like `authorize`, for high-risk actions: an approval is valid only for
+    /// this exact request (action, record, request contents, this device),
+    /// once, before it expires. Without permission and without a matching
+    /// approval, the error carries a `binding` the client passes to
+    /// `auth.approve`; the summary the manager sees is kept on the server.
+    pub fn authorize_bound(
+        &self,
+        s: &Session,
+        perm: &str,
+        approval_token: Option<&str>,
+        summary: &str,
+        action: &str,
+        entity: &str,
+        payload: &serde_json::Value,
+    ) -> AppResult<Option<String>> {
+        if s.has(perm) {
+            return Ok(None);
+        }
+        let b = crate::auth::binding(action, entity, payload, &s.device_id);
+        if let Some(t) = approval_token {
+            if let Some((approver, _)) = self.sessions.consume_bound(t, perm, &b) {
+                return Ok(Some(approver));
+            }
+        }
+        self.sessions.register_pending(&b, perm, summary);
+        let msg = if approval_token.is_some() {
+            "The manager approval does not cover this exact request (it changed, or the approval expired). Please approve again."
+        } else {
+            "Manager approval required."
+        };
+        Err(AppError::new(ErrorCode::ApprovalRequired, msg)
+            .with_details(serde_json::json!({ "permission": perm, "summary": summary, "binding": b })))
+    }
+
     pub fn actor(&self, s: &Session, approved_by: Option<String>) -> Actor {
         Actor { user_id: Some(s.user_id.clone()), device_id: Some(s.device_id.clone()), branch_id: Some(s.branch_id.clone()), approved_by }
     }

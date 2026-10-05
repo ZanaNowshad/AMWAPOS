@@ -97,6 +97,7 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("sale_collections", &["collection_id"], Policy::Append),
     ("rider_handovers", &["handover_id"], Policy::Append),
     ("rider_handover_items", &["collection_id"], Policy::Append),
+    ("receipt_snapshots", &["ref_kind", "ref_id"], Policy::Append),
 ];
 
 /// Columns never shipped to other devices.
@@ -116,6 +117,81 @@ struct HubSecretFingerprint {
 pub const SECRET_DEVICE_KEY: &str = "amwapos.sync.device_key";
 const PAIRING_TTL_MINUTES: i64 = 15;
 pub const DEFAULT_PORT: u16 = 47800;
+
+/// Tables that never replicate, each for a stated reason. Together with
+/// `TABLES` this classifies every table in the schema: a new table must be
+/// added to one of the two lists (a test fails otherwise), so no record can be
+/// quietly kept on one computer when it should be shared, or the reverse.
+pub const LOCAL_TABLES: &[&str] = &[
+    // Back office: written on the hub only (`require_back_office_writable`).
+    "purchase_orders",
+    "purchase_order_items",
+    "goods_receipts",
+    "goods_receipt_items",
+    "stocktakes",
+    "stocktake_lines",
+    "invoice_scans",
+    "invoice_scan_lines",
+    "supplier_aliases",
+    "supplier_product_map",
+    "supplier_doc_profiles",
+    "supplier_invoices",
+    "supplier_invoice_lines",
+    "receiving_drafts",
+    "receiving_draft_lines",
+    "ap_liabilities",
+    "ap_credits",
+    "ap_payments",
+    "ap_allocations",
+    "payment_reviews",
+    "stock_reservations",
+    "product_aliases",
+    "report_presets",
+    "companion_tokens",
+    // WhatsApp and AI live on the computer that runs them.
+    "wa_outbox",
+    "wa_inbox",
+    "wa_inbox_processing",
+    "wa_contacts",
+    "wa_triage",
+    "wa_chat_links",
+    "wa_order_sessions",
+    "wa_order_events",
+    "wa_catalog_products",
+    "wa_catalog_collections",
+    "wa_catalog_runs",
+    "ai_conversations",
+    "ai_messages",
+    "ai_proposals",
+    "ai_attachments",
+    "ai_briefings",
+    "ai_notes",
+    "ai_alerts",
+    "ai_decisions",
+    // Per-computer state: carts, print queue, caches, sequences, sessions.
+    "carts",
+    "cart_lines",
+    "print_jobs",
+    "pdf_receipt_queue",
+    "sequences",
+    "stock_levels",
+    "products_fts",
+    "products_fts_map",
+    "user_login_state",
+    "backups",
+    "role_permission_seeds",
+    // Each computer's own audit chain and idempotency log.
+    "audit_logs",
+    "operation_idempotency",
+    // The sync machinery itself.
+    "sync_control",
+    "sync_outbox",
+    "sync_dead_letters",
+    "device_heartbeats",
+    "pairing_codes",
+    // The schema version of this database file.
+    "schema_migrations",
+];
 
 pub fn policy(table: &str) -> Option<(&'static [&'static str], Policy)> {
     TABLES.iter().find(|t| t.0 == table).map(|t| (t.1, t.2))

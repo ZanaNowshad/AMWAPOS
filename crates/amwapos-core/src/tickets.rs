@@ -234,10 +234,9 @@ pub(crate) fn load_ticket(c: &Connection, delivery_id: &str) -> AppResult<Ticket
 
 /// Start of today (business timezone) as a UTC timestamp.
 fn today_start(c: &Connection) -> AppResult<String> {
-    let tz: String =
-        c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0)).optional()?.unwrap_or_else(|| "Asia/Bahrain".into());
-    let day = time::business_date(time::now(), &tz)?;
-    Ok(time::local_date_range_utc(&day, &day, &tz)?.0)
+    let trading = time::day(c)?;
+    let today = time::business_date(time::now(), &trading)?;
+    Ok(time::local_date_range_utc(&today, &today, &trading)?.0)
 }
 
 /// Which drops this person sees: None = every branch in their scope.

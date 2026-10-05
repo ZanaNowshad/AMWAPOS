@@ -3,7 +3,8 @@
 //! ESC/POS bytes (thermal printers).
 
 use rusqlite::{Connection, OptionalExtension};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 use crate::money::{format_decimal, format_qty};
@@ -12,7 +13,7 @@ use crate::sales::load_sale_detail;
 use crate::settings::{self, ReceiptSettings};
 use crate::time;
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Align {
     Left,
@@ -20,7 +21,7 @@ pub enum Align {
     Right,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Block {
     Text { text: String, align: Align, bold: bool, large: bool },
@@ -29,7 +30,7 @@ pub enum Block {
     Feed { lines: u8 },
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ReceiptDoc {
     pub width_chars: usize,
     pub blocks: Vec<Block>,
@@ -393,8 +394,10 @@ fn header(doc: &mut ReceiptDoc, info: &StoreInfo, cfg: &ReceiptSettings) {
     }
 }
 
-/// Build the customer receipt for a committed sale.
-pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
+/// Build the customer receipt for a committed sale from the records and the
+/// current receipt settings (used once, at commit, to make the snapshot; and
+/// for sales made before snapshots existed).
+fn build_sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
     let cfg: ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
     let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
     let d = load_sale_detail(c, sale_id, false)?;
@@ -490,7 +493,7 @@ pub fn method_label(m: &str) -> String {
     }
 }
 
-pub fn refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
+fn build_refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
     let cfg: ReceiptSettings = settings::get(c, settings::KEY_RECEIPT)?;
     let printer: settings::PrinterSettings = settings::get(c, settings::KEY_PRINTER)?;
     let (rn, orig, branch, user, approver, reason, total, tax, at): (
@@ -602,4 +605,101 @@ pub fn shift_report(c: &Connection, shift_id: &str) -> AppResult<ReceiptDoc> {
         doc.pair_b("Variance", m(sum.variance_minor.unwrap_or(0)), false);
     }
     Ok(doc)
+}
+
+// ---------------------------------------------------------------- snapshots
+
+/// Version of the snapshot body; bump only with a migration note.
+pub const SNAPSHOT_FORMAT: i64 = 1;
+
+/// A receipt as issued, read back from its snapshot.
+#[derive(Debug, Clone, Serialize)]
+pub struct IssuedReceipt {
+    pub doc: ReceiptDoc,
+    pub sha256: String,
+    /// False for records made before snapshots existed: rebuilt from the
+    /// records with today's receipt settings.
+    pub exact: bool,
+}
+
+fn canonical(doc: &ReceiptDoc) -> AppResult<String> {
+    // Struct fields serialize in declaration order and blocks are a list, so
+    // the same document always gives the same bytes.
+    Ok(serde_json::to_string(&serde_json::json!({ "format": SNAPSHOT_FORMAT, "doc": doc }))?)
+}
+
+pub fn digest(doc: &ReceiptDoc) -> AppResult<String> {
+    Ok(hex::encode(Sha256::digest(canonical(doc)?.as_bytes())))
+}
+
+/// Where a "COPY" line goes: right after the title (the first centred bold
+/// line after the first rule).
+fn copy_position(doc: &ReceiptDoc) -> usize {
+    let rule = doc.blocks.iter().position(|b| matches!(b, Block::Rule)).unwrap_or(0);
+    rule + 2
+}
+
+fn write_snapshot(c: &Connection, kind: &str, ref_id: &str, doc: &ReceiptDoc) -> AppResult<()> {
+    let body = serde_json::to_string(doc)?;
+    c.execute(
+        "INSERT OR IGNORE INTO receipt_snapshots(ref_kind, ref_id, format_version, doc_json, copy_at, sha256, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        rusqlite::params![kind, ref_id, SNAPSHOT_FORMAT, body, copy_position(doc) as i64, digest(doc)?, time::now_str()],
+    )?;
+    Ok(())
+}
+
+/// Freeze the sale's receipt. Called inside the sale's own transaction.
+pub fn snapshot_sale(c: &Connection, sale_id: &str) -> AppResult<()> {
+    let doc = build_sale_receipt(c, sale_id, None)?;
+    write_snapshot(c, "sale", sale_id, &doc)
+}
+
+/// Freeze the refund's receipt. Called inside the refund's own transaction.
+pub fn snapshot_refund(c: &Connection, refund_id: &str) -> AppResult<()> {
+    let doc = build_refund_receipt(c, refund_id, None)?;
+    write_snapshot(c, "refund", refund_id, &doc)
+}
+
+/// The issued receipt for a record (snapshot, or reconstructed for history).
+pub fn issued(c: &Connection, kind: &str, ref_id: &str) -> AppResult<IssuedReceipt> {
+    let row: Option<(String, String)> = c
+        .query_row("SELECT doc_json, sha256 FROM receipt_snapshots WHERE ref_kind=?1 AND ref_id=?2", [kind, ref_id], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .optional()?;
+    if let Some((body, sha)) = row {
+        let doc: ReceiptDoc = serde_json::from_str(&body).map_err(|e| AppError::internal(format!("Stored receipt is unreadable: {e}")))?;
+        if digest(&doc)? != sha {
+            return Err(AppError::internal("The stored receipt does not match its fingerprint."));
+        }
+        return Ok(IssuedReceipt { doc, sha256: sha, exact: true });
+    }
+    let doc = match kind {
+        "sale" => build_sale_receipt(c, ref_id, None)?,
+        "refund" => build_refund_receipt(c, ref_id, None)?,
+        _ => return Err(AppError::not_found("Receipt")),
+    };
+    Ok(IssuedReceipt { sha256: digest(&doc)?, doc, exact: false })
+}
+
+/// The document to print or send: the issued receipt, with a "COPY" line
+/// added outside the fingerprinted body when it is a reprint.
+fn with_copy(c: &Connection, kind: &str, ref_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
+    let mut doc = issued(c, kind, ref_id)?.doc;
+    if let Some(l) = copy_label {
+        let at = copy_position(&doc).min(doc.blocks.len());
+        doc.blocks.insert(at, Block::Text { text: format!("*** {l} ***"), align: Align::Center, bold: true, large: false });
+    }
+    Ok(doc)
+}
+
+/// The customer receipt for a committed sale, as it was issued.
+pub fn sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
+    with_copy(c, "sale", sale_id, copy_label)
+}
+
+/// The refund receipt (credit note), as it was issued.
+pub fn refund_receipt(c: &Connection, refund_id: &str, copy_label: Option<&str>) -> AppResult<ReceiptDoc> {
+    with_copy(c, "refund", refund_id, copy_label)
 }

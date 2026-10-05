@@ -484,7 +484,7 @@ impl AppCore {
             let (applied, change) = pricing::apply_tenders(totals.total_minor, &req.tenders, &change_methods)?;
             let now = time::now();
             let now_s = time::fmt(now);
-            let business_date = time::business_date(now, &tz_currency.0)?;
+            let business_date = time::business_date(now, &time::day(tx)?)?;
             let seq = next_seq(tx, &format!("receipt:{}", device.device_id))?;
             let receipt_number = format!("{}-{:07}", device.device_code, seq);
             let sale_id = new_id();
@@ -624,6 +624,8 @@ impl AppCore {
                 req.fulfilment.as_ref().map(|f| f.mode.as_str()),
                 delivery_id.as_deref(),
             )?;
+            // Freeze the receipt exactly as issued, in the same transaction.
+            crate::receipt::snapshot_sale(tx, &sale_id)?;
             let print_job = if tz_currency.1 {
                 Some(crate::printing::enqueue(tx, "sale", &sale_id, None, Some(&s.user_id))?)
             } else {
@@ -699,7 +701,7 @@ impl AppCore {
         let limit = validate::limit(q.limit, 50, 500);
         let offset = validate::offset(q.offset);
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let mut wheres: Vec<String> = vec!["1=1".into()];
             let mut args: Vec<rusqlite::types::Value> = vec![];
             if own_only {
@@ -718,7 +720,7 @@ impl AppCore {
             if q.from.is_some() || q.to.is_some() {
                 let from = q.from.clone().unwrap_or_else(|| "2000-01-01".into());
                 let to = q.to.clone().unwrap_or_else(|| "2999-12-31".into());
-                let (a, b) = time::local_date_range_utc(&from, &to, &tz)?;
+                let (a, b) = time::local_date_range_utc(&from, &to, &day)?;
                 args.push(a.into());
                 wheres.push(format!("s.completed_at>=?{}", args.len()));
                 args.push(b.into());

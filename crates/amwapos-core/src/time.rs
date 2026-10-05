@@ -29,15 +29,50 @@ pub fn tz(name: &str) -> AppResult<Tz> {
     name.parse::<Tz>().map_err(|_| AppError::validation(format!("Unknown timezone '{name}'.")))
 }
 
-/// Business date (YYYY-MM-DD) for an instant in the given timezone.
-pub fn business_date(t: DateTime<Utc>, zone: &str) -> AppResult<String> {
-    let z = tz(zone)?;
-    Ok(t.with_timezone(&z).date_naive().format("%Y-%m-%d").to_string())
+/// The store's trading day: its timezone and the cutoff after local midnight
+/// at which one business date ends and the next begins (0 = midnight).
+/// A sale at 01:30 with a 03:00 cutoff belongs to the previous business date.
+/// This is the only place the rule lives; every stored `business_date` and
+/// every report date range goes through it.
+#[derive(Debug, Clone)]
+pub struct Day {
+    pub tz: String,
+    pub cutoff_minutes: i64,
 }
 
-/// UTC bounds [start, end) for a local calendar date range [from, to] inclusive.
-pub fn local_date_range_utc(from: &str, to: &str, zone: &str) -> AppResult<(String, String)> {
-    let z = tz(zone)?;
+impl Day {
+    pub fn midnight(tz: &str) -> Self {
+        Self { tz: tz.to_string(), cutoff_minutes: 0 }
+    }
+}
+
+/// The store's trading day as configured (timezone from the business record,
+/// cutoff from Settings → Shifts & cash).
+pub fn day(c: &rusqlite::Connection) -> AppResult<Day> {
+    use rusqlite::OptionalExtension;
+    let tz: String =
+        c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0)).optional()?.unwrap_or_else(|| "Asia/Bahrain".to_string());
+    let cutoff: Option<i64> = c
+        .query_row("SELECT json_extract(value_json, '$.day_cutoff_minutes') FROM settings WHERE key='shift'", [], |r| r.get(0))
+        .optional()?
+        .flatten();
+    Ok(Day { tz, cutoff_minutes: cutoff.unwrap_or(0).clamp(0, MAX_CUTOFF_MINUTES) })
+}
+
+/// The latest allowed cutoff: 06:00.
+pub const MAX_CUTOFF_MINUTES: i64 = 360;
+
+/// Business date (YYYY-MM-DD) for an instant on the store's trading day.
+pub fn business_date(t: DateTime<Utc>, day: &Day) -> AppResult<String> {
+    let z = tz(&day.tz)?;
+    let local = t.with_timezone(&z) - chrono::Duration::minutes(day.cutoff_minutes);
+    Ok(local.date_naive().format("%Y-%m-%d").to_string())
+}
+
+/// UTC bounds [start, end) for a business date range [from, to] inclusive:
+/// each business date runs from its cutoff to the next day's cutoff.
+pub fn local_date_range_utc(from: &str, to: &str, day: &Day) -> AppResult<(String, String)> {
+    let z = tz(&day.tz)?;
     let f = NaiveDate::parse_from_str(from, "%Y-%m-%d")
         .map_err(|_| AppError::validation(format!("'{from}' is not a valid date (YYYY-MM-DD).")))?;
     let t =
@@ -45,13 +80,14 @@ pub fn local_date_range_utc(from: &str, to: &str, zone: &str) -> AppResult<(Stri
     if t < f {
         return Err(AppError::validation("The end date is before the start date."));
     }
+    let cut = chrono::Duration::minutes(day.cutoff_minutes);
     let start = z
-        .from_local_datetime(&f.and_hms_opt(0, 0, 0).unwrap())
+        .from_local_datetime(&(f.and_hms_opt(0, 0, 0).unwrap() + cut))
         .earliest()
         .ok_or_else(|| AppError::validation("Invalid start date for timezone."))?;
     let end_day = t.succ_opt().ok_or_else(|| AppError::validation("Date out of range."))?;
     let end = z
-        .from_local_datetime(&end_day.and_hms_opt(0, 0, 0).unwrap())
+        .from_local_datetime(&(end_day.and_hms_opt(0, 0, 0).unwrap() + cut))
         .earliest()
         .ok_or_else(|| AppError::validation("Invalid end date for timezone."))?;
     Ok((fmt(start.with_timezone(&Utc)), fmt(end.with_timezone(&Utc))))
@@ -78,10 +114,31 @@ mod tests {
     fn bahrain_business_date() {
         // 22:30 UTC on the 23rd is 01:30 on the 24th in Bahrain (UTC+3).
         let t = parse("2026-09-23T22:30:00.000Z").unwrap();
-        assert_eq!(business_date(t, "Asia/Bahrain").unwrap(), "2026-09-24");
-        let (a, b) = local_date_range_utc("2026-09-24", "2026-09-24", "Asia/Bahrain").unwrap();
+        let bh = Day::midnight("Asia/Bahrain");
+        assert_eq!(business_date(t, &bh).unwrap(), "2026-09-24");
+        let (a, b) = local_date_range_utc("2026-09-24", "2026-09-24", &bh).unwrap();
         assert_eq!(a, "2026-09-23T21:00:00.000Z");
         assert_eq!(b, "2026-09-24T21:00:00.000Z");
-        assert!(local_date_range_utc("2026-09-25", "2026-09-24", "Asia/Bahrain").is_err());
+        assert!(local_date_range_utc("2026-09-25", "2026-09-24", &bh).is_err());
+    }
+
+    #[test]
+    fn cutoff_moves_early_hours_to_the_previous_trading_day() {
+        let late = Day { tz: "Asia/Bahrain".into(), cutoff_minutes: 180 };
+        // 01:30 local on the 5th, before the 03:00 cutoff → trading day of the 4th.
+        let t = parse("2026-10-04T22:30:00.000Z").unwrap();
+        assert_eq!(business_date(t, &late).unwrap(), "2026-10-04");
+        // 03:00 local exactly starts the 5th.
+        let t = parse("2026-10-05T00:00:00.000Z").unwrap();
+        assert_eq!(business_date(t, &late).unwrap(), "2026-10-05");
+        // The 4th runs 03:00 on the 4th → 03:00 on the 5th (local), and the
+        // range and the date agree on every instant.
+        let (a, b) = local_date_range_utc("2026-10-04", "2026-10-04", &late).unwrap();
+        assert_eq!(a, "2026-10-04T00:00:00.000Z");
+        assert_eq!(b, "2026-10-05T00:00:00.000Z");
+        for m in [0i64, 59, 60 * 12, 60 * 24 - 1] {
+            let t = parse(&a).unwrap() + chrono::Duration::minutes(m);
+            assert_eq!(business_date(t, &late).unwrap(), "2026-10-04");
+        }
     }
 }

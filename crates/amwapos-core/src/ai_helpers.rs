@@ -219,8 +219,8 @@ impl AppCore {
             return Ok(0);
         }
         let st = self.ai_settings_pub()?;
-        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-        let today = time::business_date(time::now(), &tz)?;
+        let day = self.db.read(time::day)?;
+        let today = time::business_date(time::now(), &day)?;
         let mut found: Vec<(&str, &str, String, Value)> = vec![];
         let (refund_n, refund_sum, discount, negative): (i64, i64, i64, i64) = self.db.read(|c| {
             let (n, sum): (i64, i64) =

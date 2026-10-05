@@ -252,14 +252,14 @@ impl AppCore {
                 ))
                 .with_details(json!({ "open_shift_user": name })));
             }
-            let tz = self.store_timezone(tx)?;
+            let day = time::day(tx)?;
             let now = time::now();
             let id = new_id();
             let number = format!("{}-S{:05}", device.device_code, next_seq(tx, &format!("shift:{}", device.device_id))?);
             tx.execute(
                 "INSERT INTO shifts(shift_id, shift_number, user_id, branch_id, device_id, business_date, opening_float_minor, opened_at, status)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'open')",
-                params![id, number, s.user_id, s.branch_id, s.device_id, time::business_date(now, &tz)?, opening_float_minor, time::fmt(now)],
+                params![id, number, s.user_id, s.branch_id, s.device_id, time::business_date(now, &day)?, opening_float_minor, time::fmt(now)],
             )?;
             // Attach the cashier's active cart to the new shift.
             tx.execute(
@@ -422,10 +422,10 @@ impl AppCore {
         s.require("sales.view")?;
         let limit = validate::limit(limit, 100, 500);
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let (a, b) = match (&from, &to) {
                 (None, None) => ("0".to_string(), "9".to_string()),
-                _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &tz)?,
+                _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &day)?,
             };
             let mut st = c.prepare(&format!(
                 "SELECT shift_id FROM shifts WHERE opened_at>=?1 AND opened_at<?2 ORDER BY opened_at DESC LIMIT {limit}"
@@ -445,10 +445,10 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("sales.view")?;
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let (a, b) = match (&from, &to) {
                 (None, None) => ("0".to_string(), "9".to_string()),
-                _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &tz)?,
+                _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &day)?,
             };
             let mut st = c.prepare(
                 "SELECT e.cash_event_id, e.created_at, e.type, e.amount_minor, e.reason, u.display_name, a.display_name, s.shift_number

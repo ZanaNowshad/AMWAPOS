@@ -28,12 +28,13 @@ export const api = {
     session: () => call<T.Session>("auth.session"),
     touch: () => call<T.Session>("auth.touch"),
     approvers: (permission: string) => call<T.LoginUser[]>("auth.approvers", { permission }),
-    approve: (approver_user_id: string, pin: string, permission: string, summary: string) =>
+    approve: (approver_user_id: string, pin: string, permission: string, summary: string, binding?: string | null) =>
       call<{ approval_token: string; approver_name: string }>("auth.approve", {
         approver_user_id,
         pin,
         permission,
         summary,
+        binding: binding ?? null,
       }),
     changePin: (current_pin: string, new_pin: string) => call<void>("auth.change_pin", { current_pin, new_pin }),
   },
@@ -90,7 +91,10 @@ export const api = {
     pdf: (kind: "sale" | "refund", ref_id: string) =>
       call<{ file_name: string; path: string; base64: string }>("receipts.pdf", { kind, ref_id }),
     preview: (kind: "sale" | "refund" | "shift_report", ref_id: string) =>
-      call<{ text: string; width_chars: number }>("receipts.preview", { kind, ref_id }),
+      call<{ text: string; width_chars: number; sha256?: string | null; exact?: boolean | null }>("receipts.preview", {
+        kind,
+        ref_id,
+      }),
   },
   print: {
     retry: (job_id: string) => call<T.PrintOutcome>("print.retry", { job_id }),

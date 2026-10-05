@@ -274,7 +274,7 @@ impl AppCore {
         let limit = validate::limit(q.limit, 100, 1000);
         let offset = validate::offset(q.offset);
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let mut w = vec!["1=1".to_string()];
             let mut args: Vec<rusqlite::types::Value> = vec![];
             for (v, col) in
@@ -291,7 +291,7 @@ impl AppCore {
             }
             if q.from.is_some() || q.to.is_some() {
                 let (a, b) =
-                    time::local_date_range_utc(q.from.as_deref().unwrap_or("2000-01-01"), q.to.as_deref().unwrap_or("2999-12-31"), &tz)?;
+                    time::local_date_range_utc(q.from.as_deref().unwrap_or("2000-01-01"), q.to.as_deref().unwrap_or("2999-12-31"), &day)?;
                 args.push(a.into());
                 w.push(format!("a.created_at>=?{}", args.len()));
                 args.push(b.into());

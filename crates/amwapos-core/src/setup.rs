@@ -483,8 +483,23 @@ impl AppCore {
         pin: &str,
         permission: &str,
         summary: &str,
+        binding: Option<&str>,
     ) -> AppResult<serde_json::Value> {
         let requester = self.session(requester_token)?;
+        // A bound (high-risk) approval covers the request the backend
+        // registered; its own summary is what is approved and audited.
+        let (summary, binding) = match binding.filter(|b| !b.is_empty()) {
+            Some(b) => {
+                let p = self
+                    .sessions
+                    .pending(b)
+                    .filter(|p| p.permission == permission)
+                    .ok_or_else(|| AppError::conflict("This request is no longer waiting for approval. Try the action again."))?;
+                (p.summary, Some(b.to_string()))
+            }
+            None => (summary.to_string(), None),
+        };
+        let summary = summary.as_str();
         if !auth::PERMISSIONS.iter().any(|p| p.0 == permission) {
             return Err(AppError::validation("Unknown permission."));
         }
@@ -493,7 +508,7 @@ impl AppCore {
         if !perms.contains(permission) {
             return Err(AppError::new(ErrorCode::Forbidden, format!("{} is not allowed to approve this action.", approver.display_name)));
         }
-        let token = self.sessions.issue_approval(&approver.user_id, &approver.display_name, permission);
+        let token = self.sessions.issue_approval_bound(&approver.user_id, &approver.display_name, permission, binding.as_deref());
         let actor = self.actor(&requester, Some(approver.user_id.clone()));
         let summary = crate::setup::clean(summary, "Summary", 300, false)?;
         self.db.write(|tx| {

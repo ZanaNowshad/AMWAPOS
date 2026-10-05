@@ -215,8 +215,8 @@ fn cashier_permissions_and_manager_approval() {
     let err = e.core.pos_line_discount(&ct, &line, 0, 2000, None).unwrap_err();
     assert_eq!(err.code, ErrorCode::ApprovalRequired);
     // Wrong PIN approval fails; correct owner PIN issues a token.
-    assert!(e.core.approve(&ct, &e.owner_id, "0000", "pos.discount_override", "20%").is_err());
-    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "pos.discount_override", "20%").unwrap();
+    assert!(e.core.approve(&ct, &e.owner_id, "0000", "pos.discount_override", "20%", None).is_err());
+    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "pos.discount_override", "20%", None).unwrap();
     let tok = appr["approval_token"].as_str().unwrap().to_string();
     let cart = e.core.pos_line_discount(&ct, &line, 0, 2000, Some(tok.clone())).unwrap();
     assert_eq!(cart.totals.total_minor, 800);
@@ -271,7 +271,7 @@ fn negative_stock_blocked_unless_approved() {
     let err = e.core.pos_finalize(&ct, req.clone()).unwrap_err();
     assert_eq!(err.code, ErrorCode::InsufficientStock);
     assert_eq!(count(&e, "SELECT COUNT(*) FROM sales"), 1, "only the earlier allowed sale");
-    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "pos.negative_stock", "sell").unwrap();
+    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "pos.negative_stock", "sell", None).unwrap();
     let mut ok = req;
     ok.approval_token = Some(appr["approval_token"].as_str().unwrap().to_string());
     e.core.pos_finalize(&ct, ok).unwrap();
@@ -394,8 +394,23 @@ fn cashier_refund_needs_manager() {
         operation_id: op(),
         approval_token: None,
     };
-    assert_eq!(e.core.refund_create(&ct, req.clone()).unwrap_err().code, ErrorCode::ApprovalRequired);
-    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "refund.create", "refund").unwrap();
+    let asked = e.core.refund_create(&ct, req.clone()).unwrap_err();
+    assert_eq!(asked.code, ErrorCode::ApprovalRequired);
+    let binding = asked.details.as_ref().unwrap()["binding"].as_str().unwrap().to_string();
+    // The manager approves the request the backend registered (its summary,
+    // not text from the till).
+    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "refund.create", "anything", Some(&binding)).unwrap();
+    // The approval does not cover a different refund of the same sale.
+    let mut bigger = req.clone();
+    bigger.lines[0].qty_milli = 2_000;
+    bigger.approval_token = Some(appr["approval_token"].as_str().unwrap().into());
+    assert_eq!(e.core.refund_create(&ct, bigger).unwrap_err().code, ErrorCode::ApprovalRequired);
+    // Nor is an unbound approval for the same permission accepted.
+    let loose = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "refund.create", "refund", None).unwrap();
+    let mut unbound = req.clone();
+    unbound.approval_token = Some(loose["approval_token"].as_str().unwrap().into());
+    assert_eq!(e.core.refund_create(&ct, unbound).unwrap_err().code, ErrorCode::ApprovalRequired);
+    // The mismatched attempt did not use up the approval: the exact request works.
     let mut ok = req;
     ok.approval_token = Some(appr["approval_token"].as_str().unwrap().into());
     let r = e.core.refund_create(&ct, ok).unwrap();
@@ -448,7 +463,7 @@ fn shift_reconciliation_and_cash_idempotency() {
         approval_token: None,
     };
     assert_eq!(e.core.cash_event(&ct, po.clone()).unwrap_err().code, ErrorCode::ApprovalRequired);
-    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "cash.paid_out", "paid out").unwrap();
+    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "cash.paid_out", "paid out", None).unwrap();
     let mut po_ok = po;
     po_ok.approval_token = Some(appr["approval_token"].as_str().unwrap().into());
     let a = e.core.cash_event(&ct, po_ok.clone()).unwrap();
@@ -461,7 +476,7 @@ fn shift_reconciliation_and_cash_idempotency() {
     // expected = 10.000 + 6.000 cash - 1.500 = 14.500. Counting 12.000 is a 2.500 shortage > 1.000 threshold.
     let close = ShiftCloseRequest { counted_cash_minor: 12_000, note: None, operation_id: op(), approval_token: None };
     assert_eq!(e.core.shift_close(&ct, &cur.shift_id, close.clone()).unwrap_err().code, ErrorCode::ApprovalRequired);
-    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "shift.approve_variance", "variance").unwrap();
+    let appr = e.core.approve(&ct, &e.owner_id, OWNER_PIN, "shift.approve_variance", "variance", None).unwrap();
     let mut close_ok = close;
     close_ok.approval_token = Some(appr["approval_token"].as_str().unwrap().into());
     let (sum, _print) = e.core.shift_close(&ct, &cur.shift_id, close_ok.clone()).unwrap();

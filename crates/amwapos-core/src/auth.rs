@@ -324,6 +324,27 @@ struct Approval {
     approver_name: String,
     permission: String,
     expires: DateTime<Utc>,
+    /// High-risk approvals are bound to one exact request (see `binding`):
+    /// the action, the record, a digest of the request and the device. An
+    /// unbound approval cannot be used for a bound action, or the reverse.
+    binding: Option<String>,
+}
+
+/// A high-risk request waiting for a manager: what the manager is shown is
+/// kept on the server, so the approval and its audit record describe the
+/// request the backend saw, not text supplied by the client.
+#[derive(Debug, Clone)]
+pub struct PendingBinding {
+    pub permission: String,
+    pub summary: String,
+    expires: DateTime<Utc>,
+}
+
+/// Fingerprint of one exact high-risk request.
+pub fn binding(action: &str, entity: &str, payload: &serde_json::Value, device_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let body = serde_json::json!([action, entity, payload, device_id]).to_string();
+    hex::encode(Sha256::digest(body.as_bytes()))
 }
 
 pub const SESSION_MAX_HOURS: i64 = 16;
@@ -333,6 +354,7 @@ pub const APPROVAL_TTL_SECONDS: i64 = 120;
 pub struct SessionStore {
     sessions: Mutex<HashMap<String, Session>>,
     approvals: Mutex<HashMap<String, Approval>>,
+    pending: Mutex<HashMap<String, PendingBinding>>,
 }
 
 impl SessionStore {
@@ -403,6 +425,10 @@ impl SessionStore {
     }
 
     pub fn issue_approval(&self, approver_id: &str, approver_name: &str, permission: &str) -> String {
+        self.issue_approval_bound(approver_id, approver_name, permission, None)
+    }
+
+    pub fn issue_approval_bound(&self, approver_id: &str, approver_name: &str, permission: &str, binding: Option<&str>) -> String {
         let token = random_token();
         if let Ok(mut m) = self.approvals.lock() {
             let now = time::now();
@@ -414,17 +440,54 @@ impl SessionStore {
                     approver_name: approver_name.to_string(),
                     permission: permission.to_string(),
                     expires: now + Duration::seconds(APPROVAL_TTL_SECONDS),
+                    binding: binding.map(str::to_string),
                 },
             );
         }
         token
     }
 
-    /// Consume an approval token for `permission`. Returns (approver_id, name).
+    /// Remember a high-risk request the backend has asked a manager to approve.
+    pub fn register_pending(&self, binding: &str, permission: &str, summary: &str) {
+        if let Ok(mut m) = self.pending.lock() {
+            let now = time::now();
+            m.retain(|_, p| p.expires > now);
+            m.insert(
+                binding.to_string(),
+                PendingBinding {
+                    permission: permission.to_string(),
+                    summary: summary.to_string(),
+                    expires: now + Duration::seconds(APPROVAL_TTL_SECONDS * 5),
+                },
+            );
+        }
+    }
+
+    pub fn pending(&self, binding: &str) -> Option<PendingBinding> {
+        let m = self.pending.lock().ok()?;
+        m.get(binding).filter(|p| p.expires > time::now()).cloned()
+    }
+
+    /// Consume an unbound approval token for `permission`. Returns (approver_id, name).
     pub fn consume_approval(&self, token: &str, permission: &str) -> Option<(String, String)> {
+        self.consume_inner(token, permission, None)
+    }
+
+    /// Consume an approval bound to exactly this request.
+    pub fn consume_bound(&self, token: &str, permission: &str, binding: &str) -> Option<(String, String)> {
+        let r = self.consume_inner(token, permission, Some(binding));
+        if r.is_some() {
+            if let Ok(mut m) = self.pending.lock() {
+                m.remove(binding);
+            }
+        }
+        r
+    }
+
+    fn consume_inner(&self, token: &str, permission: &str, binding: Option<&str>) -> Option<(String, String)> {
         let mut m = self.approvals.lock().ok()?;
         let a = m.get(token)?.clone();
-        if a.permission != permission || a.expires < time::now() {
+        if a.permission != permission || a.expires < time::now() || a.binding.as_deref() != binding {
             return None;
         }
         m.remove(token);
@@ -516,6 +579,27 @@ mod tests {
         assert!(s.consume_approval(&t, "pos.discount_override").is_none());
         assert_eq!(s.consume_approval(&t, "refund.create").unwrap().0, "u1");
         assert!(s.consume_approval(&t, "refund.create").is_none());
+    }
+
+    #[test]
+    fn bound_approval_covers_one_exact_request_once() {
+        let s = SessionStore::default();
+        let body = serde_json::json!({ "qty": 1 });
+        let b = binding("sale.void", "S1", &body, "dev-1");
+        // Anything that differs gives a different fingerprint.
+        assert_ne!(b, binding("sale.void", "S2", &body, "dev-1"));
+        assert_ne!(b, binding("sale.void", "S1", &serde_json::json!({ "qty": 2 }), "dev-1"));
+        assert_ne!(b, binding("sale.void", "S1", &body, "dev-2"));
+        assert_ne!(b, binding("refund.create", "S1", &body, "dev-1"));
+        let t = s.issue_approval_bound("m1", "Mona", "pos.void_sale", Some(&b));
+        // Not usable unbound, nor for another request.
+        assert!(s.consume_approval(&t, "pos.void_sale").is_none());
+        assert!(s.consume_bound(&t, "pos.void_sale", &binding("sale.void", "S2", &body, "dev-1")).is_none());
+        assert_eq!(s.consume_bound(&t, "pos.void_sale", &b).unwrap().0, "m1");
+        assert!(s.consume_bound(&t, "pos.void_sale", &b).is_none(), "single use");
+        // An unbound approval cannot be used for a bound action.
+        let u = s.issue_approval("m1", "Mona", "pos.void_sale");
+        assert!(s.consume_bound(&u, "pos.void_sale", &b).is_none());
     }
 
     #[test]

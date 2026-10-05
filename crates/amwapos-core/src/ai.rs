@@ -1169,9 +1169,9 @@ impl AppCore {
 
     /// Tokens used today (business day) across all AI questions.
     pub fn ai_tokens_today(&self) -> AppResult<i64> {
-        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-        let today = time::business_date(time::now(), &tz)?;
-        let (from, to) = time::local_date_range_utc(&today, &today, &tz)?;
+        let day = self.db.read(time::day)?;
+        let today = time::business_date(time::now(), &day)?;
+        let (from, to) = time::local_date_range_utc(&today, &today, &day)?;
         self.db.read(|c| {
             Ok(c.query_row(
                 "SELECT COALESCE(SUM(COALESCE(input_tokens,0)+COALESCE(output_tokens,0)),0) FROM ai_messages WHERE created_at>=?1 AND created_at<?2",
@@ -1381,7 +1381,8 @@ impl AppCore {
         let (business, tz): (String, String) =
             self.db.read(|c| Ok(c.query_row("SELECT name, timezone FROM business LIMIT 1", [], |r| Ok((r.get(0)?, r.get(1)?)))?))?;
         let (currency, digits) = self.db.read(|c| self.currency(c))?;
-        let today = time::business_date(time::now(), &tz).unwrap_or_default();
+        let day = self.db.read(time::day)?;
+        let today = time::business_date(time::now(), &day).unwrap_or_default();
         let mutations = can_propose(&f, s);
         let messages = self.db.read(|c| {
             let mut st = c.prepare("SELECT role, content_json FROM ai_messages WHERE conversation_id=?1 ORDER BY seq")?;
@@ -3064,9 +3065,9 @@ impl AppCore {
             s.require("ai.use")?;
         }
         self.expire_proposals()?;
-        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-        let day = date.filter(|d| !d.is_empty()).unwrap_or(time::business_date(time::now(), &tz)?);
-        let (a, b) = time::local_date_range_utc(&day, &day, &tz)?;
+        let trading = self.db.read(time::day)?;
+        let day = date.filter(|d| !d.is_empty()).unwrap_or(time::business_date(time::now(), &trading)?);
+        let (a, b) = time::local_date_range_utc(&day, &day, &trading)?;
         self.db.read(|c| {
             let mut st = c.prepare(
                 "SELECT status, risk, COUNT(*) FROM ai_proposals WHERE created_at>=?1 AND created_at<?2 GROUP BY status, risk ORDER BY status, risk",
@@ -3096,8 +3097,8 @@ impl AppCore {
             Err(e) => json!({ "tool": tool, "ok": false, "error": e.message }),
         };
         let today = {
-            let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-            time::business_date(time::now(), &tz)?
+            let day = self.db.read(time::day)?;
+            time::business_date(time::now(), &day)?
         };
         let week_ago = (chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").map_err(|e| AppError::internal(e.to_string()))?
             - chrono::Duration::days(6))

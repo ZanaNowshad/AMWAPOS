@@ -21,6 +21,8 @@ export const useApproval = () => useContext(Ctx);
 interface Pending {
   permission: string;
   summary: string;
+  /** High-risk requests: the backend's fingerprint of the exact request. */
+  binding: string | null;
   resolve: (token: string) => void;
   reject: (e: unknown) => void;
 }
@@ -41,6 +43,7 @@ export function ApprovalProvider({ children }: { children: ReactNode }) {
         setPending({
           permission: err.details!.permission as string,
           summary: (err.details!.summary as string) || err.message,
+          binding: typeof err.details!.binding === "string" ? (err.details!.binding as string) : null,
           resolve,
           reject,
         }),
@@ -96,7 +99,7 @@ function ApprovalDialog({
     setBusy(true);
     setError(null);
     try {
-      const r = await api.auth.approve(who, pin, pending.permission, pending.summary);
+      const r = await api.auth.approve(who, pin, pending.permission, pending.summary, pending.binding);
       onDone(r.approval_token);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

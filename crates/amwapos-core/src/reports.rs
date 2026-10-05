@@ -112,21 +112,23 @@ struct Range {
     a: String,
     b: String,
     tz: String,
+    day: time::Day,
 }
 
 fn range(c: &Connection, core: &AppCore, p: &ReportParams) -> AppResult<Range> {
     let tz = core.store_timezone(c)?;
-    let today = time::business_date(time::now(), &tz)?;
+    let day = time::day(c)?;
+    let today = time::business_date(time::now(), &day)?;
     let from = p.from.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| today.clone());
     let to = p.to.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| today.clone());
-    let (a, b) = time::local_date_range_utc(&from, &to, &tz)?;
+    let (a, b) = time::local_date_range_utc(&from, &to, &day)?;
     let days = (chrono::NaiveDate::parse_from_str(&to, "%Y-%m-%d").unwrap()
         - chrono::NaiveDate::parse_from_str(&from, "%Y-%m-%d").unwrap())
     .num_days();
     if days > 3660 {
         return Err(AppError::validation("Reports are limited to 10 years per run."));
     }
-    Ok(Range { from, to, a, b, tz })
+    Ok(Range { from, to, a, b, tz, day })
 }
 
 /// SQL expression converting a UTC timestamp column into local time text.
@@ -169,7 +171,7 @@ fn previous_period(r: &Range) -> AppResult<(String, String)> {
     let len = (t - f).num_days() + 1;
     let pf = f - chrono::Duration::days(len);
     let pt = f - chrono::Duration::days(1);
-    time::local_date_range_utc(&pf.to_string(), &pt.to_string(), &r.tz)
+    time::local_date_range_utc(&pf.to_string(), &pt.to_string(), &r.day)
 }
 
 impl AppCore {
@@ -691,7 +693,7 @@ impl AppCore {
             kpis.push(kpi("Stock value (avg cost)", value, "money", None));
             columns.extend([col("avg_cost", "Avg cost", "money"), col("value", "Value", "money")]);
         }
-        let today = time::business_date(time::now(), &self.store_timezone(c)?)?;
+        let today = time::business_date(time::now(), &time::day(c)?)?;
         Ok(Report {
             key: "inventory".into(),
             title: "Stock valuation".into(),
@@ -728,7 +730,7 @@ impl AppCore {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let value: i64 = rows.iter().map(|r| r["value"].as_i64().unwrap_or(0)).sum();
-        let today = time::business_date(time::now(), &self.store_timezone(c)?)?;
+        let today = time::business_date(time::now(), &time::day(c)?)?;
         let mut columns = vec![
             col("name", "Product", "text"),
             col("sku", "SKU", "text"),
@@ -975,15 +977,15 @@ impl AppCore {
     pub(crate) fn dashboard_for(&self, s: &Session) -> AppResult<Value> {
         let fin = s.has("reports.financial");
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
-            let today = time::business_date(time::now(), &tz)?;
-            let (a, b) = time::local_date_range_utc(&today, &today, &tz)?;
+            let day = time::day(c)?;
+            let today = time::business_date(time::now(), &day)?;
+            let (a, b) = time::local_date_range_utc(&today, &today, &day)?;
             let last_week = (chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d").unwrap() - chrono::Duration::days(7)).to_string();
-            let (pa, pb) = time::local_date_range_utc(&last_week, &last_week, &tz)?;
+            let (pa, pb) = time::local_date_range_utc(&last_week, &last_week, &day)?;
             let (n, total, tax, cost, _d, _i) = sales_totals(c, &a, &b, None)?;
             let (pn, ptotal, ptax, pcost, _, _) = sales_totals(c, &pa, &pb, None)?;
             let (rn, rtotal, rtax, rcost) = refund_totals(c, &a, &b)?;
-            let local = local_expr("completed_at", &tz);
+            let local = local_expr("completed_at", &day.tz);
             let mut st = c.prepare(&format!(
                 "SELECT CAST(strftime('%H', {local}) AS INTEGER), COUNT(*), SUM(total_minor) FROM sales WHERE completed_at>=?1 AND completed_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) GROUP BY 1"
             ))?;

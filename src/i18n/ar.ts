@@ -4327,4 +4327,18 @@ export const AR: Record<string, string> = {
   "This till": "جهاز البيع هذا",
   "Same as screen": "مثل لغة الشاشة",
   Checkout: "نقطة البيع",
+  "Trading day ends at": "ينتهي يوم العمل عند",
+  "Sales after midnight and before this time count for the previous day, for stores open late. Changing it affects new sales only.":
+    "المبيعات بعد منتصف الليل وقبل هذا الوقت تُحسب لليوم السابق، للمتاجر التي تعمل لوقت متأخر. تغييره يؤثر على المبيعات الجديدة فقط.",
+  Midnight: "منتصف الليل",
+  "The trading day must end between midnight and 06:00.": "يجب أن ينتهي يوم العمل بين منتصف الليل والساعة 06:00.",
+  "Exactly as issued. Fingerprint {0}": "كما صدر تمامًا. البصمة {0}",
+  "Made before receipts were saved as issued: shown with today's receipt settings.":
+    "صدر قبل حفظ الإيصالات كما صدرت: يُعرض بإعدادات الإيصال الحالية.",
+  "The stored receipt does not match its fingerprint.": "الإيصال المحفوظ لا يطابق بصمته.",
+  "Stored receipt is unreadable: {0}": "الإيصال المحفوظ غير قابل للقراءة: {0}",
+  "The manager approval does not cover this exact request (it changed, or the approval expired). Please approve again.":
+    "موافقة المدير لا تشمل هذا الطلب بعينه (تغيّر أو انتهت صلاحية الموافقة). يرجى الموافقة مرة أخرى.",
+  "This request is no longer waiting for approval. Try the action again.":
+    "لم يعد هذا الطلب بانتظار الموافقة. أعد المحاولة.",
 };

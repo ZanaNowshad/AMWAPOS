@@ -206,8 +206,17 @@ impl AppCore {
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Sale"))
         })?;
-        let approved =
-            self.authorize(&s, "refund.create", req.approval_token.as_deref(), &format!("Refund on receipt {rn_for_summary}"))?;
+        // A refund approval covers this refund only: these lines, these
+        // tenders, this sale, this till (never a larger one asked afterwards).
+        let approved = self.authorize_bound(
+            &s,
+            "refund.create",
+            req.approval_token.as_deref(),
+            &format!("Refund on receipt {rn_for_summary}"),
+            "refund.create",
+            &sid,
+            &serde_json::json!({ "lines": &req.lines, "tenders": &req.tenders }),
+        )?;
         let device = self.require_device()?;
         let actor = self.actor(&s, approved.clone());
         let result = self.db.write(|tx| {
@@ -222,7 +231,7 @@ impl AppCore {
             let shift_id = open_shift_for(tx, &s)?.ok_or_else(shift_required)?;
             let comp = compute(tx, &sid, &req.lines)?;
             let tenders = default_tenders(tx, &sid, comp.total, &req.tenders)?;
-            let tz = self.store_timezone(tx)?;
+            let day = time::day(tx)?;
             let now = time::now();
             let now_s = time::fmt(now);
             let rid = new_id();
@@ -233,7 +242,7 @@ impl AppCore {
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
                 params![
                     rid, rnum, sid, s.branch_id, s.device_id, shift_id, s.user_id, approved, reason, comp.subtotal, comp.tax, comp.total,
-                    comp.cost, req.operation_id, time::business_date(now, &tz)?, now_s
+                    comp.cost, req.operation_id, time::business_date(now, &day)?, now_s
                 ],
             )?;
             for (pl, pid, cost, track) in &comp.lines {
@@ -287,6 +296,7 @@ impl AppCore {
                 )?;
             }
             crate::loyalty::record_refund(tx, &s, &self.actor(&s, None), &sid, &rid, comp.total)?;
+            crate::receipt::snapshot_refund(tx, &rid)?;
             crate::printing::enqueue(tx, "refund", &rid, None, Some(&s.user_id))?;
             if tenders.iter().any(|t| t.method == "cash") {
                 crate::printing::enqueue_drawer_pulse(tx, Some(&s.user_id), &rid)?;
@@ -322,10 +332,10 @@ impl AppCore {
         s.require("sales.view")?;
         let limit = validate::limit(limit, 200, 1000);
         self.db.read(|c| {
-            let tz = self.store_timezone(c)?;
+            let day = time::day(c)?;
             let (a, b) = match (&from, &to) {
                 (None, None) => ("0".to_string(), "9".to_string()),
-                _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &tz)?,
+                _ => time::local_date_range_utc(from.as_deref().unwrap_or("2000-01-01"), to.as_deref().unwrap_or("2999-12-31"), &day)?,
             };
             let mut st = c.prepare(&format!(
                 "SELECT r.refund_id, r.refund_receipt_number, s.receipt_number, r.original_sale_id, r.created_at, u.display_name, a.display_name,

@@ -47,10 +47,13 @@ pub struct ShiftSettings {
     pub variance_approval_minor: i64,
     /// Cash events above this amount need a manager.
     pub paid_out_approval_minor: i64,
+    /// Minutes after local midnight when the trading day ends (0 = midnight,
+    /// at most 06:00). Applies to records made after it is changed.
+    pub day_cutoff_minutes: i64,
 }
 impl Default for ShiftSettings {
     fn default() -> Self {
-        Self { blind_close: true, variance_approval_minor: 1000, paid_out_approval_minor: 0 }
+        Self { blind_close: true, variance_approval_minor: 1000, paid_out_approval_minor: 0, day_cutoff_minutes: 0 }
     }
 }
 
@@ -582,7 +585,13 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             }
             serde_json::to_value(p)?
         }
-        KEY_SHIFT => roundtrip::<ShiftSettings>(value)?,
+        KEY_SHIFT => {
+            let v: ShiftSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            if !(0..=crate::time::MAX_CUTOFF_MINUTES).contains(&v.day_cutoff_minutes) {
+                return Err(AppError::validation("The trading day must end between midnight and 06:00."));
+            }
+            serde_json::to_value(v)?
+        }
         KEY_FEATURES => roundtrip::<FeatureFlags>(value)?,
         KEY_UPDATES => {
             let u: UpdateSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;

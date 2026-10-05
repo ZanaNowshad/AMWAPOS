@@ -394,7 +394,17 @@ impl AppCore {
         }
         self.db.read(|c| {
             let doc = render_job(c, kind, &id, None)?.ok_or_else(|| AppError::validation("Unknown receipt type."))?;
-            Ok(serde_json::json!({ "text": doc.to_text(), "width_chars": doc.width_chars, "blocks": doc.blocks }))
+            // For sales and refunds: the fingerprint of the receipt as issued,
+            // and whether it is the frozen original or a reconstruction.
+            let issued = match kind {
+                "sale" | "refund" => Some(crate::receipt::issued(c, kind, &id)?),
+                _ => None,
+            };
+            Ok(serde_json::json!({
+                "text": doc.to_text(), "width_chars": doc.width_chars, "blocks": doc.blocks,
+                "sha256": issued.as_ref().map(|i| i.sha256.clone()),
+                "exact": issued.as_ref().map(|i| i.exact),
+            }))
         })
     }
 

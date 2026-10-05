@@ -78,6 +78,13 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
               <div className="receipt-paper" style={{ width: "fit-content" }}>
                 {receipt?.text}
               </div>
+              {receipt?.sha256 ? (
+                <div className="tiny" data-testid="receipt-fingerprint">
+                  {receipt.exact
+                    ? t("Exactly as issued. Fingerprint {0}", receipt.sha256.slice(0, 12))
+                    : t("Made before receipts were saved as issued: shown with today's receipt settings.")}
+                </div>
+              ) : null}
             </div>
           ) : (
             <>

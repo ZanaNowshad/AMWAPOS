@@ -611,8 +611,9 @@ impl AppCore {
         if !self.features()?.is_on("ai.enabled") {
             return Ok(vec![]);
         }
-        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-        let zone = time::tz(&tz)?;
+        // Briefings follow the wall clock, not the trading day.
+        let day = self.db.read(time::day)?;
+        let zone = time::tz(&day.tz)?;
         let local = time::now().with_timezone(&zone);
         let today = local.format("%Y-%m-%d").to_string();
         let hm = local.format("%H:%M").to_string();
@@ -645,8 +646,8 @@ impl AppCore {
             let s = self.ai_workspace_session(t)?;
             s.require("admin.access")?;
         }
-        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-        let today = time::business_date(time::now(), &tz)?;
+        let day = self.db.read(time::day)?;
+        let today = time::business_date(time::now(), &day)?;
         self.db.write(|tx| {
             tx.execute("UPDATE ai_briefings SET last_run_on=?2 WHERE briefing_id=?1", params![id, today])?;
             Ok(())
@@ -764,8 +765,8 @@ impl AppCore {
     pub fn ai_slash(&self, token: &str, command: &str, arg: &str) -> AppResult<Value> {
         let _ = self.ai_workspace_session(token)?;
         let arg = arg.trim();
-        let tz: String = self.db.read(|c| Ok(c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0))?))?;
-        let today = time::business_date(time::now(), &tz)?;
+        let day = self.db.read(time::day)?;
+        let today = time::business_date(time::now(), &day)?;
         let need = |what: &str| -> AppResult<()> {
             if arg.is_empty() {
                 Err(AppError::validation(format!("Add {what} after the command.")))
