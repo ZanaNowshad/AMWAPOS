@@ -685,3 +685,21 @@ Evidence (this environment, Linux):
 Commits were grouped as domain, screens, then docs and evidence (three commits rather than the
 six suggested checkpoints): the domain modules share one migration and module registration, so
 splitting them further would have left commits that do not build.
+
+### Wave 4 resume and verification, 2026-10-06
+
+- Lineage: branch `claude/amwapos-merchant-os-wave4`, base `058a65d` (= `main`), Wave 4 commits
+  only, nothing on `main` since.
+- CI on `10626f7` failed in `cargo clippy` only: CI uses Rust 1.99.0, whose clippy flags
+  `single_element_loop` in `replenish.rs` (local 1.98.1 did not). Reproduced with 1.99.0, fixed
+  in `45201f9`. Frontend, dependency audit and the end-to-end job passed on `10626f7`.
+- Defect found and fixed: receiving on a purchase order had no way to keep a suspicious batch
+  date (for example an expiry already passed); it now shows the date warnings and keeps the dates
+  on a second press, as direct receiving does. `e2e/wave4.spec.ts` now covers it.
+- Evidence on `45201f9`, Rust 1.99.0 (the CI toolchain): `cargo fmt --check`, `cargo clippy
+  --workspace --all-targets -D warnings` clean; `cargo test --workspace`: 457 passed, 0 failed,
+  4 ignored. `tsc`, `eslint`, `prettier --check`, vitest 49 passed. Playwright 21 of 21 passed,
+  including the Wave 4 flow and the English/Arabic sweep of every Admin page.
+- The benchmark figures above are from the release run of the Wave 4 code before the dashboard
+  hint was added; the hint changes only the dashboard, not the sale path or the engine.
+- CI on the final head: pending at the time of writing.
