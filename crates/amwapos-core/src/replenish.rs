@@ -559,10 +559,8 @@ impl AppCore {
                 let mut v = serde_json::to_value(&r)?;
                 if !show_cost {
                     v["estimated_cost_minor"] = Value::Null;
-                    for k in ["supplier"] {
-                        if v[k].is_object() {
-                            v[k]["last_cost_minor"] = Value::Null;
-                        }
+                    if v["supplier"].is_object() {
+                        v["supplier"]["last_cost_minor"] = Value::Null;
                     }
                     if let Some(a) = v["alternatives"].as_array_mut() {
                         a.iter_mut().for_each(|x| x["last_cost_minor"] = Value::Null);

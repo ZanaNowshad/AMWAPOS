@@ -45,6 +45,7 @@ import {
 } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
 import { getLang, t, tb } from "../../i18n";
+import { dateWarnings } from "./stockTruth";
 
 const pname = (r: { product_name?: string; name?: string; product_name_ar?: string | null; name_ar?: string | null }) =>
   (getLang() === "ar" ? (r.product_name_ar ?? r.name_ar) : null) || r.product_name || r.name || "";
@@ -946,6 +947,8 @@ export function PoReceivePanel({ po, onDone, onCancel }: { po: PoDetail; onDone:
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [subFor, setSubFor] = useState<string | null>(null);
+  // Suspicious batch dates come back as warnings; pressing again keeps them.
+  const [dateWarns, setDateWarns] = useState<string[] | null>(null);
   const [st, setSt] = useState<Record<string, RecvState>>(() =>
     Object.fromEntries(
       po.lines.map((l) => [
@@ -984,7 +987,9 @@ export function PoReceivePanel({ po, onDone, onCancel }: { po: PoDetail; onDone:
           accept_substitution: s.acceptSub,
           accept_overage: s.acceptOver,
           lot:
-            s.lot.trim() || s.expiry ? { supplier_lot_code: s.lot.trim() || null, expires_on: s.expiry || null } : null,
+            s.lot.trim() || s.expiry
+              ? { supplier_lot_code: s.lot.trim() || null, expires_on: s.expiry || null, confirm_warnings: !!dateWarns }
+              : null,
         };
       })
       .filter((l) => l.qty_milli > 0 || l.rejected.length > 0);
@@ -1013,9 +1018,12 @@ export function PoReceivePanel({ po, onDone, onCancel }: { po: PoDetail; onDone:
         r.status === "received" ? t("Purchase order fully received") : t("Partial delivery recorded"),
       );
       setOp(newOperationId());
+      setDateWarns(null);
       onDone();
     } catch (e) {
-      if (!(e instanceof ApprovalCancelled)) setError(errText(e));
+      const w = dateWarnings(e);
+      if (w) setDateWarns(w);
+      else if (!(e instanceof ApprovalCancelled)) setError(errText(e));
     } finally {
       setBusy(false);
     }
@@ -1182,6 +1190,16 @@ export function PoReceivePanel({ po, onDone, onCancel }: { po: PoDetail; onDone:
         </table>
       </div>
       {error ? <Banner tone="danger">{error}</Banner> : null}
+      {dateWarns ? (
+        <Banner tone="warning" title={t("Check the dates")}>
+          {dateWarns.map((w) => (
+            <div key={w} dir="auto">
+              {tb(w)}
+            </div>
+          ))}
+          <div className="tiny">{t("Press Receive goods again to keep these dates.")}</div>
+        </Banner>
+      ) : null}
       <div className="card-body row">
         <Button onClick={onCancel}>{t("Cancel")}</Button>
         <Button variant="primary" className="right" onClick={submit} loading={busy}>

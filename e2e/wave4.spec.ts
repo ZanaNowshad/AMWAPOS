@@ -91,6 +91,9 @@ test("suggested order to requisition, approved purchase order, receiving with di
     t,
   );
 
+  // Batch tracking with a use-by date, so receiving asks for batch and expiry.
+  await rpc(page, "lots.product_settings", { product_id: pid, track_lots: true, expiry_kind: "use_by" }, t);
+
   // Suggested orders: 2 on hand, reorder at 10 → 8 needed → 2 cases of 6.
   await adminAt(page, "#/admin/suggested-orders");
   await expect(page.getByRole("heading", { name: "Suggested orders", level: 1 })).toBeVisible();
@@ -129,7 +132,13 @@ test("suggested order to requisition, approved purchase order, receiving with di
   await recv.getByLabel("Accepted Ayran W4 250ml").fill("10");
   await recv.getByLabel("Refused Ayran W4 250ml").fill("1");
   await expect(recv.getByLabel("If short Ayran W4 250ml")).toHaveValue("backorder");
+  // An expiry already passed is suspicious: the person is asked, then confirms.
+  const yesterday = new Date(Date.now() - 86_400_000 + 3 * 3_600_000).toISOString().slice(0, 10);
+  await recv.getByLabel("Batch Ayran W4 250ml").fill("AY-77");
+  await recv.getByLabel("Expiry Ayran W4 250ml").fill(yesterday);
   await shot(page, "w4-receive");
+  await recv.getByRole("button", { name: "Receive goods" }).click();
+  await expect(recv.getByText("Check the dates")).toBeVisible();
   await recv.getByRole("button", { name: "Receive goods" }).click();
   await expect(page.getByText("Goods received")).toBeVisible();
   const diffs = page.getByTestId("po-discrepancies");
