@@ -346,6 +346,7 @@ fn analyse(c: &Connection, s: &Session, req: &ImportRequest, digits: u32) -> App
                 barcodes: barcodes.clone(),
                 opening_stock_milli: if action == "create" && track { stock } else { None },
                 image_b64: None,
+                plu: None,
             })
         } else {
             None

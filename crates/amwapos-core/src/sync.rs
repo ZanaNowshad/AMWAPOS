@@ -66,6 +66,7 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("product_images", &["image_hash"], Policy::Hub),
     ("products", &["product_id"], Policy::Hub),
     ("product_barcodes", &["barcode_id"], Policy::Hub),
+    ("scale_barcode_rules", &["rule_id"], Policy::Hub),
     ("product_prices", &["price_id"], Policy::Hub),
     ("product_cost_history", &["cost_id"], Policy::Hub),
     ("product_costs", &["product_id", "branch_id"], Policy::Hub),
@@ -147,6 +148,16 @@ pub const LOCAL_TABLES: &[&str] = &[
     "receipt_discrepancies",
     "supplier_returns",
     "supplier_return_lines",
+    // Catalogue and pricing review (Wave 5): duplicate decisions, merge
+    // records, pricing policies, recommendation decisions and price-change
+    // batches are back-office records. Policies only recommend, so a till
+    // never needs one to price a sale: the prices they lead to replicate
+    // through product_prices like every other price.
+    "product_duplicate_decisions",
+    "product_merges",
+    "pricing_policies",
+    "price_recommendation_decisions",
+    "price_change_batches",
     "purchase_orders",
     "purchase_order_items",
     "goods_receipts",

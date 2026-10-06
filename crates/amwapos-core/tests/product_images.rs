@@ -73,6 +73,7 @@ fn create(e: &Env, name: &str, barcode: &str, image: Option<&[u8]>) -> amwapos_c
                 barcodes: vec![barcode.into()],
                 opening_stock_milli: None,
                 image_b64: image.map(b64),
+                plu: None,
             },
         )
         .unwrap()
@@ -129,6 +130,7 @@ fn invalid_uploads_are_refused_and_nothing_is_created() {
                 barcodes: vec![],
                 opening_stock_milli: None,
                 image_b64: Some(b64(&bad)),
+                plu: None,
             },
         );
         assert_eq!(r.unwrap_err().code, ErrorCode::Validation);

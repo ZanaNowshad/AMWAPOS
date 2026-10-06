@@ -246,6 +246,10 @@ pub const TOOLS: &[ToolSpec] = &[
         "Three-way match of a supplier invoice: order ↔ goods accepted ↔ invoice per line, cost baselines, tolerances and the outcome (matched, within tolerance, review, blocked). Computed by the app."),
     read("list_supplier_returns", "supplier_returns.list", &["supplier_returns.manage", "purchasing.manage", "payables.view"], "status:s,supplier_id:s",
         "Returns of goods to suppliers with their status and expected credit."),
+    read("scale_barcode_rules", "scale_rules.list", &["barcode_rules.manage", "products.view"], "",
+        "Scale barcode rules (prefix, length, item code and weight/price positions, priority, active)."),
+    read("scale_barcode_test", "scale_rules.test", &["barcode_rules.manage", "products.view"], "code:s!",
+        "What a code means at the till: exact barcode, PLU, scale rule (or several rules: ambiguous, refused) or unknown. Sells nothing."),
     read("supplier_return_get", "supplier_returns.get", &["supplier_returns.manage", "purchasing.manage", "payables.view"], "return_id:s!",
         "One supplier return: lines, batches, reasons, expected credit and the supplier's actual credit note."),
     read("list_whatsapp_orders", "waorders.list", &["orders.manage", "whatsapp.manage", "whatsapp.send"], "filter:s",
@@ -468,6 +472,26 @@ pub const TOOLS: &[ToolSpec] = &[
 ];
 
 /// Commands that deliberately have no tool, with the reason.
+/// Fields a proposal may never carry, per command: a person sets these
+/// (Wave 5: PLUs, structured address details, the sale's channel).
+pub fn forbidden_keys(cmd: &str) -> &'static [&'static str] {
+    match cmd {
+        "products.update" | "products.create" => &["plu"],
+        "customers.save" | "customers.address_save" => &["governorate", "directions"],
+        "orders.save" => &["channel"],
+        _ => &[],
+    }
+}
+
+/// The first forbidden field found in `input` (top level or one object down).
+pub fn forbidden_key_in(cmd: &str, input: &serde_json::Value) -> Option<&'static str> {
+    let keys = forbidden_keys(cmd);
+    let has = |v: &serde_json::Value, k: &str| v.get(k).map(|x| !x.is_null()).unwrap_or(false);
+    keys.iter()
+        .find(|k| has(input, k) || input.as_object().map(|o| o.values().any(|v| v.is_object() && has(v, k))).unwrap_or(false))
+        .copied()
+}
+
 pub const NO_TOOL: &[(&str, &str)] = &[
     ("app.ping", "internal"),
     ("setup.status", "setup wizard only"),
@@ -639,6 +663,9 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("po.receive", "forbidden: only a person receives goods"),
     ("receiving.shortage_decide", "forbidden: only a person keeps a shortage on order or cancels it"),
     ("supplier_invoices.accept_match", "forbidden: only a person accepts invoice differences"),
+    ("barcodes.set_kind", "forbidden: only a person records a barcode's type"),
+    ("products.set_plu", "forbidden: only a person sets a PLU"),
+    ("scale_rules.save", "forbidden: only a person sets up scale barcode rules"),
     ("supplier_returns.save", "forbidden: only a person prepares a supplier return"),
     ("supplier_returns.cancel", "forbidden: only a person cancels a supplier return"),
     ("supplier_returns.confirm", "forbidden: only a person confirms a supplier return"),

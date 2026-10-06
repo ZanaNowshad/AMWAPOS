@@ -303,6 +303,8 @@ fn is_read_command(c: &str) -> bool {
         "receiving.open_shortages",
         "supplier_invoices.match",
         "supplier_returns.list",
+        "scale_rules.list",
+        "scale_rules.test",
         "supplier_returns.get",
         "customers.statement",
         "customers.receivables",

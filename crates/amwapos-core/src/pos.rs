@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::audit;
 use crate::auth::Session;
-use crate::catalog::{self, PRICE_SQL};
+use crate::catalog;
 use crate::error::{AppError, AppResult, ErrorCode};
 use crate::ids::{new_id, next_seq};
 use crate::pricing::{self, LineInput, Totals};
@@ -178,7 +178,8 @@ fn ensure_cart(c: &Connection, s: &Session) -> AppResult<String> {
         )
         .optional()?;
     c.execute(
-        "INSERT INTO carts(cart_id, device_id, branch_id, user_id, shift_id, status, created_at, updated_at) VALUES (?1,?2,?3,?4,?5,'active',?6,?6)",
+        "INSERT INTO carts(cart_id, device_id, branch_id, user_id, shift_id, status, created_at, updated_at, channel)
+         VALUES (?1,?2,?3,?4,?5,'active',?6,?6,'pos')",
         params![id, s.device_id, s.branch_id, s.user_id, shift, now],
     )?;
     Ok(id)
@@ -200,14 +201,16 @@ pub(crate) fn load_order_cart(
         }
     }
     let cart_id = ensure_cart(c, s)?;
-    for (pid, qty) in lines {
-        let p = product_for_sale(c, pid)?;
-        add_product_line(c, &cart_id, &p, *qty, None)?;
-    }
+    // The sale carries the order's channel before anything is priced.
     c.execute(
-        "UPDATE carts SET customer_id=?2, digital_order_id=?3, loyalty_points=0 WHERE cart_id=?1",
+        "UPDATE carts SET customer_id=?2, digital_order_id=?3, loyalty_points=0,
+            channel=COALESCE((SELECT channel FROM digital_orders WHERE order_id=?3), 'other') WHERE cart_id=?1",
         params![cart_id, customer_id, order_id],
     )?;
+    for (pid, qty) in lines {
+        let p = product_for_sale(c, pid, &cart_id)?;
+        add_product_line(c, &cart_id, &p, *qty, None, None)?;
+    }
     touch(c, &cart_id)?;
     Ok(cart_id)
 }
@@ -263,6 +266,10 @@ pub(crate) struct LineRecord {
     pub track_inventory: bool,
     pub category_id: Option<String>,
     pub image_hash: Option<String>,
+    pub scale_rule_id: Option<String>,
+    pub scale_value_kind: Option<String>,
+    pub scale_value: Option<i64>,
+    pub price_type: Option<String>,
 }
 
 pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRecord>> {
@@ -270,7 +277,8 @@ pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRec
         "SELECT l.line_id, l.line_no, l.product_id, l.name, l.sku, l.barcode, l.unit, l.qty_milli, l.catalog_unit_price_minor,
                 l.unit_price_minor, l.price_override_by, l.line_discount_minor, l.line_discount_bp, l.discount_approved_by,
                 l.tax_rule_id, l.tax_rate_bp, l.tax_inclusive, l.is_custom,
-                COALESCE(p.allow_decimal_quantity, 0), COALESCE(p.track_inventory, 0), p.category_id, p.image_hash
+                COALESCE(p.allow_decimal_quantity, 0), COALESCE(p.track_inventory, 0), p.category_id, p.image_hash,
+                l.scale_rule_id, l.scale_value_kind, l.scale_value, l.price_type
          FROM cart_lines l LEFT JOIN products p ON p.product_id = l.product_id
          WHERE l.cart_id=?1 ORDER BY l.line_no",
     )?;
@@ -299,6 +307,10 @@ pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRec
                 track_inventory: r.get::<_, i64>(19)? == 1,
                 category_id: r.get(20)?,
                 image_hash: r.get(21)?,
+                scale_rule_id: r.get(22)?,
+                scale_value_kind: r.get(23)?,
+                scale_value: r.get(24)?,
+                price_type: r.get(25)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -443,12 +455,24 @@ struct ProductForSale {
     rate_bp: i64,
     inclusive: bool,
     allow_decimal: bool,
+    /// The price list the price came from (None: no price).
+    price_type: Option<String>,
 }
 
-fn product_for_sale(c: &Connection, product_id: &str) -> AppResult<ProductForSale> {
+/// The sale's channel (None: not recorded).
+pub(crate) fn cart_channel(c: &Connection, cart_id: &str) -> AppResult<Option<String>> {
+    Ok(c.query_row("SELECT channel FROM carts WHERE cart_id=?1", [cart_id], |r| r.get(0)).optional()?.flatten())
+}
+
+/// The product as this sale prices it: the cart's channel decides which
+/// price list is read first (see `catalog::price_sql_for`).
+fn product_for_sale(c: &Connection, product_id: &str, cart_id: &str) -> AppResult<ProductForSale> {
+    let pt = catalog::price_type_for_channel(cart_channel(c, cart_id)?.as_deref());
     let sql = format!(
-        "SELECT p.product_id, p.name, p.sku, p.unit, p.active, {PRICE_SQL}, p.tax_rule_id, t.rate_bp, t.inclusive, p.allow_decimal_quantity
-         FROM products p JOIN tax_rules t ON t.tax_rule_id=p.tax_rule_id WHERE p.product_id=?1"
+        "SELECT p.product_id, p.name, p.sku, p.unit, p.active, {}, p.tax_rule_id, t.rate_bp, t.inclusive, p.allow_decimal_quantity, {}
+         FROM products p JOIN tax_rules t ON t.tax_rule_id=p.tax_rule_id WHERE p.product_id=?1",
+        catalog::price_sql_for(pt, "amount_minor"),
+        catalog::price_sql_for(pt, "price_type"),
     );
     c.query_row(&sql, [product_id], |r| {
         Ok(ProductForSale {
@@ -462,6 +486,7 @@ fn product_for_sale(c: &Connection, product_id: &str) -> AppResult<ProductForSal
             rate_bp: r.get(7)?,
             inclusive: r.get::<_, i64>(8)? == 1,
             allow_decimal: r.get::<_, i64>(9)? == 1,
+            price_type: r.get(10)?,
         })
     })
     .optional()?
@@ -469,28 +494,44 @@ fn product_for_sale(c: &Connection, product_id: &str) -> AppResult<ProductForSal
 }
 
 /// Add a product line; merges into the last line of the same product when
-/// that line has no override or discount.
-fn add_product_line(c: &Connection, cart_id: &str, p: &ProductForSale, qty: i64, barcode: Option<&str>) -> AppResult<String> {
+/// that line has no override or discount. A scale-label line never merges:
+/// it keeps what its label said (rule, weight or price).
+fn add_product_line(
+    c: &Connection,
+    cart_id: &str,
+    p: &ProductForSale,
+    qty: i64,
+    barcode: Option<&str>,
+    scale: Option<&crate::barcodes::ScaleRead>,
+) -> AppResult<String> {
     if !p.active {
         return Err(AppError::conflict(format!("{} is archived and cannot be sold.", p.name)));
     }
-    let price = p
-        .price
-        .ok_or_else(|| AppError::new(ErrorCode::Validation, format!("{} has no selling price. Ask a manager to set one.", p.name)))?;
-    validate::qty_positive(qty, p.allow_decimal, "Quantity")?;
-    let last: Option<(String, String, i64, Option<String>, i64, i64)> = c
-        .query_row(
-            "SELECT line_id, COALESCE(product_id,''), unit_price_minor, price_override_by, line_discount_minor, line_discount_bp
-             FROM cart_lines WHERE cart_id=?1 ORDER BY line_no DESC LIMIT 1",
-            [cart_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
-        )
-        .optional()?;
-    if let Some((lid, pid, up, ov, ld, lbp)) = last {
-        if pid == p.product_id && up == price && ov.is_none() && ld == 0 && lbp == 0 && !p.allow_decimal {
-            c.execute("UPDATE cart_lines SET qty_milli = qty_milli + ?2 WHERE line_id=?1", params![lid, qty])?;
-            touch(c, cart_id)?;
-            return Ok(lid);
+    // A price-embedded label sells one labelled pack at the printed price.
+    let embedded = scale.filter(|r| r.value_kind == "price").map(|r| r.value_milli);
+    let price = match embedded {
+        Some(v) => v,
+        None => p
+            .price
+            .ok_or_else(|| AppError::new(ErrorCode::Validation, format!("{} has no selling price. Ask a manager to set one.", p.name)))?,
+    };
+    validate::qty_positive(qty, p.allow_decimal || embedded.is_some(), "Quantity")?;
+    if scale.is_none() {
+        type Last = (String, String, i64, Option<String>, i64, i64, Option<String>);
+        let last: Option<Last> = c
+            .query_row(
+                "SELECT line_id, COALESCE(product_id,''), unit_price_minor, price_override_by, line_discount_minor, line_discount_bp, scale_rule_id
+                 FROM cart_lines WHERE cart_id=?1 ORDER BY line_no DESC LIMIT 1",
+                [cart_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+            )
+            .optional()?;
+        if let Some((lid, pid, up, ov, ld, lbp, scale_rule)) = last {
+            if pid == p.product_id && up == price && ov.is_none() && ld == 0 && lbp == 0 && !p.allow_decimal && scale_rule.is_none() {
+                c.execute("UPDATE cart_lines SET qty_milli = qty_milli + ?2 WHERE line_id=?1", params![lid, qty])?;
+                touch(c, cart_id)?;
+                return Ok(lid);
+            }
         }
     }
     let line_no: i64 = c.query_row("SELECT COALESCE(MAX(line_no),0)+1 FROM cart_lines WHERE cart_id=?1", [cart_id], |r| r.get(0))?;
@@ -508,8 +549,9 @@ fn add_product_line(c: &Connection, cart_id: &str, p: &ProductForSale, qty: i64,
     };
     c.execute(
         "INSERT INTO cart_lines(line_id, cart_id, line_no, product_id, name, sku, barcode, unit, qty_milli, catalog_unit_price_minor,
-             unit_price_minor, tax_rule_id, tax_rate_bp, tax_inclusive, is_custom, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10,?11,?12,?13,0,?14)",
+             unit_price_minor, tax_rule_id, tax_rate_bp, tax_inclusive, is_custom, created_at, scale_rule_id, scale_value_kind, scale_value,
+             price_type)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10,?11,?12,?13,0,?14,?15,?16,?17,?18)",
         params![
             lid,
             cart_id,
@@ -524,7 +566,11 @@ fn add_product_line(c: &Connection, cart_id: &str, p: &ProductForSale, qty: i64,
             p.tax_rule_id,
             p.rate_bp,
             p.inclusive as i64,
-            time::now_str()
+            time::now_str(),
+            scale.map(|r| r.rule_id.clone()),
+            scale.map(|r| r.value_kind.clone()),
+            scale.map(|r| r.value_milli),
+            if embedded.is_some() { None } else { p.price_type.clone() },
         ],
     )?;
     touch(c, cart_id)?;
@@ -557,15 +603,49 @@ impl AppCore {
         })
     }
 
-    /// Exact barcode lookup → add to cart. Unknown barcodes are recorded for
-    /// management review; never fuzzy-matched.
+    /// What a scan means (see `barcodes`): exact barcode → PLU → scale
+    /// rule (failing closed when two rules fit) → unknown. Unknown codes
+    /// are recorded for management review; never fuzzy-matched.
     pub fn pos_scan(&self, token: &str, raw_barcode: &str, qty_milli: Option<i64>) -> AppResult<ScanResult> {
         let s = self.session(token)?;
         require_sell(&s)?;
-        let barcode = validate::barcode(raw_barcode)?;
+        let barcode = validate::barcode(&crate::barcodes::ascii_digits(raw_barcode.trim()))?;
         let qty = qty_milli.unwrap_or(1000);
+        let pos: settings::PosSettings = self.db.read(|c| settings::get(c, settings::KEY_POS))?;
         self.db.write(|tx| {
-            let owner = catalog::barcode_owner(tx, &barcode)?;
+            let mut scale: Option<crate::barcodes::ScaleRead> = None;
+            let mut owner = catalog::barcode_owner(tx, &barcode)?;
+            if owner.is_none() {
+                owner = crate::barcodes::plu_owner(tx, &barcode)?;
+            }
+            if owner.is_none() {
+                match crate::barcodes::resolve_scale(tx, &barcode)? {
+                    crate::barcodes::ScaleOutcome::NoRule => {}
+                    crate::barcodes::ScaleOutcome::Ambiguous(names) => {
+                        return Err(AppError::conflict(crate::barcodes::AMBIGUOUS_RULES)
+                            .with_details(json!({ "barcode": barcode, "rules": names })));
+                    }
+                    crate::barcodes::ScaleOutcome::Read(read) => {
+                        crate::barcodes::check_bounds(&read, &pos)?;
+                        let item: Option<(String, String)> = tx
+                            .query_row("SELECT product_id, name FROM products WHERE plu=?1", [&read.plu], |r| Ok((r.get(0)?, r.get(1)?)))
+                            .optional()?;
+                        match item {
+                            Some(o) => {
+                                owner = Some(o);
+                                scale = Some(read);
+                            }
+                            None => {
+                                return Err(AppError::new(
+                                    ErrorCode::NotFound,
+                                    format!("Scale label for PLU {}: no product has this PLU.", read.plu),
+                                )
+                                .with_details(json!({ "barcode": barcode, "plu": read.plu })));
+                            }
+                        }
+                    }
+                }
+            }
             match owner {
                 None => {
                     record_unknown(tx, &s, &barcode)?;
@@ -576,17 +656,26 @@ impl AppCore {
                     Ok(ScanResult { outcome: "unknown".into(), barcode, product_name: None, line_id: None, cart })
                 }
                 Some((pid, name)) => {
-                    let p = product_for_sale(tx, &pid)?;
+                    let cart_id = ensure_cart(tx, &s)?;
+                    let p = product_for_sale(tx, &pid, &cart_id)?;
                     if !p.active {
-                        let cart = match active_cart_id(tx, &s)? {
-                            Some(id) => cart_view(tx, &s, &id, vec![])?,
-                            None => CartView::empty(),
-                        };
+                        let cart = cart_view(tx, &s, &cart_id, vec![])?;
                         return Ok(ScanResult { outcome: "inactive".into(), barcode, product_name: Some(name), line_id: None, cart });
                     }
-                    let q = if p.allow_decimal && qty_milli.is_none() { 1000 } else { qty };
-                    let cart_id = ensure_cart(tx, &s)?;
-                    let lid = add_product_line(tx, &cart_id, &p, q, Some(&barcode))?;
+                    let q = match &scale {
+                        Some(r) if r.value_kind == "weight" => {
+                            if !p.allow_decimal {
+                                return Err(AppError::validation(format!(
+                                    "{name} is sold by the piece; a weight label cannot be used. Allow decimal quantities on the product first."
+                                )));
+                            }
+                            r.value_milli
+                        }
+                        Some(_) => 1000,
+                        None if p.allow_decimal && qty_milli.is_none() => 1000,
+                        None => qty,
+                    };
+                    let lid = add_product_line(tx, &cart_id, &p, q, Some(&barcode), scale.as_ref())?;
                     let cart = cart_view(tx, &s, &cart_id, vec![])?;
                     Ok(ScanResult { outcome: "added".into(), barcode, product_name: Some(name), line_id: Some(lid), cart })
                 }
@@ -607,10 +696,16 @@ impl AppCore {
         let limit = validate::limit(limit, 40, 200);
         let text = q.trim().to_string();
         self.db.read(|c| {
+            // Prices as this sale will charge them (its channel's price list).
+            let channel = match active_cart_id(c, &s)? {
+                Some(id) => cart_channel(c, &id)?,
+                None => None,
+            };
+            let price_sql = catalog::price_sql_for(catalog::price_type_for_channel(channel.as_deref()), "amount_minor");
             let base = format!(
                 "SELECT p.product_id, p.sku, p.name, p.name_ar, c.name,
                     (SELECT barcode FROM product_barcodes b WHERE b.product_id=p.product_id ORDER BY b.is_primary DESC LIMIT 1),
-                    {PRICE_SQL},
+                    {price_sql},
                     COALESCE((SELECT qty_milli FROM stock_levels s WHERE s.product_id=p.product_id AND s.branch_id=?1),0),
                     p.track_inventory, p.unit, p.reorder_point_milli, p.image_hash
                  FROM products p LEFT JOIN categories c ON c.category_id=p.category_id
@@ -686,9 +781,9 @@ impl AppCore {
         require_sell(&s)?;
         let pid = validate::id(product_id, "Product")?;
         self.db.write(|tx| {
-            let p = product_for_sale(tx, &pid)?;
             let cart_id = ensure_cart(tx, &s)?;
-            add_product_line(tx, &cart_id, &p, qty_milli.unwrap_or(1000), None)?;
+            let p = product_for_sale(tx, &pid, &cart_id)?;
+            add_product_line(tx, &cart_id, &p, qty_milli.unwrap_or(1000), None, None)?;
             cart_view(tx, &s, &cart_id, vec![])
         })
     }
@@ -1145,18 +1240,22 @@ impl AppCore {
                     continue;
                 }
                 let Some(pid) = &l.product_id else { continue };
-                let p = product_for_sale(tx, pid)?;
+                let p = product_for_sale(tx, pid, &cid)?;
                 if !p.active {
                     tx.execute("DELETE FROM cart_lines WHERE line_id=?1", [&l.line_id])?;
                     notices.push(format!("{} was removed: it is no longer sold.", l.name));
                     continue;
                 }
                 let Some(now_price) = p.price else { continue };
+                // A price-embedded scale label keeps the price printed on it.
+                if l.scale_value_kind.as_deref() == Some("price") {
+                    continue;
+                }
                 if now_price != l.catalog_unit_price_minor {
                     if l.price_override_by.is_none() {
                         tx.execute(
-                            "UPDATE cart_lines SET catalog_unit_price_minor=?2, unit_price_minor=?2 WHERE line_id=?1",
-                            params![l.line_id, now_price],
+                            "UPDATE cart_lines SET catalog_unit_price_minor=?2, unit_price_minor=?2, price_type=?3 WHERE line_id=?1",
+                            params![l.line_id, now_price, p.price_type],
                         )?;
                         notices.push(format!(
                             "{}: price changed from {} to {}.",

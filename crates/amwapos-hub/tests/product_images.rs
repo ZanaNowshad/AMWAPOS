@@ -202,6 +202,7 @@ fn create(e: &Env, name: &str, barcode: &str) -> String {
                 barcodes: vec![barcode.into()],
                 opening_stock_milli: None,
                 image_b64: None,
+                plu: None,
             },
         )
         .unwrap()

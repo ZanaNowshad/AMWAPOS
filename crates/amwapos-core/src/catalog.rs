@@ -26,6 +26,43 @@ pub const PRICE_SQL: &str = "(SELECT pp.amount_minor FROM product_prices pp
         AND COALESCE((SELECT json_extract(value_json, '$.\"org.multi_branch\"') FROM settings WHERE key = 'features'), 0) = 1))
     ORDER BY (pp.branch_id IS NULL), pp.effective_from DESC LIMIT 1)";
 
+/// Price lists besides retail, one per sales channel that can have its own
+/// prices. The till (`pos`) and `other` always use retail.
+pub const CHANNEL_PRICE_TYPES: [&str; 3] = ["whatsapp", "phone", "web"];
+pub const PRICE_TYPES: [&str; 4] = ["retail", "whatsapp", "phone", "web"];
+
+/// The price list a sale on `channel` looks at first.
+pub fn price_type_for_channel(channel: Option<&str>) -> &'static str {
+    match channel {
+        Some("whatsapp") => "whatsapp",
+        Some("phone") => "phone",
+        Some("web") => "web",
+        _ => "retail",
+    }
+}
+
+/// The price of `p` for `price_type`, falling back deterministically:
+/// branch + channel price → channel price → branch retail → retail. With
+/// `retail` this is exactly `PRICE_SQL` (retail behaviour is unchanged).
+/// `col` is `amount_minor` (the price) or `price_type` (where it came from).
+pub fn price_sql_for(price_type: &str, col: &str) -> String {
+    let t = if CHANNEL_PRICE_TYPES.contains(&price_type) { price_type } else { "retail" };
+    let col = if col == "price_type" { "price_type" } else { "amount_minor" };
+    if t == "retail" && col == "amount_minor" {
+        return PRICE_SQL.to_string();
+    }
+    format!(
+        "(SELECT pp.{col} FROM product_prices pp
+    WHERE pp.product_id = p.product_id AND pp.price_type IN ('{t}','retail')
+      AND pp.effective_from <= amw_now()
+      AND (pp.effective_to IS NULL OR pp.effective_to > amw_now())
+      AND (pp.branch_id IS NULL OR (
+        pp.branch_id = (SELECT json_extract(value_json, '$.branch_id') FROM settings WHERE key = 'local.device')
+        AND COALESCE((SELECT json_extract(value_json, '$.\"org.multi_branch\"') FROM settings WHERE key = 'features'), 0) = 1))
+    ORDER BY (pp.price_type <> '{t}'), (pp.branch_id IS NULL), pp.effective_from DESC LIMIT 1)"
+    )
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Page<T> {
     pub rows: Vec<T>,
@@ -71,11 +108,17 @@ pub struct BarcodeRow {
     pub is_primary: bool,
     pub source: String,
     pub created_at: String,
+    /// Chosen by a person; None: not recorded.
+    pub kind: Option<String>,
+    /// What the digits look like (a suggestion, never stored by itself).
+    pub suggested_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PriceRow {
     pub price_id: String,
+    pub price_type: String,
+    pub branch_id: Option<String>,
     pub amount_minor: i64,
     pub effective_from: String,
     pub effective_to: Option<String>,
@@ -108,6 +151,9 @@ pub struct ProductDetail {
     pub cost_history: Option<Vec<CostRow>>,
     pub avg_cost_minor: Option<i64>,
     pub last_cost_minor: Option<i64>,
+    pub plu: Option<String>,
+    /// Set when this product was merged into another (it is then retired).
+    pub merged_into: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -178,6 +224,8 @@ pub struct ProductCreate {
     /// the product is queued for the one automatic lookup (when turned on).
     #[serde(default)]
     pub image_b64: Option<String>,
+    #[serde(default)]
+    pub plu: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -192,6 +240,9 @@ pub struct ProductUpdate {
     pub expected_version: i64,
     #[serde(flatten)]
     pub product: ProductInput,
+    /// None: unchanged; "" clears the PLU.
+    #[serde(default)]
+    pub plu: Option<String>,
 }
 
 pub(crate) const PRODUCT_ROW_SQL: &str = "SELECT p.product_id, p.sku, p.name, p.name_ar, p.category_id, c.name,
@@ -266,7 +317,7 @@ pub(crate) fn load_product_row(c: &Connection, branch: &str, product_id: &str, s
 fn product_json(c: &Connection, product_id: &str) -> AppResult<serde_json::Value> {
     c.query_row(
         "SELECT sku, name, name_ar, description, category_id, tax_rule_id, unit, track_inventory,
-                allow_decimal_quantity, reorder_point_milli, active, is_favorite
+                allow_decimal_quantity, reorder_point_milli, active, is_favorite, plu
          FROM products WHERE product_id = ?1",
         [product_id],
         |r| {
@@ -276,7 +327,7 @@ fn product_json(c: &Connection, product_id: &str) -> AppResult<serde_json::Value
                 "tax_rule_id": r.get::<_, String>(5)?, "unit": r.get::<_, String>(6)?,
                 "track_inventory": r.get::<_, i64>(7)? == 1, "allow_decimal_quantity": r.get::<_, i64>(8)? == 1,
                 "reorder_point_milli": r.get::<_, i64>(9)?, "active": r.get::<_, i64>(10)? == 1,
-                "is_favorite": r.get::<_, i64>(11)? == 1,
+                "is_favorite": r.get::<_, i64>(11)? == 1, "plu": r.get::<_, Option<String>>(12)?,
             }))
         },
     )
@@ -391,6 +442,7 @@ pub(crate) fn insert_product(c: &Connection, s: &Session, req: &ProductCreate, b
             return Err(AppError::duplicate(format!("Barcode {b} already belongs to {name}."))
                 .with_details(json!({ "barcode": b, "product_name": name })));
         }
+        crate::barcodes::barcode_plu_conflict(c, &b, "")?;
         barcodes.push(b);
     }
     let now = time::now_str();
@@ -415,6 +467,9 @@ pub(crate) fn insert_product(c: &Connection, s: &Session, req: &ProductCreate, b
             now
         ],
     )?;
+    if let Some(plu) = req.plu.as_deref().filter(|x| !x.trim().is_empty()) {
+        crate::barcodes::set_plu(c, &pid, Some(plu))?;
+    }
     for (i, b) in barcodes.iter().enumerate() {
         c.execute(
             "INSERT INTO product_barcodes(barcode_id, product_id, barcode, is_primary, source, created_at, created_by) VALUES (?1,?2,?3,?4,?5,?6,?7)",
@@ -578,28 +633,40 @@ impl AppCore {
         let show_cost = s.has("products.view_cost");
         self.db.read(|c| {
             let row = load_product_row(c, &s.branch_id, product_id, show_cost)?;
-            let (description, version, created_at, updated_at, archived_at): (Option<String>, i64, String, String, Option<String>) = c
-                .query_row(
-                    "SELECT description, version, created_at, updated_at, archived_at FROM products WHERE product_id=?1",
-                    [product_id],
-                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
-                )?;
+            type Head = (Option<String>, i64, String, String, Option<String>, Option<String>, Option<String>, Option<String>);
+            let (description, version, created_at, updated_at, archived_at, plu, merged_into, merged_at): Head = c.query_row(
+                "SELECT description, version, created_at, updated_at, archived_at, plu, merged_into_product_id, merged_at
+                 FROM products WHERE product_id=?1",
+                [product_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+            )?;
+            let merged_into = match merged_into {
+                Some(t) => {
+                    let name: Option<String> = c.query_row("SELECT name FROM products WHERE product_id=?1", [&t], |r| r.get(0)).optional()?;
+                    Some(json!({ "product_id": t, "name": name, "merged_at": merged_at }))
+                }
+                None => None,
+            };
             let mut st = c.prepare(
-                "SELECT barcode_id, barcode, is_primary, source, created_at FROM product_barcodes WHERE product_id=?1 ORDER BY is_primary DESC, created_at",
+                "SELECT barcode_id, barcode, is_primary, source, created_at, kind FROM product_barcodes WHERE product_id=?1 ORDER BY is_primary DESC, created_at",
             )?;
             let barcodes = st
                 .query_map([product_id], |r| {
+                    let barcode: String = r.get(1)?;
                     Ok(BarcodeRow {
                         barcode_id: r.get(0)?,
-                        barcode: r.get(1)?,
+                        suggested_kind: crate::barcodes::suggest_kind(&barcode).map(String::from),
+                        barcode,
                         is_primary: r.get::<_, i64>(2)? == 1,
                         source: r.get(3)?,
                         created_at: r.get(4)?,
+                        kind: r.get(5)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
             let mut st = c.prepare(
-                "SELECT pp.price_id, pp.amount_minor, pp.effective_from, pp.effective_to, pp.reason, u.display_name, pp.created_at
+                "SELECT pp.price_id, pp.amount_minor, pp.effective_from, pp.effective_to, pp.reason, u.display_name, pp.created_at,
+                        pp.price_type, pp.branch_id
                  FROM product_prices pp LEFT JOIN users u ON u.user_id = pp.created_by
                  WHERE pp.product_id=?1 ORDER BY pp.effective_from DESC LIMIT 200",
             )?;
@@ -607,6 +674,8 @@ impl AppCore {
                 .query_map([product_id], |r| {
                     Ok(PriceRow {
                         price_id: r.get(0)?,
+                        price_type: r.get(7)?,
+                        branch_id: r.get(8)?,
                         amount_minor: r.get(1)?,
                         effective_from: r.get(2)?,
                         effective_to: r.get(3)?,
@@ -658,6 +727,8 @@ impl AppCore {
                 cost_history,
                 avg_cost_minor: avg,
                 last_cost_minor: last,
+                plu,
+                merged_into,
             })
         })
     }
@@ -768,6 +839,9 @@ impl AppCore {
                     time::now_str()
                 ],
             )?;
+            if let Some(plu) = &req.plu {
+                crate::barcodes::set_plu(tx, &pid, Some(plu.as_str()).filter(|x| !x.trim().is_empty()))?;
+            }
             let after = product_json(tx, &pid)?;
             audit::record(tx, &actor, "product.updated", "product", Some(&pid), Some(&before), Some(&after))?;
             Ok(())
@@ -1469,6 +1543,7 @@ pub(crate) fn add_barcode(c: &Connection, s: &Session, pid: &str, b: &str, make_
         return Err(AppError::duplicate(format!("This barcode belongs to {name}."))
             .with_details(json!({ "barcode": b, "product_id": owner, "product_name": name })));
     }
+    crate::barcodes::barcode_plu_conflict(c, b, pid)?;
     let count: i64 = c.query_row("SELECT COUNT(*) FROM product_barcodes WHERE product_id=?1", [pid], |r| r.get(0))?;
     if count >= 50 {
         return Err(AppError::validation("A product can have at most 50 barcodes."));

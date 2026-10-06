@@ -22,6 +22,11 @@ pub struct PosSettings {
     pub return_to_scan_seconds: i64,
     pub scan_sound: bool,
     pub duplicate_scan_window_ms: i64,
+    /// Largest weight a scale label may carry, in thousandths of a unit
+    /// (default 50 kg). A label above it is refused, never charged.
+    pub scale_max_weight_milli: i64,
+    /// Largest price a price-embedded scale label may carry, in fils.
+    pub scale_max_price_minor: i64,
 }
 impl Default for PosSettings {
     fn default() -> Self {
@@ -34,6 +39,8 @@ impl Default for PosSettings {
             return_to_scan_seconds: 4,
             scan_sound: true,
             duplicate_scan_window_ms: 0,
+            scale_max_weight_milli: 50_000,
+            scale_max_price_minor: 100_000,
         }
     }
 }
@@ -661,6 +668,9 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             }
             if !(0..=240).contains(&p.idle_lock_minutes) {
                 return Err(AppError::validation("Idle lock must be between 0 and 240 minutes."));
+            }
+            if !(1..=1_000_000).contains(&p.scale_max_weight_milli) || !(1..=100_000_000).contains(&p.scale_max_price_minor) {
+                return Err(AppError::validation("Set a scale label limit above zero."));
             }
             serde_json::to_value(p)?
         }

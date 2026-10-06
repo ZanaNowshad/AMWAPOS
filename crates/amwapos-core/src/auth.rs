@@ -111,6 +111,9 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("requisitions.create", "Purchasing", "Create and submit purchase requisitions (suggested orders)"),
     ("purchasing.approve", "Purchasing", "Approve requisitions and purchase orders, delivery differences and invoice matches"),
     ("supplier_returns.manage", "Purchasing", "Return goods to a supplier and record the expected credit"),
+    ("catalog.merge", "Catalogue", "Merge duplicate products into one (cannot be undone)"),
+    ("pricing.policy", "Catalogue", "Set pricing policies and apply recommended prices"),
+    ("barcode_rules.manage", "Catalogue", "Set up scale barcode rules"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -139,6 +142,8 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
                     | "payables.post"
                     | "payables.pay"
                     | "expenses.pay"
+                    // Merging products cannot be undone: the owner's decision.
+                    | "catalog.merge"
             )
         })
         .collect();
@@ -206,6 +211,9 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// Permissions added to the catalogue after the first release. Built-in
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "catalog.merge",
+    "pricing.policy",
+    "barcode_rules.manage",
     "requisitions.create",
     "purchasing.approve",
     "supplier_returns.manage",

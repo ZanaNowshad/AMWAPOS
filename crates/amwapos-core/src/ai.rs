@@ -2544,7 +2544,14 @@ impl AppCore {
                     &json!({ "product_id": pid, "new_price": crate::ai_helpers::minor_to_decimal(price, digits), "reason": reason }),
                 )
             }
-            Kind::Propose => self.ai_propose_command(s, token, cid, spec, input),
+            Kind::Propose => {
+                if let Some(k) = crate::ai_tools::forbidden_key_in(spec.cmd, input) {
+                    return Err(AppError::forbidden(&format!("ai.{k}")).with_details(
+                        json!({ "kind": "ai_forbidden_field", "field": k, "message": format!("Only a person can set {k}.") }),
+                    ));
+                }
+                self.ai_propose_command(s, token, cid, spec, input)
+            }
         }
     }
 

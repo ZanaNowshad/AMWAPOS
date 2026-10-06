@@ -13,6 +13,7 @@ pub mod ai_workspace;
 pub mod audit;
 pub mod auth;
 pub mod backup;
+pub mod barcodes;
 pub mod branches;
 pub mod cases;
 pub mod catalog;

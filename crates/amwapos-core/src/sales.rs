@@ -503,8 +503,9 @@ impl AppCore {
             tx.execute(
                 "INSERT INTO sales(sale_id, receipt_number, branch_id, device_id, shift_id, cashier_user_id, customer_id, status,
                     subtotal_minor, discount_minor, tax_minor, total_minor, paid_minor, change_minor, cost_total_minor, item_count_milli,
-                    cart_id, operation_id, business_date, completed_at, created_at, loyalty_discount_minor)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,'completed',?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?19,?20)",
+                    cart_id, operation_id, business_date, completed_at, created_at, loyalty_discount_minor, channel)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,'completed',?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?19,?20,
+                    (SELECT channel FROM carts WHERE cart_id=?16))",
                 params![
                     sale_id, receipt_number, s.branch_id, s.device_id, shift_id, s.user_id, customer_id,
                     totals.subtotal_minor, totals.discount_minor, totals.tax_minor, totals.total_minor, paid, change,
@@ -518,14 +519,15 @@ impl AppCore {
                     "INSERT INTO sale_items(sale_item_id, sale_id, line_no, product_id, product_name_snapshot, sku_snapshot, barcode_snapshot,
                         category_id_snapshot, unit, qty_milli, original_unit_price_minor, effective_unit_price_minor, gross_minor, discount_minor,
                         tax_rule_id, tax_rate_bp, tax_inclusive, tax_minor, line_total_minor, cost_snapshot_minor, is_custom,
-                        price_override_by, discount_approved_by, product_name_ar_snapshot, loyalty_discount_minor)
+                        price_override_by, discount_approved_by, product_name_ar_snapshot, loyalty_discount_minor,
+                        scale_rule_id, scale_value_kind, scale_value, price_type)
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,
-                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4),?24)",
+                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4),?24,?25,?26,?27,?28)",
                     params![
                         item_id, sale_id, l.line_no, l.product_id, l.name, l.sku, l.barcode, l.category_id, l.unit, l.qty_milli,
                         l.catalog_unit_price_minor, l.unit_price_minor, p.gross_minor, p.discount_minor, l.tax_rule_id, l.tax_rate_bp,
                         l.tax_inclusive as i64, p.tax_minor, p.line_total_minor, cost, l.is_custom as i64, l.price_override_by, approver,
-                        loyalty_share
+                        loyalty_share, l.scale_rule_id, l.scale_value_kind, l.scale_value, l.price_type
                     ],
                 )?;
                 if l.track_inventory {

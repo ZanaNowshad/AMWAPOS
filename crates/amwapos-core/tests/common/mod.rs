@@ -70,6 +70,7 @@ impl Env {
             barcodes: vec![barcode.into()],
             opening_stock_milli: Some(stock_milli),
             image_b64: None,
+            plu: None,
         };
         self.core.product_create(&self.owner_token, req).unwrap().row.product_id
     }
