@@ -397,6 +397,13 @@ pub fn match_line(c: &Connection, supplier: Option<&str>, l: &ExtractedLine) -> 
             band = Band::Low;
         }
     }
+    // A pack size a person confirmed for this supplier and product wins over
+    // one learned from earlier documents.
+    if let Some(sid) = supplier {
+        if let Some(u) = crate::catalogue::confirmed_pack(c, sid, &best.id)? {
+            learned_upc = Some(u);
+        }
+    }
     Ok((
         MatchResult {
             id: Some(best.id.clone()),

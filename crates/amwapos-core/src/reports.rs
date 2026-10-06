@@ -1007,7 +1007,7 @@ impl AppCore {
         let r = range(c, self, p)?;
         let mut st = c.prepare(
             "WITH po AS (
-                SELECT p.supplier_id, p.expected_at,
+                SELECT p.supplier_id, p.expected_at, COALESCE(p.ordered_at, p.created_at) AS ordered_at,
                        (SELECT COALESCE(SUM(qty_ordered_milli),0) FROM purchase_order_items i WHERE i.po_id=p.po_id) AS ordered,
                        (SELECT COALESCE(SUM(qty_received_milli),0) FROM purchase_order_items i WHERE i.po_id=p.po_id) AS received,
                        (SELECT MIN(created_at) FROM goods_receipts g WHERE g.po_id=p.po_id) AS first_rcv
@@ -1018,19 +1018,80 @@ impl AppCore {
                     SUM(CASE WHEN po.expected_at IS NOT NULL AND po.first_rcv IS NOT NULL AND substr(po.first_rcv,1,10) <= substr(po.expected_at,1,10) THEN 1 ELSE 0 END),
                     SUM(CASE WHEN po.expected_at IS NOT NULL AND ((po.first_rcv IS NULL AND substr(po.expected_at,1,10) < substr(amw_now(),1,10))
                                   OR substr(po.first_rcv,1,10) > substr(po.expected_at,1,10)) THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN po.expected_at IS NULL THEN 1 ELSE 0 END)
+                    SUM(CASE WHEN po.expected_at IS NULL THEN 1 ELSE 0 END),
+                    po.supplier_id,
+                    CAST(ROUND(AVG(CASE WHEN po.first_rcv IS NOT NULL THEN julianday(substr(po.first_rcv,1,10)) - julianday(substr(po.ordered_at,1,10)) END) * 10) AS INTEGER)
              FROM po JOIN suppliers sp ON sp.supplier_id=po.supplier_id GROUP BY po.supplier_id ORDER BY sp.name COLLATE NOCASE",
         )?;
+        // Per supplier, over the same period: what was delivered and what
+        // differed, returns, cost differences and invoices that needed review.
+        let by_supplier = |sql: &str| -> AppResult<std::collections::HashMap<String, i64>> {
+            let mut q = c.prepare(sql)?;
+            let rows = q.query_map(params![r.a, r.b], |x| Ok((x.get::<_, String>(0)?, x.get::<_, Option<i64>>(1)?.unwrap_or(0))))?;
+            let mut m = std::collections::HashMap::new();
+            for row in rows {
+                let (k, v) = row?;
+                m.insert(k, v);
+            }
+            Ok(m)
+        };
+        let accepted = by_supplier(
+            "SELECT g.supplier_id, SUM(i.qty_milli) FROM goods_receipt_items i JOIN goods_receipts g ON g.receipt_id=i.receipt_id
+             WHERE g.created_at>=?1 AND g.created_at<?2 AND g.supplier_id IS NOT NULL AND (amw_rbranch() IS NULL OR g.branch_id=amw_rbranch()) GROUP BY g.supplier_id",
+        )?;
+        let disc = |kind: &str| {
+            by_supplier(&format!(
+                "SELECT d.supplier_id, SUM(d.qty_milli) FROM receipt_discrepancies d JOIN goods_receipts g ON g.receipt_id=d.receipt_id
+                 WHERE d.kind='{kind}' AND d.created_at>=?1 AND d.created_at<?2 AND (amw_rbranch() IS NULL OR g.branch_id=amw_rbranch()) GROUP BY d.supplier_id"
+            ))
+        };
+        let (shortage, overage, damaged, rejected) = (disc("shortage")?, disc("overage")?, disc("damaged")?, disc("rejected")?);
+        let returned = by_supplier(
+            "SELECT r.supplier_id, SUM(l.qty_milli) FROM supplier_return_lines l JOIN supplier_returns r ON r.return_id=l.return_id
+             WHERE r.status IN ('confirmed','credited') AND r.confirmed_at>=?1 AND r.confirmed_at<?2 AND (amw_rbranch() IS NULL OR r.branch_id=amw_rbranch()) GROUP BY r.supplier_id",
+        )?;
+        let cost_var = by_supplier(
+            "SELECT g.supplier_id, CAST(AVG(ABS(i.unit_cost_minor - o.unit_cost_minor) * 10000.0 / o.unit_cost_minor) AS INTEGER)
+             FROM goods_receipt_items i JOIN goods_receipts g ON g.receipt_id=i.receipt_id JOIN purchase_order_items o ON o.po_item_id=i.po_item_id
+             WHERE o.unit_cost_minor > 0 AND i.substitute_for_product_id IS NULL AND g.created_at>=?1 AND g.created_at<?2
+               AND (amw_rbranch() IS NULL OR g.branch_id=amw_rbranch()) GROUP BY g.supplier_id",
+        )?;
+        let reviewed = by_supplier(
+            "SELECT supplier_id, COUNT(*) FROM supplier_invoices WHERE match_accepted_at>=?1 AND match_accepted_at<?2 GROUP BY supplier_id",
+        )?;
+        let configured = {
+            let mut q = c.prepare(
+                "SELECT supplier_id, CAST(ROUND(AVG(lead_time_days) * 10) AS INTEGER) FROM supplier_products WHERE lead_time_days IS NOT NULL AND active=1 GROUP BY supplier_id",
+            )?;
+            let rows = q.query_map([], |x| Ok((x.get::<_, String>(0)?, x.get::<_, i64>(1)?)))?;
+            let mut m = std::collections::HashMap::new();
+            for row in rows {
+                let (k, v) = row?;
+                m.insert(k, v);
+            }
+            m
+        };
+        let rate = |part: i64, whole: i64| if whole > 0 { part * 10_000 / whole } else { 0 };
         let rows: Vec<Value> = st
             .query_map(params![r.a, r.b], |row| {
                 let ordered: i64 = row.get(2)?;
                 let received: i64 = row.get(3)?;
                 let on_time: i64 = row.get(4)?;
                 let late: i64 = row.get(5)?;
+                let sid: String = row.get(7)?;
+                let observed: Option<i64> = row.get(8)?;
+                let g = |m: &std::collections::HashMap<String, i64>| m.get(&sid).copied().unwrap_or(0);
+                let acc = g(&accepted);
+                let delivered = acc + g(&rejected);
                 Ok(json!({ "supplier": row.get::<_, String>(0)?, "orders": row.get::<_, i64>(1)?, "ordered": ordered, "received": received,
                     "fill_bp": if ordered > 0 { received.min(ordered) * 10_000 / ordered } else { 0 },
                     "on_time": on_time, "late": late, "no_date": row.get::<_, i64>(6)?,
-                    "on_time_bp": if on_time + late > 0 { on_time * 10_000 / (on_time + late) } else { 0 } }))
+                    "on_time_bp": if on_time + late > 0 { on_time * 10_000 / (on_time + late) } else { 0 },
+                    "lead_configured": configured.get(&sid).map(|x| format!("{}.{}", x / 10, x % 10)),
+                    "lead_observed": observed.map(|x| format!("{}.{}", x / 10, x % 10)),
+                    "shortage_bp": rate(g(&shortage), ordered), "overage_bp": rate(g(&overage), ordered),
+                    "damage_bp": rate(g(&damaged), delivered), "rejected_bp": rate(g(&rejected), delivered),
+                    "return_bp": rate(g(&returned), acc), "cost_variance_bp": g(&cost_var), "invoice_reviews": g(&reviewed) }))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         let (o, rc, ot, lt) = rows.iter().fold((0, 0, 0, 0), |a, x| {
@@ -1061,6 +1122,15 @@ impl AppCore {
                 col("late", "Late", "int"),
                 col("no_date", "No expected date", "int"),
                 col("on_time_bp", "On-time rate", "percent_bp"),
+                col("lead_configured", "Lead time set (days)", "text"),
+                col("lead_observed", "Lead time seen (days)", "text"),
+                col("shortage_bp", "Short", "percent_bp"),
+                col("overage_bp", "Extra", "percent_bp"),
+                col("damage_bp", "Damaged", "percent_bp"),
+                col("rejected_bp", "Refused", "percent_bp"),
+                col("return_bp", "Returned", "percent_bp"),
+                col("cost_variance_bp", "Cost difference (avg)", "percent_bp"),
+                col("invoice_reviews", "Invoices reviewed", "int"),
             ],
             totals: None,
             rows,
@@ -1234,6 +1304,49 @@ impl AppCore {
                 let k = count("SELECT COUNT(*) FROM payment_reviews WHERE status IN ('pending','matched','mismatch','needs_review')")?;
                 if k > 0 {
                     attention.push(json!({ "kind": "payments", "severity": "warning", "count": k, "text": format!("{k} payment screenshot(s) to check"), "link": "/admin/payment-reviews" }));
+                }
+            }
+            // Procurement (Wave 4): only what someone can act on, each with
+            // its workflow.
+            if s.has("purchasing.approve") {
+                let k = count("SELECT COUNT(*) FROM requisitions WHERE status='submitted'")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "requisitions", "severity": "warning", "count": k, "text": format!("{k} requisition(s) waiting for approval"), "link": "/admin/requisitions?status=submitted" }));
+                }
+                let mut st = c.prepare("SELECT po_id FROM purchase_orders WHERE status='draft'")?;
+                let drafts: Vec<String> = st.query_map([], |r| r.get(0))?.collect::<Result<_, _>>()?;
+                let mut waiting = 0;
+                for id in drafts {
+                    let a = crate::purchasing::approval_status(c, &id)?;
+                    if a.required && !a.valid {
+                        waiting += 1;
+                    }
+                }
+                if waiting > 0 {
+                    attention.push(json!({ "kind": "po_approval", "severity": "warning", "count": waiting, "text": format!("{waiting} purchase order(s) waiting for approval"), "link": "/admin/purchase-orders?status=draft" }));
+                }
+            }
+            if s.has("purchasing.manage") {
+                let k = count("SELECT COUNT(*) FROM receipt_discrepancies WHERE kind='shortage' AND resolution='open'")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "shortages", "severity": "warning", "count": k, "text": format!("{k} missing delivery quantity(ies) need a decision"), "link": "/admin/purchase-orders?status=partially_received" }));
+                }
+                let k = count("SELECT COUNT(*) FROM requisitions WHERE status='approved'")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "requisitions_approved", "severity": "info", "count": k, "text": format!("{k} approved requisition(s) to turn into purchase orders"), "link": "/admin/requisitions?status=approved" }));
+                }
+            }
+            if s.has("supplier_returns.manage") {
+                let k = count("SELECT COUNT(*) FROM supplier_returns WHERE status='confirmed' AND credit_invoice_id IS NULL")?;
+                if k > 0 {
+                    attention.push(json!({ "kind": "returns_credit", "severity": "info", "count": k, "text": format!("{k} supplier return(s) waiting for a credit note"), "link": "/admin/supplier-returns?status=confirmed" }));
+                }
+            }
+            if s.has("requisitions.create") || s.has("purchasing.manage") {
+                let today = time::business_date(time::now(), &time::day(c)?)?;
+                let to_order = crate::replenish::run(c, &s.branch_id, &today, None)?.iter().filter(|r| r.assessment.state == "order").count();
+                if to_order > 0 {
+                    attention.push(json!({ "kind": "suggested_orders", "severity": "info", "count": to_order, "text": format!("{to_order} product(s) to order"), "link": "/admin/suggested-orders" }));
                 }
             }
             if s.has("payables.view") {

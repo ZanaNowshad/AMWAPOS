@@ -221,6 +221,46 @@ impl Default for InventorySettings {
     }
 }
 
+/// Procurement (Wave 4, docs/PROCUREMENT.md). Only settings that change an
+/// outcome; everything else is a per-supplier or per-product term.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PurchasingSettings {
+    /// Extra days of stock kept on top of the supplier's lead time.
+    pub safety_days: i64,
+    /// Days between orders: a suggestion orders enough to last this long
+    /// after the delivery arrives.
+    pub order_cycle_days: i64,
+    /// Days of sales the demand is measured over (7, 30, 60 or 90).
+    pub demand_window_days: i64,
+    /// Purchase order approval: `off` (as before), `always`, or
+    /// `above_threshold` (orders whose total exceeds the threshold).
+    pub po_approval_mode: String,
+    pub po_approval_threshold_minor: i64,
+    /// Over-delivery accepted without a manager, as basis points of the
+    /// ordered quantity (0 = every over-delivery needs approval).
+    pub qty_tolerance_bp: i64,
+    /// A cost difference is within tolerance when it is within BOTH limits:
+    /// the line's value difference in fils, and the unit cost difference in
+    /// basis points (500 = 5%).
+    pub cost_tolerance_minor: i64,
+    pub cost_tolerance_bp: i64,
+}
+impl Default for PurchasingSettings {
+    fn default() -> Self {
+        Self {
+            safety_days: 3,
+            order_cycle_days: 7,
+            demand_window_days: 30,
+            po_approval_mode: "off".into(),
+            po_approval_threshold_minor: 100_000,
+            qty_tolerance_bp: 0,
+            cost_tolerance_minor: 500,
+            cost_tolerance_bp: 500,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PrinterSettings {
@@ -555,6 +595,7 @@ pub const KEY_PAYMENTS: &str = "payments";
 pub const KEY_RECEIPT: &str = "receipt";
 pub const KEY_SECURITY: &str = "security";
 pub const KEY_INVENTORY: &str = "inventory";
+pub const KEY_PURCHASING: &str = "purchasing";
 pub const KEY_PRINTER: &str = "local.printer";
 pub const KEY_BACKUP: &str = "local.backup";
 pub const KEY_APPEARANCE: &str = "local.appearance";
@@ -568,6 +609,7 @@ pub const EDITABLE_KEYS: &[&str] = &[
     KEY_RECEIPT,
     KEY_SECURITY,
     KEY_INVENTORY,
+    KEY_PURCHASING,
     KEY_PRINTER,
     KEY_BACKUP,
     KEY_APPEARANCE,
@@ -716,6 +758,26 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             }
             if !(1..=100).contains(&s.expiry_max_years) || s.waste_approval_cost_minor < 0 {
                 return Err(AppError::validation("Check the expiry and waste limits."));
+            }
+            serde_json::to_value(s)?
+        }
+        KEY_PURCHASING => {
+            let s: PurchasingSettings =
+                serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
+            if !(0..=90).contains(&s.safety_days) || !(1..=90).contains(&s.order_cycle_days) {
+                return Err(AppError::validation("Safety days must be 0–90 and days between orders 1–90."));
+            }
+            if ![7, 30, 60, 90].contains(&s.demand_window_days) {
+                return Err(AppError::validation("Measure demand over 7, 30, 60 or 90 days."));
+            }
+            if !["off", "always", "above_threshold"].contains(&s.po_approval_mode.as_str()) {
+                return Err(AppError::validation("Purchase order approval must be off, always, or above an amount."));
+            }
+            if s.po_approval_threshold_minor < 0 || !(0..=10000).contains(&s.qty_tolerance_bp) {
+                return Err(AppError::validation("Check the approval amount and the quantity tolerance."));
+            }
+            if s.cost_tolerance_minor < 0 || !(0..=10000).contains(&s.cost_tolerance_bp) {
+                return Err(AppError::validation("Cost tolerances cannot be negative (percentage at most 100%)."));
             }
             serde_json::to_value(s)?
         }

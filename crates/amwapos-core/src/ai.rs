@@ -2509,15 +2509,16 @@ impl AppCore {
                 };
                 self.ai_wrap_read(cid, spec, v, limit as usize)
             }
-            // B4: the PO lines come from the app's reorder rule, not the model.
+            // B4: the lines come from the app's replenishment engine, not the model.
             Kind::Propose if spec.name == "propose_reorder" => {
                 if !crate::ai_tools::allowed(spec, s) {
                     return Err(AppError::forbidden("purchasing.manage"));
                 }
+                // A requisition draft, never an order: the products come from
+                // the replenishment engine and are recomputed when confirmed.
                 let sid = input.get("supplier_id").and_then(|v| v.as_str()).unwrap_or_default();
-                let args = self.reorder_po_args(token, sid)?;
-                let po = crate::ai_tools::find("propose_po_save").ok_or_else(|| AppError::internal("po tool missing"))?;
-                self.ai_propose_command(s, token, cid, po, &args)
+                let args = self.reorder_requisition_args(token, sid)?;
+                self.ai_propose_command(s, token, cid, spec, &args)
             }
             // B5: the price comes from cost and the target margin; still a proposal.
             Kind::Propose if spec.name == "propose_margin_price" => {

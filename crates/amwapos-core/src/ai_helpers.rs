@@ -46,87 +46,55 @@ impl AppCore {
     /// what is already on order, the last supplier and cost, and a suggested
     /// quantity (up to twice the reorder point). Grouped by supplier.
     pub fn reorder_suggestions(&self, token: &str, supplier_id: Option<&str>) -> AppResult<Value> {
-        let s = self.session(token)?;
-        if !s.has("purchasing.manage") {
-            s.require("inventory.view")?;
-        }
-        let rows: Vec<Value> = self.db.read(|c| {
-            let mut st = c.prepare(
-                "SELECT p.product_id, p.name, p.sku, p.reorder_point_milli, p.allow_decimal_quantity, COALESCE(sl.qty_milli,0),
-                        (SELECT COALESCE(SUM(i.qty_ordered_milli - i.qty_received_milli),0) FROM purchase_order_items i
-                           JOIN purchase_orders o ON o.po_id=i.po_id
-                          WHERE i.product_id=p.product_id AND o.branch_id=?1 AND o.status IN ('draft','ordered','partially_received')),
-                        (SELECT o.supplier_id FROM purchase_order_items i JOIN purchase_orders o ON o.po_id=i.po_id
-                          WHERE i.product_id=p.product_id ORDER BY o.created_at DESC LIMIT 1),
-                        (SELECT i.unit_cost_minor FROM purchase_order_items i JOIN purchase_orders o ON o.po_id=i.po_id
-                          WHERE i.product_id=p.product_id ORDER BY o.created_at DESC LIMIT 1),
-                        (SELECT pc.last_cost_minor FROM product_costs pc WHERE pc.product_id=p.product_id AND pc.branch_id=?1),
-                        t.rate_bp
-                 FROM products p
-                 LEFT JOIN stock_levels sl ON sl.product_id=p.product_id AND sl.branch_id=?1
-                 LEFT JOIN tax_rules t ON t.tax_rule_id=p.tax_rule_id
-                 WHERE p.active=1 AND p.track_inventory=1 AND p.reorder_point_milli>0 AND COALESCE(sl.qty_milli,0) <= p.reorder_point_milli
-                 ORDER BY p.name LIMIT 200",
-            )?;
-            let rows = st
-                .query_map([&s.branch_id], |r| {
-                    let point: i64 = r.get(3)?;
-                    let decimal = r.get::<_, i64>(4)? != 0;
-                    let on_hand: i64 = r.get(5)?;
-                    let in_transit: i64 = r.get(6)?;
-                    let mut qty = (point * 2 - on_hand - in_transit).max(0);
-                    if !decimal {
-                        qty = (qty + 999) / 1000 * 1000;
-                    }
-                    let cost: Option<i64> = r.get::<_, Option<i64>>(8)?.or(r.get::<_, Option<i64>>(9)?).filter(|c| *c > 0);
-                    Ok(json!({
-                        "product_id": r.get::<_, String>(0)?, "name": r.get::<_, String>(1)?, "sku": r.get::<_, String>(2)?,
-                        "reorder_point_milli": point, "on_hand_milli": on_hand, "in_transit_milli": in_transit,
-                        "suggested_qty_milli": qty, "supplier_id": r.get::<_, Option<String>>(7)?,
-                        "unit_cost_minor": cost, "tax_rate_bp": r.get::<_, Option<i64>>(10)?.unwrap_or(0),
-                    }))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
-        })?;
-        let rows: Vec<Value> = rows
-            .into_iter()
-            .filter(|r| r["suggested_qty_milli"].as_i64().unwrap_or(0) > 0)
-            .filter(|r| supplier_id.is_none_or(|sid| r["supplier_id"] == sid))
-            .collect();
+        // One engine: the replenishment engine's suggestions (replenish.rs),
+        // grouped by the supplier it chose. No arithmetic of its own.
+        let v = self.replenishment(
+            token,
+            crate::replenish::ReplenishFilter {
+                supplier_id: supplier_id.map(str::to_string),
+                states: Some(vec!["order".into()]),
+                ..Default::default()
+            },
+        )?;
         let mut by_supplier: std::collections::BTreeMap<String, Vec<Value>> = Default::default();
-        for r in &rows {
-            by_supplier.entry(r["supplier_id"].as_str().unwrap_or("").to_string()).or_default().push(r.clone());
+        for r in v["rows"].as_array().cloned().unwrap_or_default() {
+            let sid = r["supplier"]["supplier_id"].as_str().unwrap_or("").to_string();
+            by_supplier.entry(sid).or_default().push(json!({
+                "product_id": r["product_id"], "name": r["name"], "sku": r["sku"],
+                "position_milli": r["position_milli"], "reorder_point_milli": r["reorder_point_milli"], "order_up_to_milli": r["order_up_to_milli"],
+                "suggested_qty_milli": r["suggested_milli"], "packs": r["packs"], "reasons": r["reasons"], "warnings": r["warnings"],
+                "estimated_cost_minor": r["estimated_cost_minor"],
+            }));
         }
         let groups: Vec<Value> = by_supplier
             .into_iter()
             .map(|(sid, lines)| json!({ "supplier_id": if sid.is_empty() { Value::Null } else { json!(sid) }, "lines": lines }))
             .collect();
-        Ok(json!({ "rule": "suggested = 2 × reorder point − on hand − on order (rounded up to whole units)", "groups": groups }))
+        Ok(json!({
+            "rule": "The app's replenishment engine (Suggested orders): order when stock position ≤ reorder point, up to the target, in whole packs and at least the minimum order.",
+            "groups": groups,
+        }))
     }
 
-    /// The draft purchase order a reorder proposal records (po.save args).
-    pub(crate) fn reorder_po_args(&self, token: &str, supplier_id: &str) -> AppResult<Value> {
+    /// The requisition a reorder proposal records: the products the engine
+    /// suggests ordering from this supplier. The quantities are recomputed by
+    /// the app when the person confirms; the model chooses nothing.
+    pub(crate) fn reorder_requisition_args(&self, token: &str, supplier_id: &str) -> AppResult<Value> {
         let sid = validate::id(supplier_id, "Supplier")?;
         let v = self.reorder_suggestions(token, Some(&sid))?;
-        let lines: Vec<Value> = v["groups"]
+        let ids: Vec<Value> = v["groups"]
             .as_array()
             .and_then(|g| g.first())
             .and_then(|g| g["lines"].as_array())
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|l| {
-                Some(json!({ "product_id": l["product_id"], "qty_milli": l["suggested_qty_milli"], "unit_cost_minor": l["unit_cost_minor"].as_i64()?,
-                             "tax_rate_bp": l["tax_rate_bp"] }))
-            })
+            .map(|l| l["product_id"].clone())
             .collect();
-        if lines.is_empty() {
-            return Err(AppError::validation("Nothing from this supplier is at or below its reorder point (with a known cost)."));
+        if ids.is_empty() {
+            return Err(AppError::validation("Nothing from this supplier needs ordering now."));
         }
-        Ok(
-            json!({ "po": { "supplier_id": sid, "notes": "Reorder suggestion (AI helper): 2 × reorder point − on hand − on order.", "lines": lines } }),
-        )
+        Ok(json!({ "supplier_id": sid, "product_ids": ids, "note": "Suggested by the AI assistant from Suggested orders." }))
     }
 
     // ---- B5 -------------------------------------------------------------

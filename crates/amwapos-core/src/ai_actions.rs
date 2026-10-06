@@ -140,7 +140,14 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "waste.record"
         | "waste.reverse"
         | "lots.count_in"
-        | "lots.correct" => CommitFinancial,
+        | "lots.correct"
+        | "po.approve"
+        | "requisitions.set_status"
+        | "requisitions.convert"
+        | "supplier_invoices.accept_match"
+        | "supplier_returns.draft_credit"
+        | "supplier_returns.link_credit"
+        | "supplier.terms_save" => CommitFinancial,
         "ap.invoice_create"
         | "ap.invoice_approve"
         | "supplier_invoices.set_status"
@@ -156,6 +163,10 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "po.receive"
         | "barcodes.unknown_merge"
         | "receiving.draft_post"
+        | "receiving.shortage_decide"
+        | "supplier_returns.confirm"
+        | "supplier_returns.reverse"
+        | "products.max_stock"
         | "legacy.stock_adjustment" => CommitInventory,
         "invoicescan.confirm" if args.get("receive").and_then(|r| r.as_bool()) == Some(true) => CommitInventory,
         // ---- leaves the store ---------------------------------------------
@@ -164,6 +175,11 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         "settings.save" if matches!(key, Some("features") | Some("security") | Some("inventory")) => CommitRecord,
         // ---- drafts -------------------------------------------------------
         "po.save"
+        | "requisitions.from_suggestions"
+        | "requisitions.create"
+        | "requisitions.save"
+        | "supplier_returns.save"
+        | "supplier_returns.cancel"
         | "orders.save"
         | "orders.from_inbox"
         | "stocktake.create"
@@ -280,6 +296,14 @@ fn is_read_command(c: &str) -> bool {
         "waste.list",
         "waste.get",
         "waste.summary",
+        "replenish.list",
+        "supplier.catalogue",
+        "requisitions.list",
+        "requisitions.get",
+        "receiving.open_shortages",
+        "supplier_invoices.match",
+        "supplier_returns.list",
+        "supplier_returns.get",
         "customers.statement",
         "customers.receivables",
         "expenses.list",

@@ -411,23 +411,40 @@ pub fn expiry_status(
     (st, Some(days))
 }
 
+/// The one definition of demand, shared by days of stock left (Wave 3) and
+/// replenishment (Wave 4): net units sold = units sold less units refunded or
+/// voided, each on its own business date, branch by branch — the same
+/// definition as the sales reports. `product` limits it to one product; with
+/// `None` it is computed for every product in one grouped query (no query per
+/// product).
+fn net_sold_by_product(c: &Connection, product: Option<&str>, branch_id: &str, from: &str, to: &str) -> AppResult<HashMap<String, i64>> {
+    let filter = if product.is_some() { "AND i.product_id=?4" } else { "AND ?4 IS NULL" };
+    let ffilter = if product.is_some() { "AND ri.product_id=?4" } else { "AND ?4 IS NULL" };
+    let mut out: HashMap<String, i64> = HashMap::new();
+    let mut st = c.prepare_cached(&format!(
+        "SELECT i.product_id, SUM(i.qty_milli) FROM sales x JOIN sale_items i ON i.sale_id=x.sale_id
+         WHERE x.branch_id=?1 AND x.business_date>=?2 AND x.business_date<=?3 {filter} GROUP BY i.product_id"
+    ))?;
+    for r in st.query_map(params![branch_id, from, to, product], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
+        let (p, q) = r?;
+        *out.entry(p).or_default() += q;
+    }
+    let mut st = c.prepare_cached(&format!(
+        "SELECT ri.product_id, SUM(ri.qty_milli) FROM refunds r JOIN refund_items ri ON ri.refund_id=r.refund_id
+         WHERE r.branch_id=?1 AND r.business_date>=?2 AND r.business_date<=?3 {ffilter} GROUP BY ri.product_id"
+    ))?;
+    for r in st.query_map(params![branch_id, from, to, product], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))? {
+        let (p, q) = r?;
+        *out.entry(p).or_default() -= q;
+    }
+    Ok(out)
+}
+
 /// Net units sold (sales less refunds and voids, each on its own business
 /// date) in a branch for business dates `from..=to` — the same definition as
 /// the sales reports.
 pub fn net_units_sold(c: &Connection, product_id: &str, branch_id: &str, from: &str, to: &str) -> AppResult<i64> {
-    let sold: i64 = c.query_row(
-        "SELECT COALESCE(SUM(i.qty_milli),0) FROM sale_items i JOIN sales x ON x.sale_id=i.sale_id
-         WHERE i.product_id=?1 AND x.branch_id=?2 AND x.business_date>=?3 AND x.business_date<=?4",
-        params![product_id, branch_id, from, to],
-        |r| r.get(0),
-    )?;
-    let back: i64 = c.query_row(
-        "SELECT COALESCE(SUM(ri.qty_milli),0) FROM refund_items ri JOIN refunds r ON r.refund_id=ri.refund_id
-         WHERE ri.product_id=?1 AND r.branch_id=?2 AND r.business_date>=?3 AND r.business_date<=?4",
-        params![product_id, branch_id, from, to],
-        |r| r.get(0),
-    )?;
-    Ok(sold - back)
+    Ok(net_sold_by_product(c, Some(product_id), branch_id, from, to)?.get(product_id).copied().unwrap_or(0))
 }
 
 /// Demand over the last `window` completed days (yesterday back), with how
@@ -439,26 +456,59 @@ pub struct Demand {
     pub net_sold_milli: i64,
 }
 
+/// Demand for one product (see `demand_all`, which shares every step).
 pub fn demand(c: &Connection, product_id: &str, branch_id: &str, today: &str, window: i64) -> AppResult<Demand> {
+    Ok(demand_for(c, Some(product_id), branch_id, today, window)?.remove(product_id).unwrap_or(Demand {
+        window_days: window,
+        history_days: 0,
+        net_sold_milli: 0,
+    }))
+}
+
+/// Demand for every product with any stock movement or sale in the branch,
+/// in a fixed number of grouped queries.
+pub fn demand_all(c: &Connection, branch_id: &str, today: &str, window: i64) -> AppResult<HashMap<String, Demand>> {
+    demand_for(c, None, branch_id, today, window)
+}
+
+fn demand_for(c: &Connection, product: Option<&str>, branch_id: &str, today: &str, window: i64) -> AppResult<HashMap<String, Demand>> {
     let t = NaiveDate::parse_from_str(today, "%Y-%m-%d").map_err(|_| AppError::internal("bad date"))?;
     let from = (t - chrono::Duration::days(window)).to_string();
     let to = (t - chrono::Duration::days(1)).to_string();
-    let first: Option<String> = c.query_row(
-        "SELECT MIN(created_at) FROM stock_movements WHERE product_id=?1 AND branch_id=?2",
-        params![product_id, branch_id],
-        |r| r.get(0),
-    )?;
-    let first_sale: Option<String> = c.query_row(
-        "SELECT MIN(x.business_date) FROM sale_items i JOIN sales x ON x.sale_id=i.sale_id WHERE i.product_id=?1 AND x.branch_id=?2",
-        params![product_id, branch_id],
-        |r| r.get(0),
-    )?;
     let day = time::day(c)?;
-    let since =
-        [first.and_then(|f| time::parse(&f).ok()).and_then(|t| time::business_date(t, &day).ok()), first_sale].into_iter().flatten().min();
-    let history_days =
-        since.and_then(|s| NaiveDate::parse_from_str(&s, "%Y-%m-%d").ok()).map(|s| (t - s).num_days().clamp(0, window)).unwrap_or(0);
-    Ok(Demand { window_days: window, history_days, net_sold_milli: net_units_sold(c, product_id, branch_id, &from, &to)? })
+    // When the product first appeared in this branch: its first stock
+    // movement (as a business date) or its first sale, whichever is earlier.
+    let mut first: HashMap<String, String> = HashMap::new();
+    let mfilter = if product.is_some() { "AND product_id=?2" } else { "AND ?2 IS NULL" };
+    let mut st = c.prepare_cached(&format!(
+        "SELECT product_id, MIN(created_at) FROM stock_movements WHERE branch_id=?1 {mfilter} GROUP BY product_id"
+    ))?;
+    for r in st.query_map(params![branch_id, product], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (p, at) = r?;
+        if let Some(d) = time::parse(&at).ok().and_then(|x| time::business_date(x, &day).ok()) {
+            first.insert(p, d);
+        }
+    }
+    let sfilter = if product.is_some() { "AND i.product_id=?2" } else { "AND ?2 IS NULL" };
+    let mut st = c.prepare_cached(&format!(
+        "SELECT i.product_id, MIN(x.business_date) FROM sales x JOIN sale_items i ON i.sale_id=x.sale_id
+         WHERE x.branch_id=?1 {sfilter} GROUP BY i.product_id"
+    ))?;
+    for r in st.query_map(params![branch_id, product], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+        let (p, d) = r?;
+        let e = first.entry(p).or_insert_with(|| d.clone());
+        if d < *e {
+            *e = d;
+        }
+    }
+    let net = net_sold_by_product(c, product, branch_id, &from, &to)?;
+    let mut out = HashMap::with_capacity(first.len());
+    for (p, since) in first {
+        let history_days = NaiveDate::parse_from_str(&since, "%Y-%m-%d").ok().map(|s| (t - s).num_days().clamp(0, window)).unwrap_or(0);
+        let net_sold_milli = net.get(&p).copied().unwrap_or(0);
+        out.insert(p, Demand { window_days: window, history_days, net_sold_milli });
+    }
+    Ok(out)
 }
 
 pub const MIN_HISTORY_DAYS: i64 = 7;

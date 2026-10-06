@@ -963,9 +963,11 @@ impl AppCore {
                         qty_milli: l.qty_remaining_milli,
                         unit_cost_minor: Some(l.unit_cost_minor),
                         lot: None,
+                        ..Default::default()
                     })
                     .collect(),
                 operation_id: format!("invscan-{id}"),
+                ..Default::default()
             };
             self.purchase_order_receive(token, req)?;
         }

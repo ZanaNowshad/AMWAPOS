@@ -137,6 +137,16 @@ pub const LOCAL_TABLES: &[&str] = &[
     "stock_lots",
     "lot_corrections",
     "waste_records",
+    // Procurement (Wave 4): the supplier catalogue, requisitions, approvals,
+    // delivery differences and supplier returns are kept on the hub with
+    // the purchase orders they belong to. Their stock movements replicate.
+    "supplier_products",
+    "requisitions",
+    "requisition_lines",
+    "purchase_order_approvals",
+    "receipt_discrepancies",
+    "supplier_returns",
+    "supplier_return_lines",
     "purchase_orders",
     "purchase_order_items",
     "goods_receipts",

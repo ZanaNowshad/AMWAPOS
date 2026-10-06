@@ -693,18 +693,39 @@ pub struct ReconLine {
     pub line_no: Option<i64>,
     pub po_item_id: Option<String>,
     pub ordered_milli: Option<i64>,
+    /// Accepted into stock so far against the order line (all receipts).
     pub received_milli: Option<i64>,
+    /// On this document (in single units).
     pub invoiced_milli: Option<i64>,
+    /// On the supplier's other posted invoices for the same order.
+    #[serde(default)]
+    pub invoiced_elsewhere_milli: Option<i64>,
     pub po_cost_minor: Option<i64>,
     pub invoice_cost_minor: Option<i64>,
+    /// The newest cost a person confirmed from this supplier (receipt or
+    /// posted invoice); never a figure read by OCR alone.
     pub last_cost_minor: Option<i64>,
+    /// Median unit cost of the last five receipts from this supplier.
+    #[serde(default)]
+    pub typical_cost_minor: Option<i64>,
     pub cost_variance_minor: Option<i64>,
+    /// (invoice cost − order cost) × invoiced quantity.
+    #[serde(default)]
+    pub value_variance_minor: Option<i64>,
     pub cost_variance_pct: Option<String>,
     pub last_variance_pct: Option<String>,
-    /// fully_matched | quantity_variance | cost_variance | invoice_exceeds_received |
-    /// received_exceeds_invoice | not_on_po | missing_from_invoice | unmatched_product
+    #[serde(default)]
+    pub po_vat_rate_bp: Option<i64>,
+    #[serde(default)]
+    pub invoice_vat_rate_bp: Option<i64>,
+    /// fully_matched | quantity_variance | cost_variance | cost_within_tolerance |
+    /// invoice_exceeds_received | received_exceeds_invoice | not_on_po |
+    /// missing_from_invoice | unmatched_product | vat_differs
     pub states: Vec<String>,
     pub notes: Vec<String>,
+    /// matched | within_tolerance | review | blocked
+    #[serde(default)]
+    pub outcome: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -717,30 +738,69 @@ pub struct Recon {
     pub three_way: bool,
     pub lines: Vec<ReconLine>,
     pub summary: Vec<String>,
+    /// The worst line outcome: matched | within_tolerance | review | blocked.
+    #[serde(default)]
+    pub outcome: String,
+    /// Identifies this exact result, so a person's acceptance covers only it.
+    #[serde(default)]
+    pub fingerprint: String,
+    #[serde(default)]
+    pub tolerance: Option<serde_json::Value>,
 }
 
-/// Line-by-line PO ↔ invoice (↔ goods received when there is a receipt).
-pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: i64, branch_id: &str) -> AppResult<Recon> {
-    let (po_number, po_status): (String, String) =
-        c.query_row("SELECT po_number, status FROM purchase_orders WHERE po_id=?1", [po_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+fn outcome_rank(o: &str) -> u8 {
+    match o {
+        "blocked" => 3,
+        "review" => 2,
+        "within_tolerance" => 1,
+        _ => 0,
+    }
+}
+
+/// The one matcher: purchase order ↔ goods accepted ↔ supplier document.
+///
+/// - Quantities are compared in single units (a document line in cases is
+///   converted with its pack size first).
+/// - Received is everything accepted into stock against the order line, over
+///   all receipts. Invoiced is cumulative: this document plus the supplier's
+///   invoices already posted for the same order (`exclude_invoice` is this
+///   document's own record, when it has one), so the same goods are never
+///   owed twice.
+/// - Invoicing more than was accepted blocks the document. A line that is
+///   not on the order, not matched to a product, or charged a different VAT
+///   rate needs review. A cost difference is within tolerance when it is
+///   within both purchasing limits (the line's value difference in fils, and
+///   the unit cost difference in basis points); beyond either it needs review.
+/// - Nothing here is decided by AI.
+pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], branch_id: &str, exclude_invoice: Option<&str>) -> AppResult<Recon> {
+    let ps: crate::settings::PurchasingSettings = crate::settings::get(c, crate::settings::KEY_PURCHASING)?;
+    let (po_number, po_status, po_supplier): (String, String, String) =
+        c.query_row("SELECT po_number, status, supplier_id FROM purchase_orders WHERE po_id=?1", [po_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
     let mut st = c.prepare(
-        "SELECT i.po_item_id, i.product_id, p.name, i.qty_ordered_milli, i.qty_received_milli, i.unit_cost_minor
+        "SELECT i.po_item_id, i.product_id, p.name, i.qty_ordered_milli, i.qty_received_milli, i.unit_cost_minor, i.tax_rate_bp
          FROM purchase_order_items i JOIN products p ON p.product_id=i.product_id WHERE i.po_id=?1 ORDER BY i.line_no",
     )?;
-    type PoRow = (String, String, String, i64, i64, i64);
-    let items: Vec<PoRow> =
-        st.query_map([po_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)))?.collect::<Result<_, _>>()?;
+    type PoRow = (String, String, String, i64, i64, i64, i64);
+    let items: Vec<PoRow> = st
+        .query_map([po_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)))?
+        .collect::<Result<_, _>>()?;
     let received_any: bool =
         c.query_row("SELECT EXISTS(SELECT 1 FROM goods_receipts WHERE po_id=?1)", [po_id], |r| r.get::<_, i64>(0))? == 1;
+    let elsewhere = |pid: &str| -> AppResult<i64> {
+        Ok(c.query_row(
+            "SELECT COALESCE(SUM(l.qty_milli),0) FROM supplier_invoice_lines l JOIN supplier_invoices i ON i.invoice_id=l.invoice_id
+             WHERE i.po_id=?1 AND i.doc_type='invoice' AND i.posting='posted'
+               AND l.product_id=?2 AND (?3 IS NULL OR i.invoice_id<>?3)",
+            params![po_id, pid, exclude_invoice],
+            |r| r.get(0),
+        )?)
+    };
     let mut used = vec![false; items.len()];
     let mut out = vec![];
-    let last_cost = |pid: &str| -> AppResult<Option<i64>> {
-        Ok(c.query_row("SELECT last_cost_minor FROM product_costs WHERE product_id=?1 AND branch_id=?2", params![pid, branch_id], |r| {
-            r.get(0)
-        })
-        .optional()?
-        .filter(|x: &i64| *x > 0))
-    };
+    let _ = branch_id;
+    let baselines = |pid: &str| crate::catalogue::cost_baselines(c, &po_supplier, pid);
     for l in lines.iter().filter(|l| l.include) {
         let cost = l.receive_unit_cost().map(|x| x.0);
         let qty = l.receive_qty();
@@ -753,14 +813,20 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
                 ordered_milli: None,
                 received_milli: None,
                 invoiced_milli: qty,
+                invoiced_elsewhere_milli: None,
                 po_cost_minor: None,
                 invoice_cost_minor: cost,
                 last_cost_minor: None,
+                typical_cost_minor: None,
                 cost_variance_minor: None,
+                value_variance_minor: None,
                 cost_variance_pct: None,
                 last_variance_pct: None,
+                po_vat_rate_bp: None,
+                invoice_vat_rate_bp: l.vat_rate_bp,
                 states: vec!["unmatched_product".into()],
                 notes: vec!["Match the line to a product to compare it with the order.".into()],
+                outcome: "review".into(),
             });
             continue;
         };
@@ -769,7 +835,8 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
             .as_ref()
             .and_then(|x| items.iter().position(|i| &i.0 == x))
             .or_else(|| items.iter().enumerate().position(|(k, i)| !used[k] && i.1 == pid));
-        let last = last_cost(&pid)?;
+        let b = baselines(&pid)?;
+        let last = b.last_confirmed_minor;
         let mut rl = ReconLine {
             product_id: Some(pid.clone()),
             product_name: l.product_name.clone(),
@@ -778,49 +845,96 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
             ordered_milli: None,
             received_milli: None,
             invoiced_milli: qty,
+            invoiced_elsewhere_milli: None,
             po_cost_minor: None,
             invoice_cost_minor: cost,
             last_cost_minor: last,
+            typical_cost_minor: b.typical_minor,
             cost_variance_minor: None,
+            value_variance_minor: None,
             cost_variance_pct: None,
             last_variance_pct: match (cost, last) {
                 (Some(a), Some(b)) => pct(a, b),
                 _ => None,
             },
+            po_vat_rate_bp: None,
+            invoice_vat_rate_bp: l.vat_rate_bp,
             states: vec![],
             notes: vec![],
+            outcome: "matched".into(),
+        };
+        let mut worst = "matched";
+        let raise = |o: &'static str, w: &mut &'static str| {
+            if outcome_rank(o) > outcome_rank(w) {
+                *w = o;
+            }
         };
         match idx {
-            None => rl.states.push("not_on_po".into()),
+            None => {
+                rl.states.push("not_on_po".into());
+                raise("review", &mut worst);
+            }
             Some(k) => {
                 used[k] = true;
-                let (iid, _, name, ordered, received, pcost) = &items[k];
+                let (iid, _, name, ordered, accepted, pcost, vat) = &items[k];
                 rl.po_item_id = Some(iid.clone());
                 rl.product_name = Some(name.clone());
                 rl.ordered_milli = Some(*ordered);
-                rl.received_milli = received_any.then_some(*received);
+                rl.received_milli = Some(*accepted);
                 rl.po_cost_minor = Some(*pcost);
+                rl.po_vat_rate_bp = Some(*vat);
+                let other = elsewhere(&pid)?;
+                rl.invoiced_elsewhere_milli = (other != 0).then_some(other);
                 if let Some(q) = qty {
                     if q != *ordered {
                         rl.states.push("quantity_variance".into());
                         rl.notes.push(format!("Ordered {}, invoiced {}.", money::format_qty(*ordered), money::format_qty(q)));
                     }
-                    if received_any && q > *received {
+                    let cumulative = q + other;
+                    if cumulative > *accepted {
                         rl.states.push("invoice_exceeds_received".into());
-                        rl.notes.push(format!("Invoiced {} but only {} received.", money::format_qty(q), money::format_qty(*received)));
-                    } else if received_any && q < *received {
+                        rl.notes.push(if other > 0 {
+                            format!(
+                                "Invoiced {} in all ({} on other invoices) but only {} received.",
+                                money::format_qty(cumulative),
+                                money::format_qty(other),
+                                money::format_qty(*accepted)
+                            )
+                        } else {
+                            format!("Invoiced {} but only {} received.", money::format_qty(q), money::format_qty(*accepted))
+                        });
+                        raise("blocked", &mut worst);
+                    } else if cumulative < *accepted {
                         rl.states.push("received_exceeds_invoice".into());
-                        rl.notes.push(format!("Received {} but only {} invoiced.", money::format_qty(*received), money::format_qty(q)));
+                        rl.notes.push(format!(
+                            "Received {} but only {} invoiced.",
+                            money::format_qty(*accepted),
+                            money::format_qty(cumulative)
+                        ));
+                    }
+                }
+                if let Some(v) = l.vat_rate_bp {
+                    if v != *vat {
+                        rl.states.push("vat_differs".into());
+                        rl.notes.push(format!("VAT on the order {}%, on the invoice {}%.", vat / 100, v / 100));
+                        raise("review", &mut worst);
                     }
                 }
                 if let Some(ic) = cost {
                     let d = ic - pcost;
                     rl.cost_variance_minor = Some(d);
                     rl.cost_variance_pct = pct(ic, *pcost);
+                    let value = qty.and_then(|q| money::extend(d.abs(), q).ok()).unwrap_or(0);
+                    rl.value_variance_minor = qty.and_then(|q| money::extend(d, q).ok());
                     if d != 0 {
-                        let over = variance_bp(ic, *pcost).map(|b| b.abs() >= threshold_bp).unwrap_or(true);
-                        if over {
+                        let within_bp = variance_bp(ic, *pcost).map(|b| b.abs() <= ps.cost_tolerance_bp).unwrap_or(false);
+                        let within_value = value <= ps.cost_tolerance_minor;
+                        if within_bp && within_value {
+                            rl.states.push("cost_within_tolerance".into());
+                            raise("within_tolerance", &mut worst);
+                        } else {
                             rl.states.push("cost_variance".into());
+                            raise("review", &mut worst);
                         }
                         rl.notes.push(format!(
                             "PO: {}  Invoice: {}  Variance: {} ({})",
@@ -836,9 +950,10 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
                 }
             }
         }
+        rl.outcome = worst.into();
         out.push(rl);
     }
-    for (k, (iid, pid, name, ordered, received, pcost)) in items.iter().enumerate() {
+    for (k, (iid, pid, name, ordered, accepted, pcost, vat)) in items.iter().enumerate() {
         if !used[k] {
             out.push(ReconLine {
                 product_id: Some(pid.clone()),
@@ -846,16 +961,22 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
                 line_no: None,
                 po_item_id: Some(iid.clone()),
                 ordered_milli: Some(*ordered),
-                received_milli: received_any.then_some(*received),
+                received_milli: Some(*accepted),
                 invoiced_milli: None,
+                invoiced_elsewhere_milli: None,
                 po_cost_minor: Some(*pcost),
                 invoice_cost_minor: None,
-                last_cost_minor: last_cost(pid)?,
+                last_cost_minor: baselines(pid)?.last_confirmed_minor,
+                typical_cost_minor: None,
                 cost_variance_minor: None,
+                value_variance_minor: None,
                 cost_variance_pct: None,
                 last_variance_pct: None,
+                po_vat_rate_bp: Some(*vat),
+                invoice_vat_rate_bp: None,
                 states: vec!["missing_from_invoice".into()],
                 notes: vec![],
+                outcome: "matched".into(),
             });
         }
     }
@@ -865,17 +986,39 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
     summary.push(format!("{matched} of {} lines fully matched to {po_number}.", out.len()));
     for (s, label) in [
         ("cost_variance", "above/below PO cost"),
+        ("cost_within_tolerance", "with a cost difference within tolerance"),
         ("quantity_variance", "with a quantity different from the order"),
         ("not_on_po", "not on the order"),
         ("missing_from_invoice", "ordered but not invoiced"),
         ("invoice_exceeds_received", "invoiced beyond what was received"),
         ("received_exceeds_invoice", "received beyond what was invoiced"),
+        ("vat_differs", "with a VAT rate different from the order"),
     ] {
         let n = count(s);
         if n > 0 {
             summary.push(format!("{n} {} {label}.", if n == 1 { "line" } else { "lines" }));
         }
     }
+    let outcome = out.iter().map(|l| l.outcome.as_str()).max_by_key(|o| outcome_rank(o)).unwrap_or("matched").to_string();
+    let fingerprint = {
+        use sha2::{Digest, Sha256};
+        let mut h = Sha256::new();
+        h.update(format!("{po_id}|{outcome}\n"));
+        for l in &out {
+            h.update(format!(
+                "{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{}\n",
+                l.po_item_id,
+                l.product_id,
+                l.invoiced_milli,
+                l.received_milli,
+                l.invoiced_elsewhere_milli,
+                l.invoice_cost_minor,
+                l.invoice_vat_rate_bp,
+                l.states.join(",")
+            ));
+        }
+        hex::encode(h.finalize())
+    };
     Ok(Recon {
         po_id: Some(po_id.to_string()),
         po_number: Some(po_number),
@@ -885,6 +1028,9 @@ pub fn reconcile(c: &Connection, po_id: &str, lines: &[LineData], threshold_bp: 
         three_way: received_any,
         lines: out,
         summary,
+        outcome,
+        fingerprint,
+        tolerance: Some(serde_json::json!({ "cost_tolerance_minor": ps.cost_tolerance_minor, "cost_tolerance_bp": ps.cost_tolerance_bp })),
     })
 }
 

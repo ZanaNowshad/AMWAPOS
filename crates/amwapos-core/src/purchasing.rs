@@ -6,9 +6,8 @@ use serde_json::json;
 
 use crate::audit;
 use crate::error::{AppError, AppResult};
-use crate::idempotency::{self, Check};
+use crate::idempotency;
 use crate::ids::{new_id, next_seq};
-use crate::inventory::{receive_lines, ReceiveLine};
 use crate::money;
 use crate::service::AppCore;
 use crate::setup::{clean, clean_opt};
@@ -88,6 +87,9 @@ pub struct PoRow {
     pub line_count: i64,
     pub total_minor: i64,
     pub received_pct: i64,
+    /// For a draft under the approval policy: needs_approval | approved.
+    pub approval_state: Option<String>,
+    pub requisition_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,6 +103,8 @@ pub struct PoLineView {
     pub allow_decimal_quantity: bool,
     pub qty_ordered_milli: i64,
     pub qty_received_milli: i64,
+    /// Quantity a person decided will not come (a shortage cancelled).
+    pub qty_cancelled_milli: i64,
     pub qty_remaining_milli: i64,
     pub unit_cost_minor: i64,
     pub tax_rate_bp: i64,
@@ -117,25 +121,71 @@ pub struct PoDetail {
     pub version: i64,
     pub lines: Vec<PoLineView>,
     pub receipts: Vec<serde_json::Value>,
+    /// The approval policy as it applies to this order, and its approvals.
+    pub approval: serde_json::Value,
+    /// Delivery differences recorded at receiving.
+    pub discrepancies: Vec<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PoReceiveLine {
     pub po_item_id: String,
+    /// Accepted into stock. Only this quantity creates stock.
     pub qty_milli: i64,
     #[serde(default)]
     pub unit_cost_minor: Option<i64>,
     #[serde(default)]
     pub lot: Option<crate::lots::LotInput>,
+    /// Delivered (accepted + rejected). When given it must add up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivered_milli: Option<i64>,
+    /// Refused at the door: never stock, never waste.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected: Vec<Rejection>,
+    /// Of the accepted quantity, how much is damaged but kept.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub damaged_kept_milli: i64,
+    /// Product B delivered in place of the ordered product A.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub substitute_product_id: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub accept_substitution: bool,
+    /// The person confirms more than ordered arrived and is to be kept.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub accept_overage: bool,
+}
+fn is_zero(v: &i64) -> bool {
+    *v == 0
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Rejection {
+    pub qty_milli: i64,
+    /// damaged | wrong_item | short_dated | expired | quality | not_ordered | other
+    pub reason: String,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// What happens to a quantity that did not come: kept on order or cancelled.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ShortageDecision {
+    pub po_item_id: String,
+    /// backorder | cancel
+    pub decision: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct PoReceiveRequest {
     pub po_id: String,
     #[serde(default)]
     pub reference: Option<String>,
     pub lines: Vec<PoReceiveLine>,
     pub operation_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shortages: Vec<ShortageDecision>,
+    #[serde(default, skip_serializing)]
+    pub approval_token: Option<String>,
 }
 
 fn validate_supplier(s: &SupplierInput) -> AppResult<SupplierInput> {
@@ -198,11 +248,14 @@ fn po_header(c: &Connection, id: &str) -> AppResult<PoRow> {
     c.query_row(
         "SELECT p.po_id, p.po_number, p.supplier_id, s.name, p.status, p.reference, p.ordered_at, p.expected_at, p.created_at,
                 (SELECT COUNT(*) FROM purchase_order_items i WHERE i.po_id=p.po_id), p.total_minor,
-                COALESCE((SELECT CAST(SUM(MIN(qty_received_milli, qty_ordered_milli)) * 100 / SUM(qty_ordered_milli) AS INTEGER) FROM purchase_order_items i WHERE i.po_id=p.po_id), 0)
+                COALESCE((SELECT CAST(SUM(MIN(qty_received_milli, qty_ordered_milli)) * 100 / SUM(qty_ordered_milli) AS INTEGER) FROM purchase_order_items i WHERE i.po_id=p.po_id), 0),
+                p.requisition_id
          FROM purchase_orders p JOIN suppliers s ON s.supplier_id=p.supplier_id WHERE p.po_id=?1",
         [id],
         |r| {
             Ok(PoRow {
+                approval_state: None,
+                requisition_id: r.get(12)?,
                 po_id: r.get(0)?,
                 po_number: r.get(1)?,
                 supplier_id: r.get(2)?,
@@ -220,6 +273,157 @@ fn po_header(c: &Connection, id: &str) -> AppResult<PoRow> {
     )
     .optional()?
     .ok_or_else(|| AppError::not_found("Purchase order"))
+    .and_then(|mut row| {
+        if row.status == "draft" {
+            let a = approval_status(c, &row.po_id)?;
+            row.approval_state = match (a.required, a.valid) {
+                (_, true) => Some("approved".into()),
+                (true, false) => Some("needs_approval".into()),
+                _ => None,
+            };
+        }
+        Ok(row)
+    })
+}
+
+/// The fingerprint of what an approval covers: supplier, every line
+/// (product, quantity, cost, tax, total) and the order totals. Notes, the
+/// reference and the expected date are not material.
+pub(crate) fn po_fingerprint(c: &Connection, po_id: &str) -> AppResult<String> {
+    use sha2::{Digest, Sha256};
+    let (sup, sub, tax, total): (String, i64, i64, i64) =
+        c.query_row("SELECT supplier_id, subtotal_minor, tax_minor, total_minor FROM purchase_orders WHERE po_id=?1", [po_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+        })?;
+    let mut h = Sha256::new();
+    h.update(format!("{sup}|{sub}|{tax}|{total}\n"));
+    let mut st = c.prepare_cached(
+        "SELECT product_id, qty_ordered_milli, unit_cost_minor, tax_rate_bp, total_minor FROM purchase_order_items WHERE po_id=?1 ORDER BY line_no",
+    )?;
+    let rows = st.query_map([po_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?, r.get::<_, i64>(4)?))
+    })?;
+    for r in rows {
+        let (p, q, u, t, tot) = r?;
+        h.update(format!("{p}|{q}|{u}|{t}|{tot}\n"));
+    }
+    Ok(hex::encode(h.finalize()))
+}
+
+/// Whether the approval policy asks for approval of an order of this total.
+pub(crate) fn approval_needed(ps: &crate::settings::PurchasingSettings, total_minor: i64) -> bool {
+    match ps.po_approval_mode.as_str() {
+        "always" => true,
+        "above_threshold" => total_minor > ps.po_approval_threshold_minor,
+        _ => false,
+    }
+}
+
+pub(crate) struct ApprovalStatus {
+    pub required: bool,
+    /// A recorded approval covers the order exactly as it is now.
+    pub valid: bool,
+    pub current: Option<String>,
+}
+
+pub(crate) fn approval_status(c: &Connection, po_id: &str) -> AppResult<ApprovalStatus> {
+    let ps: crate::settings::PurchasingSettings = crate::settings::get(c, crate::settings::KEY_PURCHASING)?;
+    let total: i64 = c.query_row("SELECT total_minor FROM purchase_orders WHERE po_id=?1", [po_id], |r| r.get(0))?;
+    let current: Option<(String, String)> = c
+        .query_row(
+            "SELECT approval_id, fingerprint FROM purchase_order_approvals WHERE po_id=?1 AND invalidated_at IS NULL ORDER BY approved_at DESC, approval_id DESC LIMIT 1",
+            [po_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let valid = match &current {
+        Some((_, fp)) => *fp == po_fingerprint(c, po_id)?,
+        None => false,
+    };
+    Ok(ApprovalStatus { required: approval_needed(&ps, total), valid, current: current.map(|x| x.0) })
+}
+
+/// Invalidate approvals that no longer cover the order (after a material edit).
+fn invalidate_stale_approvals(c: &Connection, actor: &audit::Actor, po_id: &str) -> AppResult<()> {
+    let fp = po_fingerprint(c, po_id)?;
+    let mut st =
+        c.prepare("SELECT approval_id FROM purchase_order_approvals WHERE po_id=?1 AND invalidated_at IS NULL AND fingerprint<>?2")?;
+    let stale: Vec<String> = st.query_map(params![po_id, fp], |r| r.get(0))?.collect::<Result<_, _>>()?;
+    for a in stale {
+        c.execute(
+            "UPDATE purchase_order_approvals SET invalidated_at=?2, invalidated_reason='edited' WHERE approval_id=?1",
+            params![a, time::now_str()],
+        )?;
+        audit::record(
+            c,
+            actor,
+            "po.approval_invalidated",
+            "purchase_order",
+            Some(po_id),
+            Some(&json!({ "approval_id": a })),
+            Some(&json!({ "reason": "edited" })),
+        )?;
+    }
+    Ok(())
+}
+
+fn approval_view(c: &Connection, po_id: &str) -> AppResult<serde_json::Value> {
+    let ps: crate::settings::PurchasingSettings = crate::settings::get(c, crate::settings::KEY_PURCHASING)?;
+    let st = approval_status(c, po_id)?;
+    let mut q = c.prepare(
+        "SELECT a.approval_id, a.po_version, a.total_minor, a.approved_by, u.display_name, a.approved_at, a.note, a.invalidated_at, a.invalidated_reason, a.policy_mode
+         FROM purchase_order_approvals a LEFT JOIN users u ON u.user_id=a.approved_by WHERE a.po_id=?1 ORDER BY a.approved_at DESC LIMIT 50",
+    )?;
+    let history: Vec<serde_json::Value> = q
+        .query_map([po_id], |r| {
+            Ok(json!({ "approval_id": r.get::<_, String>(0)?, "po_version": r.get::<_, i64>(1)?, "total_minor": r.get::<_, i64>(2)?,
+                "approved_by": r.get::<_, String>(3)?, "approved_by_name": r.get::<_, Option<String>>(4)?, "approved_at": r.get::<_, String>(5)?,
+                "note": r.get::<_, Option<String>>(6)?, "invalidated_at": r.get::<_, Option<String>>(7)?, "invalidated_reason": r.get::<_, Option<String>>(8)?,
+                "policy_mode": r.get::<_, String>(9)? }))
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(json!({ "mode": ps.po_approval_mode, "threshold_minor": ps.po_approval_threshold_minor, "required": st.required, "valid": st.valid,
+        "current_approval_id": st.current, "history": history }))
+}
+
+/// Insert a draft purchase order with its lines (shared by the purchase
+/// order form and requisition conversion). Returns the new id.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn insert_draft_po(
+    tx: &Connection,
+    s: &crate::auth::Session,
+    supplier_id: &str,
+    reference: Option<&str>,
+    notes: Option<&str>,
+    expected: Option<&str>,
+    lines: &[PoLineInput],
+    requisition: Option<(&str, &[String])>,
+) -> AppResult<String> {
+    let id = new_id();
+    let number = format!("PO-{:05}", next_seq(tx, "po")?);
+    let now = time::now_str();
+    tx.execute(
+        "INSERT INTO purchase_orders(po_id, po_number, supplier_id, branch_id, status, reference, notes, expected_at, created_by, created_at, updated_at, requisition_id)
+         VALUES (?1,?2,?3,?4,'draft',?5,?6,?7,?8,?9,?9,?10)",
+        params![id, number, supplier_id, s.branch_id, reference, notes, expected, s.user_id, now, requisition.map(|r| r.0)],
+    )?;
+    let (sub, tax) = write_po_lines(tx, &id, lines)?;
+    tx.execute(
+        "UPDATE purchase_orders SET subtotal_minor=?2, tax_minor=?3, total_minor=?4 WHERE po_id=?1",
+        params![id, sub, tax, sub + tax],
+    )?;
+    if let Some((_, line_ids)) = requisition {
+        let mut st = tx.prepare("SELECT po_item_id FROM purchase_order_items WHERE po_id=?1 ORDER BY line_no")?;
+        let items: Vec<String> = st.query_map([&id], |r| r.get(0))?.collect::<Result<_, _>>()?;
+        for (item, rl) in items.iter().zip(line_ids) {
+            tx.execute("UPDATE purchase_order_items SET requisition_line_id=?2 WHERE po_item_id=?1", params![item, rl])?;
+            tx.execute("UPDATE requisition_lines SET po_id=?2, po_item_id=?3 WHERE line_id=?1", params![rl, id, item])?;
+        }
+    }
+    for l in lines {
+        crate::catalogue::note_supplier_product(tx, supplier_id, &l.product_id)?;
+    }
+    Ok(id)
 }
 
 fn write_po_lines(c: &Connection, po_id: &str, lines: &[PoLineInput]) -> AppResult<(i64, i64)> {
@@ -374,13 +578,14 @@ impl AppCore {
             let mut st = c.prepare(
                 "SELECT i.po_item_id, i.line_no, i.product_id, p.name, p.sku,
                         (SELECT barcode FROM product_barcodes b WHERE b.product_id=p.product_id ORDER BY is_primary DESC LIMIT 1),
-                        p.allow_decimal_quantity, i.qty_ordered_milli, i.qty_received_milli, i.unit_cost_minor, i.tax_rate_bp, i.total_minor
+                        p.allow_decimal_quantity, i.qty_ordered_milli, i.qty_received_milli, i.unit_cost_minor, i.tax_rate_bp, i.total_minor, i.qty_cancelled_milli
                  FROM purchase_order_items i JOIN products p ON p.product_id=i.product_id WHERE i.po_id=?1 ORDER BY i.line_no",
             )?;
             let lines = st
                 .query_map([&id], |r| {
                     let o: i64 = r.get(7)?;
                     let rc: i64 = r.get(8)?;
+                    let cx: i64 = r.get(12)?;
                     Ok(PoLineView {
                         po_item_id: r.get(0)?,
                         line_no: r.get(1)?,
@@ -391,7 +596,8 @@ impl AppCore {
                         allow_decimal_quantity: r.get::<_, i64>(6)? == 1,
                         qty_ordered_milli: o,
                         qty_received_milli: rc,
-                        qty_remaining_milli: (o - rc).max(0),
+                        qty_cancelled_milli: cx,
+                        qty_remaining_milli: (o - rc - cx).max(0),
                         unit_cost_minor: r.get(9)?,
                         tax_rate_bp: r.get(10)?,
                         total_minor: r.get(11)?,
@@ -408,7 +614,9 @@ impl AppCore {
                         "created_at": r.get::<_, String>(3)?, "user_name": r.get::<_, Option<String>>(4)? }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(PoDetail { header, notes, subtotal_minor: sub, tax_minor: tax, version, lines, receipts })
+            let approval = approval_view(c, &id)?;
+            let discrepancies = crate::procurement::discrepancies_for_po(c, &id)?;
+            Ok(PoDetail { header, notes, subtotal_minor: sub, tax_minor: tax, version, lines, receipts, approval, discrepancies })
         })
     }
 
@@ -450,21 +658,21 @@ impl AppCore {
                     )?;
                     id
                 }
-                None => {
-                    let id = new_id();
-                    let number = format!("PO-{:05}", next_seq(tx, "po")?);
-                    tx.execute(
-                        "INSERT INTO purchase_orders(po_id, po_number, supplier_id, branch_id, status, reference, notes, expected_at, created_by, created_at, updated_at)
-                         VALUES (?1,?2,?3,?4,'draft',?5,?6,?7,?8,?9,?9)",
-                        params![id, number, sid, s.branch_id, reference, notes, expected, s.user_id, now],
-                    )?;
-                    id
-                }
+                None => insert_draft_po(tx, &s, &sid, reference.as_deref(), notes.as_deref(), expected.as_deref(), &input.lines, None)?,
             };
-            let (sub, tax) = write_po_lines(tx, &id, &input.lines)?;
-            tx.execute("UPDATE purchase_orders SET subtotal_minor=?2, tax_minor=?3, total_minor=?4 WHERE po_id=?1", params![id, sub, tax, sub + tax])?;
+            if po_id.is_some() {
+                let (sub, tax) = write_po_lines(tx, &id, &input.lines)?;
+                tx.execute("UPDATE purchase_orders SET subtotal_minor=?2, tax_minor=?3, total_minor=?4 WHERE po_id=?1", params![id, sub, tax, sub + tax])?;
+                for l in &input.lines {
+                    crate::catalogue::note_supplier_product(tx, &sid, &l.product_id)?;
+                }
+                // A material change (supplier, lines, quantities, costs, taxes,
+                // totals) voids an earlier approval.
+                invalidate_stale_approvals(tx, &actor, &id)?;
+            }
+            let total: i64 = tx.query_row("SELECT total_minor FROM purchase_orders WHERE po_id=?1", [&id], |r| r.get(0))?;
             audit::record(tx, &actor, if po_id.is_some() { "po.updated" } else { "po.created" }, "purchase_order", Some(&id), None,
-                Some(&json!({ "supplier_id": sid, "lines": input.lines.len(), "total_minor": sub + tax })))?;
+                Some(&json!({ "supplier_id": sid, "lines": input.lines.len(), "total_minor": total })))?;
             Ok(id)
         })?;
         self.purchase_order_get(token, &id)
@@ -486,6 +694,11 @@ impl AppCore {
                 tx.query_row("SELECT COALESCE(SUM(qty_received_milli),0) FROM purchase_order_items WHERE po_id=?1", [&id], |r| r.get(0))?;
             match (cur.as_str(), status) {
                 ("draft", "ordered") => {
+                    let a = approval_status(tx, &id)?;
+                    if a.required && !a.valid {
+                        return Err(AppError::conflict("This purchase order needs approval before it is placed.")
+                            .with_details(json!({ "kind": "approval_required" })));
+                    }
                     tx.execute(
                         "UPDATE purchase_orders SET status='ordered', ordered_at=?2, updated_at=?2, version=version+1 WHERE po_id=?1",
                         params![id, time::now_str()],
@@ -498,7 +711,16 @@ impl AppCore {
                     )?;
                 }
                 ("partially_received", "received") => {
-                    // Close a PO short: remaining quantities will not arrive.
+                    // Close a PO short: a person decided the remaining
+                    // quantities will not arrive; they are cancelled, visibly.
+                    tx.execute(
+                        "UPDATE purchase_order_items SET qty_cancelled_milli = qty_cancelled_milli + MAX(qty_ordered_milli - qty_received_milli - qty_cancelled_milli, 0) WHERE po_id=?1",
+                        [&id],
+                    )?;
+                    tx.execute(
+                        "UPDATE receipt_discrepancies SET resolution='cancelled', resolved_by=?2, resolved_at=?3 WHERE po_id=?1 AND kind='shortage' AND resolution IN ('open','backorder')",
+                        params![id, s.user_id, time::now_str()],
+                    )?;
                     tx.execute(
                         "UPDATE purchase_orders SET status='received', updated_at=?2, version=version+1 WHERE po_id=?1",
                         params![id, time::now_str()],
@@ -520,81 +742,46 @@ impl AppCore {
         self.purchase_order_get(token, &id)
     }
 
-    /// Receive (part of) a purchase order. Over-receiving is refused.
-    pub fn purchase_order_receive(&self, token: &str, req: PoReceiveRequest) -> AppResult<PoDetail> {
+    /// Approve a draft purchase order exactly as it is now. The approval is
+    /// durable (who, when, which revision and total) and stops covering the
+    /// order as soon as a material detail changes.
+    pub fn purchase_order_approve(&self, token: &str, po_id: &str, note: Option<String>, operation_id: &str) -> AppResult<PoDetail> {
         let s = self.session(token)?;
-        s.require("inventory.receive")?;
+        s.require("purchasing.approve")?;
         self.require_back_office_writable()?;
-        let id = validate::id(&req.po_id, "Purchase order")?;
-        let reference = clean_opt(&req.reference, "Reference", 80)?;
+        idempotency::validate_operation_id(operation_id)?;
+        let id = validate::id(po_id, "Purchase order")?;
+        let note = clean_opt(&note, "Note", 500)?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
-            let hash = match idempotency::check(tx, &req.operation_id, "po.receive", &req)? {
-                Check::Replay { .. } => return Ok(()),
-                Check::New { payload_hash } => payload_hash,
-            };
-            let (status, supplier): (String, String) = tx
-                .query_row("SELECT status, supplier_id FROM purchase_orders WHERE po_id=?1", [&id], |r| Ok((r.get(0)?, r.get(1)?)))
+            let done: Option<String> =
+                tx.query_row("SELECT po_id FROM purchase_order_approvals WHERE operation_id=?1", [operation_id], |r| r.get(0)).optional()?;
+            if let Some(done) = done {
+                if done != id {
+                    return Err(AppError::new(crate::error::ErrorCode::IdempotencyMismatch, "This operation id was used for another approval."));
+                }
+                return Ok(());
+            }
+            let (status, version, total): (String, i64, i64) = tx
+                .query_row("SELECT status, version, total_minor FROM purchase_orders WHERE po_id=?1", [&id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
                 .optional()?
                 .ok_or_else(|| AppError::not_found("Purchase order"))?;
-            if !matches!(status.as_str(), "ordered" | "partially_received") {
-                return Err(AppError::conflict("Only ordered purchase orders can be received. Place the order first."));
+            if status != "draft" {
+                return Err(AppError::conflict("Only a draft purchase order can be approved."));
             }
-            let mut lines = vec![];
-            for l in req.lines.iter().filter(|l| l.qty_milli != 0) {
-                let iid = validate::id(&l.po_item_id, "Order line")?;
-                let (po, pid, ordered, received, cost, name): (String, String, i64, i64, i64, String) = tx
-                    .query_row(
-                        "SELECT i.po_id, i.product_id, i.qty_ordered_milli, i.qty_received_milli, i.unit_cost_minor, p.name
-                         FROM purchase_order_items i JOIN products p ON p.product_id=i.product_id WHERE i.po_item_id=?1",
-                        [&iid],
-                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
-                    )
-                    .optional()?
-                    .ok_or_else(|| AppError::not_found("Order line"))?;
-                if po != id {
-                    return Err(AppError::validation("An order line does not belong to this purchase order."));
-                }
-                if l.qty_milli < 0 {
-                    return Err(AppError::validation("Received quantity cannot be negative."));
-                }
-                if received + l.qty_milli > ordered {
-                    return Err(AppError::validation(format!(
-                        "{name}: receiving {} would exceed the ordered quantity ({} remaining).",
-                        money::format_qty(l.qty_milli),
-                        money::format_qty(ordered - received)
-                    )));
-                }
-                tx.execute("UPDATE purchase_order_items SET qty_received_milli=qty_received_milli+?2 WHERE po_item_id=?1", params![iid, l.qty_milli])?;
-                lines.push(ReceiveLine {
-                    product_id: pid,
-                    qty_milli: l.qty_milli,
-                    unit_cost_minor: l.unit_cost_minor.unwrap_or(cost),
-                    po_item_id: Some(iid),
-                    lot: l.lot.clone(),
-                });
+            if approval_status(tx, &id)?.valid {
+                return Err(AppError::conflict("This purchase order is already approved as it is."));
             }
-            if lines.is_empty() {
-                return Err(AppError::validation("Enter at least one received quantity."));
-            }
-            let rid = new_id();
+            let ps: crate::settings::PurchasingSettings = crate::settings::get(tx, crate::settings::KEY_PURCHASING)?;
+            let fp = po_fingerprint(tx, &id)?;
+            let aid = new_id();
             tx.execute(
-                "INSERT INTO goods_receipts(receipt_id, po_id, supplier_id, branch_id, reference, total_cost_minor, operation_id, user_id, device_id, created_at)
-                 VALUES (?1,?2,?3,?4,?5,0,?6,?7,?8,?9)",
-                params![rid, id, supplier, s.branch_id, reference, req.operation_id, s.user_id, s.device_id, time::now_str()],
+                "INSERT INTO purchase_order_approvals(approval_id, po_id, po_version, fingerprint, total_minor, policy_mode, threshold_minor, approved_by, approved_at, note, operation_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                params![aid, id, version, fp, total, ps.po_approval_mode, ps.po_approval_threshold_minor, s.user_id, time::now_str(), note, operation_id],
             )?;
-            let total = receive_lines(tx, &s, &rid, Some(&supplier), &lines)?;
-            tx.execute("UPDATE goods_receipts SET total_cost_minor=?2 WHERE receipt_id=?1", params![rid, total])?;
-            let remaining: i64 = tx.query_row(
-                "SELECT COALESCE(SUM(qty_ordered_milli - qty_received_milli),0) FROM purchase_order_items WHERE po_id=?1",
-                [&id],
-                |r| r.get(0),
-            )?;
-            let new_status = if remaining == 0 { "received" } else { "partially_received" };
-            tx.execute("UPDATE purchase_orders SET status=?2, updated_at=?3, version=version+1 WHERE po_id=?1", params![id, new_status, time::now_str()])?;
-            let result = json!({ "receipt_id": rid, "po_id": id, "total_cost_minor": total, "status": new_status });
-            audit::record(tx, &actor, "po.received", "purchase_order", Some(&id), None, Some(&result))?;
-            idempotency::complete(tx, &req.operation_id, "po.receive", Some(&s.user_id), Some(&s.device_id), &hash, Some(&rid), &result)?;
+            audit::record(tx, &actor, "po.approved", "purchase_order", Some(&id), None,
+                Some(&json!({ "approval_id": aid, "po_version": version, "total_minor": total, "policy_mode": ps.po_approval_mode })))?;
             Ok(())
         })?;
         self.purchase_order_get(token, &id)

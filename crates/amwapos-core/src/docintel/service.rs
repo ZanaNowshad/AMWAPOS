@@ -151,7 +151,7 @@ fn branch_of(core: &AppCore, c: &Connection) -> AppResult<String> {
 }
 
 fn threshold_bp(c: &Connection) -> AppResult<i64> {
-    Ok(crate::settings::get::<crate::settings::InventorySettings>(c, crate::settings::KEY_INVENTORY)?.invoice_cost_variance_bp)
+    Ok(crate::settings::get::<crate::settings::PurchasingSettings>(c, crate::settings::KEY_PURCHASING)?.cost_tolerance_bp)
 }
 
 /// Load the review lines of a scan.
@@ -186,6 +186,15 @@ pub fn load_lines(c: &Connection, id: &str) -> AppResult<Vec<LineData>> {
     Ok(rows)
 }
 
+/// The pack size a person confirmed for the matched product and supplier.
+fn confirmed_pack(tx: &Connection, supplier: Option<&str>, m: &MatchResult) -> AppResult<Option<i64>> {
+    match (supplier, m.id.as_deref()) {
+        (Some(s), Some(p)) => crate::catalogue::confirmed_pack(tx, s, p),
+        _ => Ok(None),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn store_line(
     tx: &Connection,
     id: &str,
@@ -193,10 +202,22 @@ fn store_line(
     l: &ExtractedLine,
     m: &MatchResult,
     learned_upc: Option<i64>,
+    confirmed_upc: Option<i64>,
     source_kind: Option<&str>,
 ) -> AppResult<()> {
     let mut pack = l.pack.clone();
     let mut flags = l.flags.clone();
+    // A pack size a person confirmed wins over the one printed or read.
+    if let (Some(u), Some(printed), Some(q), Some("ctn" | "box")) = (confirmed_upc, pack.units_per_case, l.qty_milli, l.unit.as_deref()) {
+        if printed != u {
+            pack.units_per_case = Some(u);
+            pack.case_qty_milli = Some(q);
+            pack.base_qty_milli = Some(q * u);
+            pack.clear = true;
+            flags.push("pack_from_confirmed_terms".into());
+            flags.push("document_pack_differs".into());
+        }
+    }
     if pack.units_per_case.is_none() {
         if let (Some(u), Some(q), Some("ctn" | "box")) = (learned_upc, l.qty_milli, l.unit.as_deref()) {
             pack.units_per_case = Some(u);
@@ -314,7 +335,8 @@ pub(crate) fn analyze(core: &AppCore, tx: &Connection, id: &str, layout: &Layout
     tx.execute("DELETE FROM invoice_scan_lines WHERE scan_id=?1", [id])?;
     for (i, l) in ex.lines.iter().enumerate() {
         let (m, upc) = matching::match_line(tx, supplier.as_deref(), l)?;
-        store_line(tx, id, i as i64 + 1, l, &m, upc, None)?;
+        let confirmed = confirmed_pack(tx, supplier.as_deref(), &m)?;
+        store_line(tx, id, i as i64 + 1, l, &m, upc, confirmed, None)?;
     }
     store_header(tx, id, &ex.fields)?;
     let cls = &ex.classification;
@@ -417,7 +439,14 @@ pub(crate) fn recheck(core: &AppCore, tx: &Connection, id: &str, warnings: &[Str
             _ => (cands.first().filter(|c| c.score >= 60).map(|c| c.po_id.clone()), "suggested"),
         };
         let mut r = match &pick {
-            Some(p) => checks::reconcile(tx, p, &lines, thr, &branch)?,
+            Some(p) => {
+                // This document's own supplier invoice record (if drafted) is
+                // not counted twice in the cumulative invoiced quantity.
+                let own: Option<String> = tx
+                    .query_row("SELECT invoice_id FROM supplier_invoices WHERE scan_id=?1 AND status<>'void'", [id], |r| r.get(0))
+                    .optional()?;
+                checks::reconcile(tx, p, &lines, &branch, own.as_deref())?
+            }
             None => Recon::default(),
         };
         if pick.is_none() && prev.selected_by.as_deref() == Some("person") {
@@ -543,6 +572,9 @@ fn learn_line(tx: &Connection, id: &str, line_no: i64, supplier: &str, user: &st
     if let Some(d) = desc.map(|d| matching::desc_key(&d)).filter(|d| !d.is_empty()) {
         keys.push(("desc", d));
     }
+    // The supplier catalogue learns that this supplier sells the product (a
+    // pack size never replaces one a person confirmed).
+    crate::catalogue::learn_from_document(tx, supplier, &pid, upc)?;
     for (kind, key) in keys {
         tx.execute(
             "INSERT INTO supplier_product_map(supplier_id, key_kind, key_norm, product_id, units_per_case, uses, confirmed_by, confirmed_at) VALUES (?1,?2,?3,?4,?5,1,?6,?7)
@@ -1255,7 +1287,20 @@ impl AppCore {
                 tx.execute(
                     "INSERT INTO supplier_invoice_lines(invoice_id, line_no, product_id, description, qty_milli, unit_cost_minor, vat_rate_bp, vat_minor, line_total_minor)
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-                    params![inv_id, i as i64 + 1, l.product_id, l.description, l.qty_milli, l.unit_cost_minor.unwrap_or(0), l.vat_rate_bp, l.vat_minor, l.line_net().unwrap_or(0)],
+                    // Single units (a line printed in cases is converted with
+                    // its confirmed pack size), so the record matches the order
+                    // and the goods received, and costs are per unit.
+                    params![
+                        inv_id,
+                        i as i64 + 1,
+                        l.product_id,
+                        l.description,
+                        l.receive_qty().or(l.qty_milli),
+                        l.receive_unit_cost().map(|x| x.0).or(l.unit_cost_minor).unwrap_or(0),
+                        l.vat_rate_bp,
+                        l.vat_minor,
+                        l.line_net().unwrap_or(0)
+                    ],
                 )?;
             }
             tx.execute("UPDATE invoice_scans SET supplier_invoice_id=?2, status='confirmed', revision=revision+1 WHERE scan_id=?1", params![id, inv_id])?;
@@ -1564,9 +1609,11 @@ impl AppCore {
                             qty_milli: l["qty_milli"].as_i64().unwrap_or(0),
                             unit_cost_minor: l["unit_cost_minor"].as_i64(),
                             lot: lot_of(l),
+                            ..Default::default()
                         })
                         .collect(),
                     operation_id: format!("{op}-po"),
+                    ..Default::default()
                 };
                 self.purchase_order_receive(token, req)?;
                 receipts.push(json!({ "kind": "po", "operation_id": format!("{op}-po") }));
@@ -1719,6 +1766,11 @@ impl AppCore {
                 )?;
             } else {
                 tx.execute("UPDATE supplier_invoices SET status='void', updated_at=?2, revision=revision+1 WHERE invoice_id=?1", params![id, now])?;
+                // A void credit note frees the supplier return it was linked to.
+                tx.execute(
+                    "UPDATE supplier_returns SET credit_invoice_id=NULL, updated_at=?2, version=version+1 WHERE credit_invoice_id=?1 AND status='confirmed'",
+                    params![id, now],
+                )?;
                 tx.execute("UPDATE invoice_scans SET supplier_invoice_id=NULL WHERE supplier_invoice_id=?1", [&id])?;
             }
             audit::record(tx, &actor, &format!("supplier_invoice.{status}"), "supplier_invoice", Some(&id), Some(&json!({ "status": cur })), Some(&json!({ "status": status })))?;
@@ -1886,7 +1938,8 @@ impl AppCore {
                                 }
                             }
                         }
-                        store_line(tx, id, i as i64 + 1, l, &m, upc, kind)?;
+                        let confirmed = confirmed_pack(tx, supplier.as_deref(), &m)?;
+                        store_line(tx, id, i as i64 + 1, l, &m, upc, confirmed, kind)?;
                     }
                     tx.execute("UPDATE invoice_scans SET parser='ai' WHERE scan_id=?1", [id])?;
                     replaced = true;

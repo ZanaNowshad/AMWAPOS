@@ -98,6 +98,8 @@ pub struct ManualLine {
     pub unit_cost_minor: i64,
     #[serde(default)]
     pub vat_minor: Option<i64>,
+    #[serde(default)]
+    pub vat_rate_bp: Option<i64>,
 }
 
 /// A supplier invoice or credit note entered by hand (no scanned document).
@@ -115,6 +117,10 @@ pub struct ManualInvoice {
     pub total_minor: i64,
     #[serde(default)]
     pub applies_to_invoice_id: Option<String>,
+    /// The purchase order the invoice is for: it is then matched against
+    /// the order and the goods accepted before it can be posted.
+    #[serde(default)]
+    pub po_id: Option<String>,
     #[serde(default)]
     pub notes: Option<String>,
     #[serde(default)]
@@ -222,6 +228,36 @@ pub fn lifecycle(c: &Connection, invoice_id: &str) -> AppResult<(String, Option<
     })
 }
 
+/// The three-way match of a supplier invoice record against its purchase
+/// order (None when the invoice is for no order). Uses the one matcher,
+/// `docintel::checks::reconcile`.
+pub fn invoice_match(c: &Connection, invoice_id: &str, branch_id: &str) -> AppResult<Option<crate::docintel::checks::Recon>> {
+    let po: Option<String> = c.query_row("SELECT po_id FROM supplier_invoices WHERE invoice_id=?1", [invoice_id], |r| r.get(0))?;
+    let Some(po) = po.filter(|p| !p.is_empty()) else { return Ok(None) };
+    let mut st = c.prepare(
+        "SELECT l.line_no, l.description, l.product_id, p.name, l.qty_milli, l.unit_cost_minor, l.vat_rate_bp, l.vat_minor, l.line_total_minor
+         FROM supplier_invoice_lines l LEFT JOIN products p ON p.product_id=l.product_id WHERE l.invoice_id=?1 ORDER BY l.line_no",
+    )?;
+    let lines: Vec<crate::docintel::checks::LineData> = st
+        .query_map([invoice_id], |r| {
+            Ok(crate::docintel::checks::LineData {
+                line_no: r.get(0)?,
+                description: r.get(1)?,
+                product_id: r.get(2)?,
+                product_name: r.get(3)?,
+                qty_milli: Some(r.get(4)?),
+                unit_cost_minor: Some(r.get(5)?),
+                vat_rate_bp: r.get(6)?,
+                vat_minor: r.get(7)?,
+                line_total_minor: Some(r.get(8)?),
+                include: true,
+                ..Default::default()
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(Some(crate::docintel::checks::reconcile(c, &po, &lines, branch_id, Some(invoice_id))?))
+}
+
 fn system_note() -> &'static str {
     "Posted supplier records change only by reversal. Nothing here moves stock."
 }
@@ -270,13 +306,19 @@ impl AppCore {
                     return Err(AppError::validation("The credit note must refer to an invoice of the same supplier."));
                 }
             }
+            if let Some(po) = input.po_id.as_deref().filter(|p| !p.is_empty()) {
+                let sup: Option<String> = tx.query_row("SELECT supplier_id FROM purchase_orders WHERE po_id=?1", [po], |r| r.get(0)).optional()?;
+                if sup.as_deref() != Some(supplier.as_str()) {
+                    return Err(AppError::validation("The purchase order must be one of the same supplier."));
+                }
+            }
             let id = new_id();
             let seq = format!("SI-{:05}", next_seq(tx, "supplier_invoice")?);
             let now = time::now_str();
             tx.execute(
                 "INSERT INTO supplier_invoices(invoice_id, number, doc_type, supplier_id, scan_id, invoice_number, invoice_date, due_date, subtotal_minor, vat_minor,
-                    total_minor, status, posting, notes, created_by, created_at, updated_at, source, applies_to_invoice_id)
-                 VALUES (?1,?2,?3,?4,NULL,?5,?6,?7,?8,?9,?10,'draft','not_posted',?11,?12,?13,?13,'manual',?14)",
+                    total_minor, status, posting, notes, created_by, created_at, updated_at, source, applies_to_invoice_id, po_id)
+                 VALUES (?1,?2,?3,?4,NULL,?5,?6,?7,?8,?9,?10,'draft','not_posted',?11,?12,?13,?13,'manual',?14,?15)",
                 params![
                     id,
                     seq,
@@ -291,16 +333,17 @@ impl AppCore {
                     input.notes.as_deref().map(|n| n.chars().take(500).collect::<String>()),
                     s.user_id,
                     now,
-                    input.applies_to_invoice_id
+                    input.applies_to_invoice_id,
+                    input.po_id.as_deref().filter(|p| !p.is_empty())
                 ],
             )?;
             for (i, l) in input.lines.iter().enumerate() {
                 validate::money_non_negative(l.unit_cost_minor, "Unit cost")?;
                 let total = crate::money::extend(l.unit_cost_minor, l.qty_milli)?;
                 tx.execute(
-                    "INSERT INTO supplier_invoice_lines(invoice_id, line_no, product_id, description, qty_milli, unit_cost_minor, vat_minor, line_total_minor)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
-                    params![id, i as i64 + 1, l.product_id, l.description.chars().take(200).collect::<String>(), l.qty_milli, l.unit_cost_minor, l.vat_minor, total],
+                    "INSERT INTO supplier_invoice_lines(invoice_id, line_no, product_id, description, qty_milli, unit_cost_minor, vat_minor, line_total_minor, vat_rate_bp)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                    params![id, i as i64 + 1, l.product_id, l.description.chars().take(200).collect::<String>(), l.qty_milli, l.unit_cost_minor, l.vat_minor, total, l.vat_rate_bp],
                 )?;
             }
             audit::record(tx, &actor, "supplier_invoice.drafted", "supplier_invoice", Some(&id), None, Some(&json!({ "number": seq, "source": "manual", "origin": "admin" })))?;
@@ -354,6 +397,26 @@ impl AppCore {
                 .ok_or_else(|| AppError::not_found("Supplier invoice"))?;
             if posting == "posted" || posting == "reversed" {
                 return Err(AppError::conflict("This supplier invoice was already posted.").with_details(json!({ "kind": "already_posted" })));
+            }
+            // Three-way match: an invoice for a purchase order is posted only
+            // when it matches the order and the goods accepted, or a person
+            // with purchasing.approve accepted this exact result.
+            if doc_type == "invoice" {
+                if let Some(m) = crate::payables::invoice_match(tx, &id, &s.branch_id)? {
+                    let accepted: Option<String> =
+                        tx.query_row("SELECT match_accepted_fingerprint FROM supplier_invoices WHERE invoice_id=?1", [&id], |r| r.get(0))?;
+                    match m.outcome.as_str() {
+                        "blocked" => {
+                            return Err(AppError::conflict("This invoice charges for more than was received. Receive the goods, or ask the supplier for a corrected invoice.")
+                                .with_details(json!({ "kind": "match_blocked", "summary": m.summary })))
+                        }
+                        "review" if accepted.as_deref() != Some(m.fingerprint.as_str()) => {
+                            return Err(AppError::conflict("The invoice does not match the order and the goods received. Someone who approves purchasing must review the match first.")
+                                .with_details(json!({ "kind": "match_review", "summary": m.summary })))
+                        }
+                        _ => {}
+                    }
+                }
             }
             if status != "approved" {
                 return Err(AppError::validation("Only an approved (reviewed) supplier invoice can be posted.").with_details(json!({ "kind": "not_approved" })));
@@ -420,6 +483,14 @@ impl AppCore {
                 "UPDATE supplier_invoices SET posting='posted', posted_at=?2, posted_by=?3, updated_at=?2, revision=revision+1 WHERE invoice_id=?1",
                 params![id, now, s.user_id],
             )?;
+            // A credit note linked to a supplier return: the return is now
+            // credited. Nothing moves stock here (the return already did).
+            if doc_type == "credit_note" {
+                tx.execute(
+                    "UPDATE supplier_returns SET status='credited', updated_at=?2, version=version+1 WHERE credit_invoice_id=?1 AND status='confirmed'",
+                    params![id, now],
+                )?;
+            }
             audit::record(
                 tx,
                 &actor,
@@ -468,6 +539,12 @@ impl AppCore {
             tx.execute(
                 "UPDATE supplier_invoices SET posting='reversed', reversed_at=?2, reversed_by=?3, reversal_reason=?4, updated_at=?2, revision=revision+1 WHERE invoice_id=?1",
                 params![id, now, s.user_id, reason],
+            )?;
+            // A reversed credit note no longer credits its supplier return,
+            // and the return can take another credit note.
+            tx.execute(
+                "UPDATE supplier_returns SET status='confirmed', credit_invoice_id=NULL, updated_at=?2, version=version+1 WHERE credit_invoice_id=?1",
+                params![id, now],
             )?;
             audit::record(
                 tx,

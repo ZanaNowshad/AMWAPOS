@@ -509,6 +509,62 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "waste.get" => out(core.waste_get(tk()?, &req::<String>(&args, "waste_id")?)),
         "waste.list" => out(core.waste_list(tk()?, opt(&args, "from")?, opt(&args, "to")?, opt(&args, "reason")?)),
         "waste.summary" => out(core.waste_summary(tk()?, opt(&args, "from")?, opt(&args, "to")?)),
+        // Procurement (Wave 4): supplier catalogue, suggested orders,
+        // requisitions, approvals, receiving differences, match, returns
+        "supplier.catalogue" => out(core.supplier_catalogue(tk()?, opt(&args, "supplier_id")?, opt(&args, "product_id")?)),
+        "supplier.terms_save" => out(core.supplier_terms_save(tk()?, all(&args)?)),
+        "products.max_stock" => out(core.product_max_stock(tk()?, &req::<String>(&args, "product_id")?, opt(&args, "max_stock_milli")?)),
+        "replenish.list" => out(core.replenishment(tk()?, all(&args)?)),
+        "requisitions.list" => out(core.requisitions_list(tk()?, opt(&args, "status")?)),
+        "requisitions.get" => out(core.requisition_get(tk()?, &req::<String>(&args, "requisition_id")?)),
+        "requisitions.create" => out(core.requisition_create(tk()?, all(&args)?)),
+        "requisitions.from_suggestions" => out(core.requisition_from_suggestions(tk()?, all(&args)?)),
+        "requisitions.save" => out(core.requisition_save(tk()?, &req::<String>(&args, "requisition_id")?, req(&args, "requisition")?)),
+        "requisitions.set_status" => out(core.requisition_set_status(
+            tk()?,
+            &req::<String>(&args, "requisition_id")?,
+            &req::<String>(&args, "action")?,
+            opt(&args, "note")?,
+        )),
+        "requisitions.convert" => {
+            out(core.requisition_convert(tk()?, &req::<String>(&args, "requisition_id")?, &req::<String>(&args, "operation_id")?))
+        }
+        "po.approve" => out(core.purchase_order_approve(
+            tk()?,
+            &req::<String>(&args, "po_id")?,
+            opt(&args, "note")?,
+            &req::<String>(&args, "operation_id")?,
+        )),
+        "receiving.shortage_decide" => {
+            out(core.receipt_shortage_decide(tk()?, &req::<String>(&args, "discrepancy_id")?, &req::<String>(&args, "decision")?))
+        }
+        "receiving.open_shortages" => out(core.receiving_open_shortages(tk()?)),
+        "supplier_invoices.match" => out(core.supplier_invoice_match(tk()?, &req::<String>(&args, "invoice_id")?)),
+        "supplier_invoices.accept_match" => {
+            out(core.supplier_invoice_accept_match(tk()?, &req::<String>(&args, "invoice_id")?, &req::<String>(&args, "note")?))
+        }
+        "supplier_returns.list" => out(core.supplier_returns_list(tk()?, opt(&args, "status")?, opt(&args, "supplier_id")?)),
+        "supplier_returns.get" => out(core.supplier_return_get(tk()?, &req::<String>(&args, "return_id")?)),
+        "supplier_returns.save" => out(core.supplier_return_save(tk()?, opt(&args, "return_id")?, req(&args, "return")?)),
+        "supplier_returns.cancel" => out(core.supplier_return_cancel(tk()?, &req::<String>(&args, "return_id")?)),
+        "supplier_returns.confirm" => {
+            out(core.supplier_return_confirm(tk()?, &req::<String>(&args, "return_id")?, &req::<String>(&args, "operation_id")?))
+        }
+        "supplier_returns.reverse" => out(core.supplier_return_reverse(
+            tk()?,
+            &req::<String>(&args, "return_id")?,
+            &req::<String>(&args, "reason")?,
+            &req::<String>(&args, "operation_id")?,
+        )),
+        "supplier_returns.draft_credit" => out(core.supplier_return_draft_credit(
+            tk()?,
+            &req::<String>(&args, "return_id")?,
+            &req::<String>(&args, "supplier_number")?,
+            &req::<String>(&args, "date")?,
+        )),
+        "supplier_returns.link_credit" => {
+            out(core.supplier_return_link_credit(tk()?, &req::<String>(&args, "return_id")?, &req::<String>(&args, "invoice_id")?))
+        }
         "registers.list" => out(core.registers_list(tk()?)),
         "registers.devices" => out(core.register_devices(tk()?)),
         "registers.save" => out(core.register_save(tk()?, opt(&args, "register_id")?, req(&args, "register")?)),

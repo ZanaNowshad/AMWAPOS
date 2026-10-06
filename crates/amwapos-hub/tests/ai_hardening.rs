@@ -126,8 +126,13 @@ async fn proposals_follow_permissions_not_the_role_name() {
     let priced = custom_role(&e, "Accounts team", &["admin.access", "ai.use", "products.view", "prices.manage"]).await;
     // A read-only role under another name gets no proposal tools.
     let viewer = custom_role(&e, "Ops Viewer", &["admin.access", "ai.use", "reports.sales", "sales.view", "products.view"]).await;
-    // A buyer may draft POs (and reorders) but not prices.
-    let buyer = custom_role(&e, "Buyer", &["admin.access", "ai.use", "products.view", "inventory.view", "purchasing.manage"]).await;
+    // A buyer may draft POs (and reorder requisitions) but not prices.
+    let buyer = custom_role(
+        &e,
+        "Buyer",
+        &["admin.access", "ai.use", "products.view", "inventory.view", "purchasing.manage", "requisitions.create"],
+    )
+    .await;
 
     let pt = login_as(&e, &priced, "Pat", "5827").await;
     let names = tool_names(&e, &pt);
@@ -348,13 +353,16 @@ async fn reorder_and_margin_helpers_only_record_proposals() {
     let sugg = call(&e.rt, "ai.reorder_suggestions", Some(&e.t), json!({})).await;
     let line = &sugg["groups"][0]["lines"][0];
     assert_eq!(line["product_id"], milk.as_str(), "{sugg}");
-    assert_eq!(line["suggested_qty_milli"], 15000, "2×10 − 5 − 0: {sugg}");
+    // The replenishment engine: no sales history and no maximum stock, so
+    // it orders back up to the reorder point: 10 − 5 = 5.
+    assert_eq!(line["suggested_qty_milli"], 5000, "{sugg}");
 
     let cid = conversation(&e, &e.t, "/reorder from Awal Dairy");
     let (v, err) = e.core.ai_tool(&e.t, &cid, "propose_reorder", &json!({ "supplier_id": sid }));
     assert!(!err, "{v}");
     assert_eq!(v["data"]["status"], "proposed", "{v}");
-    assert_eq!(count(&e, "SELECT COUNT(*) FROM purchase_orders"), pos_before, "no PO until a person confirms");
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM purchase_orders"), pos_before, "never an order");
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM requisitions"), 0, "no requisition until a person confirms");
 
     // B5: cost 3.000, 25 % margin, VAT 10 % included → 3.000/0.75 = 4.000 × 1.1 = 4.400.
     let m = call(&e.rt, "ai.margin_price", Some(&e.t), json!({ "product_id": e.pid })).await;

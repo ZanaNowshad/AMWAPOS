@@ -326,6 +326,7 @@ fn payables_and_supplier_documents_are_hub_only_because_they_do_not_sync() {
         vat_minor: 100,
         total_minor: 1100,
         applies_to_invoice_id: None,
+        po_id: None,
         notes: None,
         lines: vec![],
     };

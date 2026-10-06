@@ -60,8 +60,10 @@ fn purchase_order_partial_receiving() {
             qty_milli: qty,
             unit_cost_minor: None,
             lot: None,
+            ..Default::default()
         }],
         operation_id: op(),
+        ..Default::default()
     };
     assert_eq!(e.core.purchase_order_receive(t, recv(1000)).unwrap_err().code, ErrorCode::Conflict);
     e.core.purchase_order_set_status(t, &po.header.po_id, "ordered").unwrap();
