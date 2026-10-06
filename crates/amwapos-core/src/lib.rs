@@ -35,6 +35,7 @@ pub mod importer;
 pub mod inventory;
 pub mod lots;
 pub mod loyalty;
+pub mod merge;
 pub mod messaging;
 pub mod migration;
 pub mod money;

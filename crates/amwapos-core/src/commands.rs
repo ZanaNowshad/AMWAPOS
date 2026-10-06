@@ -97,6 +97,19 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "barcodes.set_kind" => out(core.barcode_set_kind(tk()?, &req::<String>(&args, "barcode_id")?, opt(&args, "kind")?)),
         "products.set_plu" => out(core.product_set_plu(tk()?, &req::<String>(&args, "product_id")?, opt(&args, "plu")?)),
         "scale_rules.list" => out(core.scale_rules_list(tk()?)),
+        "duplicates.list" => out(core.duplicates_list(tk()?, opt::<bool>(&args, "include_later")?.unwrap_or(false), opt(&args, "limit")?)),
+        "duplicates.decide" => out(core.duplicate_decide(
+            tk()?,
+            &req::<String>(&args, "product_a")?,
+            &req::<String>(&args, "product_b")?,
+            opt(&args, "decision")?,
+            opt(&args, "note")?,
+        )),
+        "products.merge_preview" => {
+            out(core.product_merge_preview(tk()?, &req::<String>(&args, "source_product_id")?, &req::<String>(&args, "target_product_id")?))
+        }
+        "products.merge" => out(core.product_merge(tk()?, all(&args)?)),
+        "products.merges" => out(core.product_merges_list(tk()?, opt(&args, "product_id")?)),
         "scale_rules.save" => out(core.scale_rule_save(tk()?, req(&args, "rule")?)),
         "scale_rules.test" => out(core.scale_rule_test(tk()?, &req::<String>(&args, "code")?)),
         "barcodes.set_primary" => out(core.barcode_set_primary(tk()?, &req::<String>(&args, "barcode_id")?)),

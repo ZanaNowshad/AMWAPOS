@@ -302,3 +302,318 @@ fn barcode_rules_and_plu_need_their_permissions() {
     let pid = e.product("Tea", "5550002", 300, 100, 1_000);
     assert_eq!(e.core.product_set_plu(&cashier, &pid, Some("9".into())).unwrap_err().code, ErrorCode::Forbidden);
 }
+
+// ------------------------------------------------------------------ duplicates
+
+fn supplier(e: &Env, name: &str) -> String {
+    e.core.supplier_save(&e.owner_token, None, serde_json::from_value(json!({ "name": name })).unwrap()).unwrap().supplier_id
+}
+
+fn terms(e: &Env, sid: &str, pid: &str, code: Option<&str>, upc: Option<i64>, preferred: bool) {
+    e.core
+        .supplier_terms_save(
+            &e.owner_token,
+            serde_json::from_value(
+                json!({ "supplier_id": sid, "product_id": pid, "supplier_code": code, "units_per_case": upc, "preferred": preferred }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+}
+
+fn pairs(e: &Env, later: bool) -> Vec<serde_json::Value> {
+    e.core.duplicates_list(&e.owner_token, later, None).unwrap()["pairs"].as_array().unwrap().clone()
+}
+
+fn has_pair(ps: &[serde_json::Value], a: &str, b: &str) -> bool {
+    ps.iter().any(|p| {
+        let (x, y) = (p["a"]["product_id"].as_str().unwrap(), p["b"]["product_id"].as_str().unwrap());
+        (x == a && y == b) || (x == b && y == a)
+    })
+}
+
+#[test]
+fn duplicates_show_evidence_and_respect_what_makes_products_different() {
+    let e = env();
+    let t = &e.owner_token;
+    let cola = e.product("Coca-Cola 330ml", "5449000000996", 250, 150, 10_000);
+    let cola2 = e.product("COCA COLA 330 ml", "1000001", 250, 150, 5_000);
+    let zero = e.product("Coca-Cola Zero 330ml", "5449000131805", 250, 150, 5_000);
+    let big = e.product("Coca-Cola 500ml", "5449000000439", 350, 200, 5_000);
+    // The same number written with and without a leading zero.
+    let w1 = e.product("Spring water", "629123456789", 100, 50, 0);
+    let w2 = e.product("Mineral water bottle", "0629123456789", 100, 50, 0);
+    let ps = pairs(&e, false);
+    assert!(has_pair(&ps, &cola, &cola2), "same words and size");
+    assert!(!has_pair(&ps, &cola, &zero), "'Zero' makes it a different product");
+    assert!(!has_pair(&ps, &cola, &big), "a different size is a different product");
+    assert!(has_pair(&ps, &w1, &w2), "same barcode number");
+    let p = ps.iter().find(|p| has_pair(std::slice::from_ref(p), &cola, &cola2)).unwrap();
+    let kinds: Vec<&str> = p["evidence"].as_array().unwrap().iter().map(|x| x["kind"].as_str().unwrap()).collect();
+    assert!(kinds.contains(&"same_name") && kinds.contains(&"same_size") && kinds.contains(&"similar_price"), "{kinds:?}");
+    assert!(p["score"].as_i64().unwrap() >= 70);
+    // "Not duplicates" is remembered; "Review later" is set aside.
+    e.core.duplicate_decide(t, &w1, &w2, Some("not_duplicates".into()), None).unwrap();
+    e.core.duplicate_decide(t, &cola2, &cola, Some("later".into()), None).unwrap();
+    let ps = pairs(&e, false);
+    assert!(!has_pair(&ps, &w1, &w2) && !has_pair(&ps, &cola, &cola2));
+    let ps = pairs(&e, true);
+    assert!(has_pair(&ps, &cola, &cola2) && !has_pair(&ps, &w1, &w2));
+    assert_eq!(e.core.duplicates_list(t, false, None).unwrap()["later_count"], 1);
+}
+
+#[test]
+fn supplier_codes_are_duplicate_evidence() {
+    let e = env();
+    let sid = supplier(&e, "Gulf Foods");
+    let r1 = e.product("Basmati rice 5kg", "2000001", 900, 600, 0);
+    let r2 = e.product("Rice India 5kg", "2000002", 950, 600, 0);
+    terms(&e, &sid, &r1, Some("GF-RICE-5"), None, false);
+    // A different supplier code: names differ, so no suggestion.
+    assert!(!has_pair(&pairs(&e, false), &r1, &r2));
+    terms(&e, &sid, &r2, Some("gf-rice-5"), None, false);
+    // The same supplier item code and the same size: suggested, with the evidence.
+    let ps = pairs(&e, false);
+    let p = ps.iter().find(|p| has_pair(std::slice::from_ref(p), &r1, &r2)).expect("suggested");
+    assert!(p["evidence"].to_string().contains("supplier_code"));
+    // The same code on a different size is not suggested.
+    let r3 = e.product("Basmati rice 10kg", "2000003", 1700, 1100, 0);
+    let sid2 = supplier(&e, "Other");
+    terms(&e, &sid2, &r1, Some("X1"), None, false);
+    terms(&e, &sid2, &r3, Some("x1"), None, false);
+    assert!(!has_pair(&pairs(&e, false), &r1, &r3));
+}
+
+// ------------------------------------------------------------------ merge
+
+use amwapos_core::merge::{MergeChoices, MergeRequest};
+
+fn total_stock(e: &Env) -> i64 {
+    one(e, "SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels")
+}
+
+fn merge_req(e: &Env, src: &str, tgt: &str, choices: MergeChoices) -> MergeRequest {
+    let p = e.core.product_merge_preview(&e.owner_token, src, tgt).unwrap();
+    MergeRequest {
+        source_product_id: src.into(),
+        target_product_id: tgt.into(),
+        choices,
+        preview_hash: p["preview_hash"].as_str().unwrap().into(),
+        operation_id: op(),
+    }
+}
+
+fn sell_code(e: &Env, t: &str, code: &str, qty: i64) -> SaleResult {
+    e.core.pos_scan(t, code, Some(qty)).unwrap();
+    pay(e, t)
+}
+
+#[test]
+fn merge_conserves_stock_and_batches_and_keeps_history() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    let keep = e.product("Laban 1L", "6291000000011", 450, 300, 10_000);
+    let dup = e.product("Laban 1 litre", "6291000000028", 450, 360, 8_000);
+    // A batch on the duplicate: 5 of its 8 counted into batch B-77.
+    e.core.product_lot_settings(t, &dup, true, Some("use_by".into())).unwrap();
+    e.core
+        .lot_count_in(
+            t,
+            serde_json::from_value(json!({ "product_id": dup, "qty_milli": 5_000, "operation_id": op(),
+                "lot": { "supplier_lot_code": "B-77",
+                "expires_on": (chrono::Local::now().date_naive() + chrono::Duration::days(90)).to_string() } }))
+            .unwrap(),
+        )
+        .unwrap();
+    // History: a sale of the duplicate with its issued receipt.
+    let sale = sell_code(&e, t, "6291000000028", 1_000);
+    let receipt_hash: String = one(&e, &format!("SELECT sha256 FROM receipt_snapshots WHERE ref_id='{}'", sale.sale_id));
+    let sale_items_before: String =
+        one(&e, "SELECT group_concat(sale_item_id||product_id||line_total_minor||effective_unit_price_minor, ',') FROM sale_items");
+    let total_before = total_stock(&e);
+    let movements_before: i64 = one(&e, "SELECT COUNT(*) FROM stock_movements");
+
+    let p = e.core.product_merge_preview(t, &dup, &keep).unwrap();
+    assert_eq!(p["can_merge"], true, "{p}");
+    assert_eq!(p["moves"]["stock"][0]["source_milli"], 7_000);
+    assert_eq!(p["moves"]["stock"][0]["lots"][0]["qty_milli"], 5_000);
+    assert_eq!(p["history"]["sale_lines"], 1);
+    let r = e.core.product_merge(t, merge_req(&e, &dup, &keep, MergeChoices::default())).unwrap();
+
+    // Invariant 1: the total never changes; all of it is on the kept product.
+    assert_eq!(total_stock(&e), total_before);
+    let kept: i64 = one(&e, &format!("SELECT qty_milli FROM stock_levels WHERE product_id='{keep}'"));
+    let gone: i64 = one(&e, &format!("SELECT qty_milli FROM stock_levels WHERE product_id='{dup}'"));
+    assert_eq!((kept, gone), (17_000, 0));
+    // Paired movements only (no movement edited or removed).
+    let moves: i64 = one(&e, "SELECT COUNT(*) FROM stock_movements");
+    let merge_moves: i64 = one(&e, "SELECT COUNT(*) FROM stock_movements WHERE source_type='product_merge'");
+    assert_eq!(moves, movements_before + merge_moves);
+    let net: i64 = one(&e, "SELECT SUM(qty_delta_milli) FROM stock_movements WHERE source_type='product_merge'");
+    assert_eq!(net, 0);
+    // The batch moved through an explicit, traceable transition.
+    let (prov, from, qty, code): (String, String, i64, String) = e
+        .core
+        .db
+        .read(|c| {
+            Ok(c.query_row(
+                &format!("SELECT provenance, merged_from_lot_id, qty_received_milli, supplier_lot_code FROM stock_lots WHERE product_id='{keep}'"),
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )?)
+        })
+        .unwrap();
+    assert_eq!((prov.as_str(), qty, code.as_str()), ("merge", 5_000, "B-77"));
+    let old_lot: String = one(&e, &format!("SELECT lot_id FROM stock_lots WHERE product_id='{dup}'"));
+    assert_eq!(from, old_lot);
+    let branch: String = one(&e, "SELECT branch_id FROM branches LIMIT 1");
+    let lots = e.core.db.read(|c| amwapos_core::lots::replay(c, &keep, &branch)).unwrap();
+    assert_eq!(lots.lots.iter().map(|l| l.balance_milli).sum::<i64>(), 5_000);
+    assert_eq!(lots.stock_milli, 17_000);
+    // Invariants 2 and 3: receipts and sale snapshots are untouched.
+    let receipt_after: String = one(&e, &format!("SELECT sha256 FROM receipt_snapshots WHERE ref_id='{}'", sale.sale_id));
+    assert_eq!(receipt_after, receipt_hash);
+    let sale_items_after: String =
+        one(&e, "SELECT group_concat(sale_item_id||product_id||line_total_minor||effective_unit_price_minor, ',') FROM sale_items");
+    assert_eq!(sale_items_after, sale_items_before);
+    // The duplicate's barcode now sells the kept product.
+    let s = e.core.pos_scan(t, "6291000000028", None).unwrap();
+    assert_eq!(s.cart.lines[0].product_id.as_deref(), Some(keep.as_str()));
+    e.core.pos_cancel_sale(t, None).unwrap();
+    // The retired product says where it went.
+    let d = e.core.product_get(t, &dup).unwrap();
+    assert!(!d.row.active);
+    assert_eq!(d.merged_into.as_ref().unwrap()["product_id"], keep.as_str());
+    // Weighted average cost: (10 × 0.300 + 7 × 0.360) / 17 = 0.3247 → 325.
+    let avg: i64 = one(&e, &format!("SELECT avg_cost_minor FROM product_costs WHERE product_id='{keep}'"));
+    assert_eq!(avg, 325);
+    // One permanent merge record, audited.
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM product_merges"), 1);
+    assert!(e.core.db.write(|c| Ok(c.execute("DELETE FROM product_merges", [])?)).is_err());
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM audit_logs WHERE event_type='product.merged'"), 1);
+    assert_eq!(e.core.product_merges_list(t, Some(keep.clone())).unwrap().len(), 1);
+    // A merged product cannot be merged again.
+    assert_eq!(e.core.product_merge_preview(t, &dup, &keep).unwrap_err().code, ErrorCode::Conflict);
+    let _ = r;
+}
+
+#[test]
+fn merge_is_idempotent_and_refuses_a_stale_preview() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    let keep = e.product("Tea 100", "7000001", 900, 500, 4_000);
+    let dup = e.product("Tea 100 bags", "7000002", 900, 500, 3_000);
+    let req = merge_req(&e, &dup, &keep, MergeChoices::default());
+    // Something changes after the preview: refused, nothing moved.
+    sell_code(&e, t, "7000002", 1_000);
+    let err = e.core.product_merge(t, req).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict);
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM product_merges"), 0);
+    let req = merge_req(&e, &dup, &keep, MergeChoices::default());
+    let first = e.core.product_merge(t, req.clone()).unwrap();
+    let again = e.core.product_merge(t, req).unwrap();
+    assert_eq!(first, again, "a retry returns the same result");
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM product_merges"), 1);
+    assert_eq!(total_stock(&e), 6_000);
+}
+
+#[test]
+fn merge_needs_explicit_choices_for_conflicts() {
+    let e = env();
+    let t = &e.owner_token;
+    let keep = weighed(&e, "Tomatoes", "11", 600);
+    let dup = weighed(&e, "Tomato", "12", 650);
+    let sid = supplier(&e, "Farm");
+    terms(&e, &sid, &keep, Some("T-1"), Some(10), true);
+    terms(&e, &sid, &dup, Some("T-9"), Some(12), false);
+    let p = e.core.product_merge_preview(t, &dup, &keep).unwrap();
+    assert_eq!(p["conflicts"]["price"]["source"], 650);
+    assert_eq!(p["conflicts"]["plu"]["target"], "11");
+    assert_eq!(p["conflicts"]["supplier_terms"].as_array().unwrap().len(), 1);
+    // Without choices: refused, naming what to choose.
+    let err = e.core.product_merge(t, merge_req(&e, &dup, &keep, MergeChoices::default())).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Validation);
+    let mut ch = MergeChoices { price: Some("source".into()), plu: Some("target".into()), ..Default::default() };
+    let err = e.core.product_merge(t, merge_req(&e, &dup, &keep, ch.clone())).unwrap_err();
+    assert!(err.message.contains("Farm"), "{}", err.message);
+    ch.supplier_terms.insert(sid.clone(), "source".into());
+    e.core.product_merge(t, merge_req(&e, &dup, &keep, ch)).unwrap();
+    let d = e.core.product_get(t, &keep).unwrap();
+    assert_eq!(d.row.price_minor, Some(650), "the chosen price");
+    assert_eq!(d.plu.as_deref(), Some("11"), "the chosen PLU");
+    let (code, upc, pref): (String, i64, i64) = e
+        .core
+        .db
+        .read(|c| {
+            Ok(c.query_row("SELECT supplier_code, units_per_case, preferred FROM supplier_products WHERE product_id=?1", [&keep], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })?)
+        })
+        .unwrap();
+    assert_eq!((code.as_str(), upc, pref), ("T-9", 12, 1), "the chosen terms; still the preferred supplier");
+    // Price history records only the applied change.
+    let n: i64 = one(&e, &format!("SELECT COUNT(*) FROM product_prices WHERE product_id='{keep}'"));
+    assert_eq!(n, 2);
+    // The retired product's PLU is freed, not duplicated.
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM products WHERE plu IS NOT NULL"), 1);
+}
+
+#[test]
+fn merge_is_blocked_by_open_documents_and_is_owner_only() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    let keep = e.product("Bread", "8000001", 300, 200, 1_000);
+    let dup = e.product("Bread loaf", "8000002", 300, 200, 1_000);
+    let sid = supplier(&e, "Bakery");
+    e.core
+        .purchase_order_save(
+            t,
+            None,
+            serde_json::from_value(
+                json!({ "supplier_id": sid, "lines": [{ "product_id": dup, "qty_milli": 5_000, "unit_cost_minor": 200 }] }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    // A sale in progress with the product.
+    e.core.pos_scan(t, "8000002", None).unwrap();
+    let p = e.core.product_merge_preview(t, &dup, &keep).unwrap();
+    let kinds: Vec<&str> = p["blockers"].as_array().unwrap().iter().map(|b| b["kind"].as_str().unwrap()).collect();
+    assert_eq!(kinds, vec!["purchase_order", "cart"]);
+    assert_eq!(p["can_merge"], false);
+    let err = e.core.product_merge(t, merge_req(&e, &dup, &keep, MergeChoices::default())).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict);
+    assert!(err.message.contains("Open purchase orders"), "{}", err.message);
+    // The manager can preview but not merge; the cashier cannot do either.
+    let (_, manager) = e.user("Mgr", "role_manager", "5932");
+    let (_, cashier) = e.user("Cash", "role_cashier", "5931");
+    assert!(e.core.product_merge_preview(&manager, &dup, &keep).is_ok());
+    assert_eq!(e.core.product_merge(&manager, merge_req(&e, &dup, &keep, MergeChoices::default())).unwrap_err().code, ErrorCode::Forbidden);
+    assert_eq!(e.core.product_merge_preview(&cashier, &dup, &keep).unwrap_err().code, ErrorCode::Forbidden);
+}
+
+#[test]
+fn a_failed_merge_changes_nothing() {
+    let e = env();
+    let t = &e.owner_token;
+    let keep = e.product("Oil 1L", "8100001", 1200, 800, 3_000);
+    let dup = e.product("Oil 1 L", "8100002", 1200, 800, 2_000);
+    let before: String = one(&e, "SELECT group_concat(product_id||':'||qty_milli) FROM (SELECT * FROM stock_levels ORDER BY product_id)");
+    let moves: i64 = one(&e, "SELECT COUNT(*) FROM stock_movements");
+    // Failure injection: the merge record cannot be written (last step).
+    e.core
+        .db
+        .write(|c| {
+            Ok(c.execute_batch("CREATE TRIGGER t_fail BEFORE INSERT ON product_merges BEGIN SELECT RAISE(ABORT, 'disk full'); END;")?)
+        })
+        .unwrap();
+    assert!(e.core.product_merge(t, merge_req(&e, &dup, &keep, MergeChoices::default())).is_err());
+    let after: String = one(&e, "SELECT group_concat(product_id||':'||qty_milli) FROM (SELECT * FROM stock_levels ORDER BY product_id)");
+    assert_eq!(after, before);
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM stock_movements"), moves);
+    assert_eq!(one::<i64>(&e, &format!("SELECT COUNT(*) FROM product_barcodes WHERE product_id='{dup}'")), 1);
+    assert!(e.core.product_get(t, &dup).unwrap().row.active);
+}
