@@ -648,3 +648,40 @@ Evidence (this environment, Linux):
 | Waste summary with defined ratios; days of stock left (7/30/60/90, holds, stock on order apart, no stock / no demand / not enough history, branch-scoped, refunds and voids counted as in reports) | Complete | `wave3.rs` days-of-stock test; `lots.rs` unit tests | — |
 | Permissions `lots.manage`, `waste.record`, `waste.approve`; hub-only tables; AI reads only | Complete | `wave3.rs`; `sync.rs`; `ai_admin.rs` | — |
 | English and Arabic for all new screens, messages, permissions and settings | Complete | vitest coverage; e2e sweep | Visual check on the till panel |
+
+## Merchant OS Wave 4: procurement, 2026-10-06
+
+Design and rules: [PROCUREMENT.md](PROCUREMENT.md).
+Branch `claude/amwapos-merchant-os-wave4`, based on `main` at `058a65d` (Wave 3).
+
+Evidence (this environment, Linux):
+- `cargo fmt --check`, `clippy -D warnings`;
+- `cargo test --workspace`: 457 passed, 0 failed, 4 ignored (the benchmark and live-network checks);
+- `tsc`, `eslint`, `prettier --check`, vitest (49), `vite build`;
+- Playwright: 21 flows, including the Wave 4 flow (Suggested orders → requisition → approve →
+  purchase order → place → receive with a refusal and a shortage → differences → supplier
+  return) and the English/Arabic sweep, which now covers Suggested orders, Requisitions,
+  Supplier returns, a new return, Settings → Purchasing and the supplier performance report;
+- 100k-product benchmark (release build), P95: scan 1.23 ms, search 4.79 ms, cart 0.75 ms,
+  sale commit 9.73 ms (Wave 3: 9.26 ms). Nothing was added to the sale path; this is run-to-run
+  noise. Suggested orders over 100,000 products with three suppliers each (50,000 to order):
+  1.58 s. The dashboard's "products to order" count is a five-minute hint, so a cold dashboard
+  at that size takes about 0.8 s once, and Suggested orders is always computed live.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| Supplier catalogue: one model (terms in `supplier_products`, document aliases in `supplier_product_map`, unchanged); person-confirmed pack wins; exact pack arithmetic; zero/negative packs refused | Complete | `wave4.rs`; `catalogue.rs` unit tests | Real supplier terms |
+| One replenishment engine on the shared demand functions; set-based; holds and expired use-by excluded; orders, drafts, transfers and requisitions counted once; explicit states; reason codes; deterministic supplier choice with alternatives; never orders | Complete | `wave4.rs`; `replenish.rs` unit tests; benchmark | — |
+| Requisitions: lifecycle, provenance with evidence, one draft PO per supplier, exactly once (retry, concurrency), whole requisition only, rollback on failure | Complete | `wave4.rs` (4) | — |
+| PO approval: off / always / above an amount; durable, bound to the material details; invalidated by a material edit; off keeps the old flow | Complete | `wave4.rs` | — |
+| Receiving: delivered, accepted, refused (not stock, not waste), damaged kept, substitute (A → B, explicit), shortage (backorder / cancel), overage (confirmed; approval beyond tolerance); batches; retry / changed / partial / failure part way / concurrent | Complete | `wave4.rs` (6) | Real back-door checking |
+| Three-way match in the existing reconcile: cumulative accepted vs posted invoices, pack conversion, VAT, tolerances (amount and %), matched / within tolerance / review / blocked; AP posting gated; acceptance bound to the result | Complete | `wave4.rs` (2) | Real supplier invoices |
+| Supplier returns: one lot-aware movement per line, quantity checks in the same transaction, reversal by compensation, expected vs actual credit, credit note link without a second stock effect | Complete | `wave4.rs` (3) | Real credit notes |
+| Permissions `requisitions.create`, `purchasing.approve`, `supplier_returns.manage`; owner removals stick; hub-only tables; AI reads only, reorder drafts a requisition | Complete | `wave4.rs`; `sync.rs`; `ai_admin.rs`; `ai_hardening.rs` | — |
+| Upgrade from schema 29 invents no terms, approvals, differences or returns | Complete | `wave4.rs` upgrade test | — |
+| Supplier performance (lead time set vs seen, fill, short, extra, damaged, refused, returned, cost difference, invoices reviewed); dashboard items that link to their screens | Complete | report and dashboard code; e2e sweep | — |
+| English and Arabic for all new screens, messages, permissions and settings | Complete | vitest coverage; e2e sweep | Visual check on the back-office panel |
+
+Commits were grouped as domain, screens, then docs and evidence (three commits rather than the
+six suggested checkpoints): the domain modules share one migration and module registration, so
+splitting them further would have left commits that do not build.
