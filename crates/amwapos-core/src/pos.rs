@@ -44,6 +44,13 @@ pub struct CartLineView {
     pub stock_milli: Option<i64>,
     /// Reorder point of a tracked product (for the low-stock hint on the line).
     pub reorder_point_milli: Option<i64>,
+    /// The price list that priced the line (retail or a channel's).
+    pub price_type: Option<String>,
+    /// The sale's channel has its own prices but this product has none:
+    /// "Using retail price".
+    pub using_retail: bool,
+    /// What a scale label said: { rule_id, kind, value }.
+    pub scale: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +85,8 @@ pub struct CartView {
     /// The digital order this sale rings up (Send prefill): order number,
     /// channel, whether it wants delivery, address and phone.
     pub order: Option<serde_json::Value>,
+    /// Where the sale comes from: pos | whatsapp | phone | web | other.
+    pub channel: Option<String>,
 }
 
 impl CartView {
@@ -96,6 +105,7 @@ impl CartView {
             notices: vec![],
             loyalty: None,
             order: None,
+            channel: Some("pos".into()),
         }
     }
 }
@@ -332,12 +342,13 @@ pub(crate) fn line_inputs(lines: &[LineRecord]) -> Vec<LineInput> {
 }
 
 pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec<String>) -> AppResult<CartView> {
-    type CartHead = (String, Option<String>, i64, i64, Option<i64>, Option<String>, i64, i64);
-    let (status, customer_id, cd_minor, cd_bp, hold_no, hold_note, version, points): CartHead = c
+    type CartHead = (String, Option<String>, i64, i64, Option<i64>, Option<String>, i64, i64, Option<String>);
+    let (status, customer_id, cd_minor, cd_bp, hold_no, hold_note, version, points, channel): CartHead = c
         .query_row(
-            "SELECT status, customer_id, cart_discount_minor, cart_discount_bp, hold_number, hold_note, version, loyalty_points FROM carts WHERE cart_id=?1",
+            "SELECT status, customer_id, cart_discount_minor, cart_discount_bp, hold_number, hold_note, version, loyalty_points, channel
+             FROM carts WHERE cart_id=?1",
             [cart_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?, r.get(8)?)),
         )
         .optional()?
         .ok_or_else(|| AppError::not_found("Sale"))?;
@@ -356,7 +367,8 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
     let customer = match customer_id {
         Some(cid) => c
             .query_row(
-                "SELECT customer_id, name, phone, address, area, flat, building, road, block, landmark FROM customers WHERE customer_id=?1",
+                "SELECT customer_id, name, phone, address, area, flat, building, road, block, landmark, governorate, directions
+                 FROM customers WHERE customer_id=?1",
                 [&cid],
                 |r| {
                     Ok(CustomerRef {
@@ -371,6 +383,8 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
                             road: r.get(7)?,
                             block: r.get(8)?,
                             landmark: r.get(9)?,
+                            governorate: r.get(10)?,
+                            directions: r.get(11)?,
                         },
                     })
                 },
@@ -378,6 +392,7 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
             .optional()?,
         None => None,
     };
+    let channel_pt = catalog::price_type_for_channel(channel.as_deref());
     let mut views = Vec::with_capacity(lines.len());
     for (l, p) in lines.iter().zip(priced) {
         let stock = match (&l.product_id, l.track_inventory) {
@@ -414,6 +429,12 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
             is_custom: l.is_custom,
             stock_milli: stock,
             reorder_point_milli: reorder,
+            using_retail: channel_pt != "retail" && l.price_type.as_deref() == Some("retail"),
+            price_type: l.price_type.clone(),
+            scale: l
+                .scale_rule_id
+                .as_ref()
+                .map(|r| serde_json::json!({ "rule_id": r, "kind": l.scale_value_kind, "value": l.scale_value })),
         });
     }
     Ok(CartView {
@@ -441,6 +462,7 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
                 },
             )
             .optional()?,
+        channel,
     })
 }
 
@@ -589,6 +611,9 @@ fn record_unknown(c: &Connection, s: &Session, barcode: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Where a sale comes from (separate from how it is fulfilled).
+pub const SALE_CHANNELS: [&str; 5] = ["pos", "whatsapp", "phone", "web", "other"];
+
 fn require_sell(s: &Session) -> AppResult<()> {
     s.require("pos.sell")
 }
@@ -680,6 +705,62 @@ impl AppCore {
                     Ok(ScanResult { outcome: "added".into(), barcode, product_name: Some(name), line_id: Some(lid), cart })
                 }
             }
+        })
+    }
+
+    /// Where this sale comes from. The channel decides which price list
+    /// prices the sale, so changing it reprices the lines that follow the
+    /// catalogue (not overrides, discounts or scale-label prices). A sale
+    /// rung up from a customer order keeps the order's channel.
+    pub fn pos_set_channel(&self, token: &str, channel: &str) -> AppResult<CartView> {
+        let s = self.session(token)?;
+        require_sell(&s)?;
+        if !SALE_CHANNELS.contains(&channel) {
+            return Err(AppError::validation("Choose where the sale comes from: till, WhatsApp, phone, web or other."));
+        }
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let cart_id = ensure_cart(tx, &s)?;
+            let (old, order): (Option<String>, Option<String>) =
+                tx.query_row("SELECT channel, digital_order_id FROM carts WHERE cart_id=?1", [&cart_id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+            if old.as_deref() == Some(channel) {
+                return cart_view(tx, &s, &cart_id, vec![]);
+            }
+            if order.is_some() {
+                return Err(AppError::conflict("This sale comes from a customer order; it keeps the order's channel."));
+            }
+            tx.execute(
+                "UPDATE carts SET channel=?2, updated_at=?3, version=version+1 WHERE cart_id=?1",
+                params![cart_id, channel, time::now_str()],
+            )?;
+            let mut notices = vec![];
+            for l in load_lines(tx, &cart_id)? {
+                let Some(pid) = &l.product_id else { continue };
+                if l.is_custom || l.price_override_by.is_some() || l.scale_value_kind.as_deref() == Some("price") {
+                    continue;
+                }
+                let p = product_for_sale(tx, pid, &cart_id)?;
+                let Some(now_price) = p.price else { continue };
+                if now_price != l.unit_price_minor || p.price_type != l.price_type {
+                    tx.execute(
+                        "UPDATE cart_lines SET catalog_unit_price_minor=?2, unit_price_minor=?2, price_type=?3 WHERE line_id=?1",
+                        params![l.line_id, now_price, p.price_type],
+                    )?;
+                    if now_price != l.unit_price_minor {
+                        notices.push(format!("{}: price for this channel applied.", l.name));
+                    }
+                }
+            }
+            audit::record(
+                tx,
+                &actor,
+                "pos.channel_set",
+                "cart",
+                Some(&cart_id),
+                Some(&json!({ "channel": old })),
+                Some(&json!({ "channel": channel })),
+            )?;
+            cart_view(tx, &s, &cart_id, notices)
         })
     }
 

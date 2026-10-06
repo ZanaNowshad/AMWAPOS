@@ -159,6 +159,8 @@ pub struct SaleDetail {
     pub paid_minor: i64,
     pub change_minor: i64,
     pub cost_total_minor: Option<i64>,
+    /// Where the sale came from; None: not recorded (sales before Wave 5).
+    pub channel: Option<String>,
     pub items: Vec<SaleItemView>,
     pub payments: Vec<PaymentView>,
     pub refunds: Vec<RefundRef>,
@@ -232,7 +234,7 @@ pub(crate) fn load_sale_detail(c: &Connection, sale_id: &str, show_cost: bool) -
         .query_row(
             "SELECT s.sale_id, s.receipt_number, s.status, s.completed_at, s.business_date, s.cashier_user_id, u.display_name,
                     s.device_id, d.name, s.shift_id, s.customer_id, cu.name, cu.phone, s.subtotal_minor, s.discount_minor,
-                    s.tax_minor, s.total_minor, s.paid_minor, s.change_minor, s.cost_total_minor
+                    s.tax_minor, s.total_minor, s.paid_minor, s.change_minor, s.cost_total_minor, s.channel
              FROM sales s LEFT JOIN users u ON u.user_id=s.cashier_user_id LEFT JOIN devices d ON d.device_id=s.device_id
              LEFT JOIN customers cu ON cu.customer_id=s.customer_id WHERE s.sale_id=?1",
             [sale_id],
@@ -258,6 +260,7 @@ pub(crate) fn load_sale_detail(c: &Connection, sale_id: &str, show_cost: bool) -
                     paid_minor: r.get(17)?,
                     change_minor: r.get(18)?,
                     cost_total_minor: if show_cost { Some(r.get(19)?) } else { None },
+                    channel: r.get(20)?,
                     items: vec![],
                     payments: vec![],
                     refunds: vec![],

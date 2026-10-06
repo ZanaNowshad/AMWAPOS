@@ -96,6 +96,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "barcodes.remove" => out(core.barcode_remove(tk()?, &req::<String>(&args, "barcode_id")?)),
         "barcodes.set_kind" => out(core.barcode_set_kind(tk()?, &req::<String>(&args, "barcode_id")?, opt(&args, "kind")?)),
         "products.set_plu" => out(core.product_set_plu(tk()?, &req::<String>(&args, "product_id")?, opt(&args, "plu")?)),
+        "pos.set_channel" => out(core.pos_set_channel(tk()?, &req::<String>(&args, "channel")?)),
         "scale_rules.list" => out(core.scale_rules_list(tk()?)),
         "duplicates.list" => out(core.duplicates_list(tk()?, opt::<bool>(&args, "include_later")?.unwrap_or(false), opt(&args, "limit")?)),
         "duplicates.decide" => out(core.duplicate_decide(

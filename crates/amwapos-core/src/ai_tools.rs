@@ -672,6 +672,7 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("products.set_plu", "forbidden: only a person sets a PLU"),
     ("scale_rules.save", "forbidden: only a person sets up scale barcode rules"),
     ("products.merge", "forbidden: only the owner merges products"),
+    ("pos.set_channel", "forbidden: the cashier sets where a sale comes from"),
     ("duplicates.decide", "forbidden: only a person decides about suggested duplicates"),
     ("supplier_returns.save", "forbidden: only a person prepares a supplier return"),
     ("supplier_returns.cancel", "forbidden: only a person cancels a supplier return"),

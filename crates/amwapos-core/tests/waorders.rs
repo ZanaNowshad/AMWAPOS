@@ -394,3 +394,30 @@ fn ai_help_is_validated_and_never_stale() {
     }
     assert_eq!(count(&e, "SELECT COUNT(*) FROM sales"), 0);
 }
+
+/// Wave 5: an address read from a WhatsApp conversation is a suggestion for
+/// this order; it never overwrites the customer's saved address.
+#[test]
+fn whatsapp_addresses_never_overwrite_a_saved_address() {
+    let e = setup();
+    let t = &e.owner_token;
+    let c = e
+        .core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "Ali Hasan", "phone": "33112233",
+                "address_parts": { "building": "5", "road": "10", "block": "300", "governorate": "muharraq", "directions": "Green door" } }))
+            .unwrap(),
+        )
+        .unwrap();
+    send(&e, "A1", "1 lays salt, deliver to block 221 building 12");
+    let v = session(&e);
+    assert_eq!(v["session"]["customer_id"], json!(c.customer_id));
+    let rev = v["session"]["revision"].as_i64().unwrap();
+    e.core.wa_order_confirm(t, v["session"]["session_id"].as_str().unwrap(), rev).unwrap();
+    let after = e.core.customer_get(t, &c.customer_id).unwrap();
+    let p = &after["customer"]["address_parts"];
+    assert_eq!((p["building"].as_str(), p["block"].as_str()), (Some("5"), Some("300")), "{p}");
+    assert_eq!((p["governorate"].as_str(), p["directions"].as_str()), (Some("muharraq"), Some("Green door")));
+}

@@ -617,3 +617,121 @@ fn a_failed_merge_changes_nothing() {
     assert_eq!(one::<i64>(&e, &format!("SELECT COUNT(*) FROM product_barcodes WHERE product_id='{dup}'")), 1);
     assert!(e.core.product_get(t, &dup).unwrap().row.active);
 }
+
+// ------------------------------------------------------------------ addresses
+
+#[test]
+fn bahrain_address_keeps_governorate_directions_and_a_normalized_area() {
+    let e = env();
+    let t = &e.owner_token;
+    let c = e
+        .core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "Maryam", "phone": "33445566", "area": "  JUFAIR ",
+                "address_parts": { "flat": "12", "building": "1203", "road": "4518", "block": "324",
+                    "governorate": "Capital", "directions": "Second gate, ring twice" } }))
+            .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(c.info.area.as_deref(), Some("Juffair"));
+    let p = &c.info.address_parts;
+    assert_eq!(p.governorate.as_deref(), Some("capital"));
+    assert_eq!(p.directions.as_deref(), Some("Second gate, ring twice"));
+    assert_eq!(c.info.address.as_deref(), Some("Flat 12, Bldg 1203, Road 4518, Block 324"));
+    // Optional: nothing is invented when not given.
+    let c2 = e.core.customer_save(t, None, serde_json::from_value(json!({ "name": "Ali", "phone": "33445577" })).unwrap()).unwrap();
+    assert_eq!(c2.info.address_parts.governorate, None);
+    // An unknown governorate is refused.
+    let err = e
+        .core
+        .customer_save(
+            t,
+            None,
+            serde_json::from_value(json!({ "name": "X", "address_parts": { "building": "1", "governorate": "west" } })).unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::Validation);
+    // A drop for the customer carries the saved governorate and directions.
+    e.open_shift(t, 0);
+    let d = e
+        .core
+        .delivery_create(
+            t,
+            serde_json::from_value(json!({ "customer_id": c.customer_id, "payment_status": "cod", "amount_minor": 500 })).unwrap(),
+        )
+        .unwrap();
+    let (g, dir): (Option<String>, Option<String>) = e
+        .core
+        .db
+        .read(|x| {
+            Ok(x.query_row("SELECT governorate, directions FROM delivery_orders WHERE delivery_id=?1", [&d.delivery_id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?)
+        })
+        .unwrap();
+    assert_eq!((g.as_deref(), dir.as_deref()), (Some("capital"), Some("Second gate, ring twice")));
+}
+
+// ------------------------------------------------------------------ sales channel
+
+#[test]
+fn channel_is_explicit_kept_through_hold_and_fixed_after_sale() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    e.product("Juice", "9100001", 500, 300, 10_000);
+    // Sales made before Wave 5 have no channel: "not recorded", never guessed.
+    let before: i64 = one(&e, "SELECT COUNT(*) FROM sales WHERE channel IS NOT NULL");
+    assert_eq!(before, 0);
+    // A till sale is a 'pos' sale from the first scan.
+    let c = e.core.pos_scan(t, "9100001", None).unwrap().cart;
+    assert_eq!(c.channel.as_deref(), Some("pos"));
+    // The cashier records a phone order; it survives hold and restore.
+    let c = e.core.pos_set_channel(t, "phone").unwrap();
+    assert_eq!(c.channel.as_deref(), Some("phone"));
+    e.core.pos_hold(t, None).unwrap();
+    let held = e.core.pos_held_list(t).unwrap();
+    let back = e.core.pos_restore(t, &held[0].cart_id).unwrap();
+    assert_eq!(back.channel.as_deref(), Some("phone"));
+    assert_eq!(e.core.pos_set_channel(t, "telepathy").unwrap_err().code, ErrorCode::Validation);
+    let sale = pay(&e, t);
+    let d = e.core.sale_get(t, &sale.sale_id).unwrap();
+    assert_eq!(d.channel.as_deref(), Some("phone"));
+    // Completed sales never change.
+    let r = e.core.db.write(|c| Ok(c.execute("UPDATE sales SET channel='web' WHERE sale_id=?1", [&sale.sale_id])?));
+    assert!(r.is_err());
+    // Fulfilment stays separate: the next till sale is a 'pos' sale again.
+    let c = e.core.pos_scan(t, "9100001", None).unwrap().cart;
+    assert_eq!(c.channel.as_deref(), Some("pos"));
+}
+
+#[test]
+fn an_order_rung_up_carries_its_channel_before_pricing() {
+    let e = env();
+    let t = &e.owner_token;
+    e.core.settings_save(t, "features", json!({ "orders.digital": true })).unwrap();
+    e.open_shift(t, 0);
+    let pid = e.product("Dates box", "9200001", 2_000, 1_200, 10_000);
+    let o = e
+        .core
+        .order_save(
+            t,
+            None,
+            serde_json::from_value(
+                json!({ "channel": "whatsapp", "phone": "33334444", "lines": [{ "product_id": pid, "qty_milli": 1000 }] }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    e.core.order_confirm(t, &o.order_id).unwrap();
+    let cart = e.core.order_convert(t, &o.order_id, &op()).unwrap();
+    assert_eq!(cart.channel.as_deref(), Some("whatsapp"));
+    assert_eq!(cart.lines[0].price_type.as_deref(), Some("retail"));
+    assert!(cart.lines[0].using_retail, "no WhatsApp price yet: retail is used and shown");
+    // The order's channel cannot be changed at the till.
+    assert_eq!(e.core.pos_set_channel(t, "pos").unwrap_err().code, ErrorCode::Conflict);
+    let sale = pay(&e, t);
+    assert_eq!(e.core.sale_get(t, &sale.sale_id).unwrap().channel.as_deref(), Some("whatsapp"));
+}

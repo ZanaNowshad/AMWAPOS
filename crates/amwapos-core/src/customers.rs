@@ -305,6 +305,7 @@ impl AppCore {
         let s = self.session(token)?;
         s.require("customers.manage")?;
         let mut v = validate_customer(&input)?;
+        v.area = crate::address::normalize_area(v.area.as_deref());
         // No area typed: take a known place name from the address.
         if v.area.is_none() {
             v.area = v.address.as_deref().and_then(area_from_text).map(str::to_string);
@@ -635,8 +636,9 @@ pub(crate) fn can_work_drop(s: &Session, d: &DeliveryRow) -> bool {
 pub(crate) fn save_drop_address_on_customer(tx: &Connection, customer_id: &str, delivery_id: &str) -> AppResult<()> {
     tx.execute(
         "UPDATE customers SET address=COALESCE(d.address, customers.address), area=COALESCE(d.area, customers.area),
-            flat=d.flat, building=d.building, road=d.road, block=d.block, landmark=d.landmark, updated_at=?3
-         FROM (SELECT address, area, flat, building, road, block, landmark FROM delivery_orders WHERE delivery_id=?2) AS d
+            flat=d.flat, building=d.building, road=d.road, block=d.block, landmark=d.landmark,
+            governorate=COALESCE(d.governorate, customers.governorate), directions=COALESCE(d.directions, customers.directions), updated_at=?3
+         FROM (SELECT address, area, flat, building, road, block, landmark, governorate, directions FROM delivery_orders WHERE delivery_id=?2) AS d
          WHERE customers.customer_id=?1",
         params![customer_id, delivery_id, time::now_str()],
     )?;
@@ -699,7 +701,7 @@ pub(crate) fn insert_delivery(tx: &Connection, s: &Session, actor: &audit::Actor
         Some(b) => crate::address::area_for_block(tx, b)?,
         None => None,
     };
-    let area = clean_opt(&req.area, "Area", 80)?
+    let area = crate::address::normalize_area(clean_opt(&req.area, "Area", 80)?.as_deref())
         .or(block_area)
         .or_else(|| customer_id.as_ref().and_then(|c| c.info.area.clone()))
         .or_else(|| address.as_deref().and_then(area_from_text).map(str::to_string));

@@ -512,6 +512,8 @@ fn apply_address(tx: &Connection, session: &str, a: &interpret::AddressMention, 
         road: n.road.clone().or(old.road),
         block: n.block.clone().or(old.block),
         landmark: n.landmark.clone().or(old.landmark),
+        governorate: n.governorate.clone().or(old.governorate),
+        directions: n.directions.clone().or(old.directions),
     };
     let area = parts.block.as_deref().map(|b| crate::address::area_for_block(tx, b)).transpose()?.flatten().or(a.area.clone());
     tx.execute(

@@ -75,6 +75,8 @@ ALTER TABLE sale_items ADD COLUMN price_type TEXT;
 ALTER TABLE carts ADD COLUMN channel TEXT CHECK (channel IS NULL OR channel IN ('pos','whatsapp','phone','web','other'));
 ALTER TABLE sales ADD COLUMN channel TEXT CHECK (channel IS NULL OR channel IN ('pos','whatsapp','phone','web','other'));
 CREATE INDEX ix_sales_channel ON sales(channel, business_date);
+-- (sales are already immutable: trg_sales_no_update.) A sale on hold or in
+-- progress keeps its channel through hold and restore.
 
 -- ---------------------------------------------------------------- prices
 -- An applied price can name the policy and batch it came from.
@@ -89,6 +91,8 @@ ALTER TABLE customers ADD COLUMN governorate TEXT CHECK (governorate IS NULL OR 
 ALTER TABLE customers ADD COLUMN directions TEXT;
 ALTER TABLE delivery_orders ADD COLUMN governorate TEXT CHECK (governorate IS NULL OR governorate IN ('capital','muharraq','northern','southern'));
 ALTER TABLE delivery_orders ADD COLUMN directions TEXT;
+ALTER TABLE digital_orders ADD COLUMN governorate TEXT CHECK (governorate IS NULL OR governorate IN ('capital','muharraq','northern','southern'));
+ALTER TABLE digital_orders ADD COLUMN directions TEXT;
 
 -- ---------------------------------------------------------------- duplicates and merges
 -- A person's decision about a suggested pair (product_a < product_b).

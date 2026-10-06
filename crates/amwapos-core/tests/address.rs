@@ -13,7 +13,7 @@ use serde_json::json;
 
 fn parts(flat: &str, bldg: &str, road: &str, block: &str) -> AddressParts {
     let o = |s: &str| (!s.is_empty()).then(|| s.to_string());
-    AddressParts { flat: o(flat), building: o(bldg), road: o(road), block: o(block), landmark: None }
+    AddressParts { flat: o(flat), building: o(bldg), road: o(road), block: o(block), landmark: None, ..Default::default() }
 }
 
 fn send_sale(e: &Env, t: &str, cu: &str, f: Fulfilment) -> String {

@@ -21,6 +21,25 @@ pub struct AddressParts {
     pub block: Option<String>,
     /// Anything else the rider needs ("near the mosque", "blue gate").
     pub landmark: Option<String>,
+    /// capital | muharraq | northern | southern (optional; never guessed).
+    pub governorate: Option<String>,
+    /// How to get there ("second gate, ring twice"). Optional.
+    pub directions: Option<String>,
+}
+
+pub const GOVERNORATES: [&str; 4] = ["capital", "muharraq", "northern", "southern"];
+
+/// An area as it is kept: spaces tidied, and a known area's usual spelling
+/// ("JUFAIR " → "Juffair"). Unknown names are kept as typed.
+pub fn normalize_area(raw: Option<&str>) -> Option<String> {
+    let t = raw?.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.is_empty() {
+        return None;
+    }
+    match crate::customers::area_from_text(&t) {
+        Some(name) if crate::customers::strip_area(&t, name).is_empty() => Some(name.to_string()),
+        _ => Some(t),
+    }
 }
 
 /// `address_parts: null` from the UI means "no parts" (serde's `default`
@@ -53,7 +72,14 @@ impl AddressParts {
             road: part(&self.road, "Road", 20)?,
             block: part(&self.block, "Block", 10)?,
             landmark: part(&self.landmark, "Landmark", 150)?,
+            governorate: part(&self.governorate, "Governorate", 20)?.map(|g| g.to_lowercase()),
+            directions: part(&self.directions, "Directions", 300)?,
         };
+        if let Some(g) = &p.governorate {
+            if !GOVERNORATES.contains(&g.as_str()) {
+                return Err(AppError::validation("Choose the governorate from the list."));
+            }
+        }
         if let Some(b) = &p.block {
             if !b.chars().all(|c| c.is_ascii_digit()) {
                 return Err(AppError::validation("The block is a number, for example 256."));
@@ -126,20 +152,30 @@ pub fn area_for_block(c: &Connection, block: &str) -> AppResult<Option<String>> 
 
 /// Read the parts stored on a row (`prefix.` is the table alias).
 pub fn read_parts(c: &Connection, table: &str, key: &str, id: &str) -> AppResult<AddressParts> {
-    let sql = format!("SELECT flat, building, road, block, landmark FROM {table} WHERE {key}=?1");
+    let sql = format!("SELECT flat, building, road, block, landmark, governorate, directions FROM {table} WHERE {key}=?1");
     Ok(c.query_row(&sql, [id], |r| {
-        Ok(AddressParts { flat: r.get(0)?, building: r.get(1)?, road: r.get(2)?, block: r.get(3)?, landmark: r.get(4)? })
+        Ok(AddressParts {
+            flat: r.get(0)?,
+            building: r.get(1)?,
+            road: r.get(2)?,
+            block: r.get(3)?,
+            landmark: r.get(4)?,
+            governorate: r.get(5)?,
+            directions: r.get(6)?,
+        })
     })
     .optional()?
     .unwrap_or_default())
 }
 
-/// Store the parts on a row (clears them when `p` is not structured).
+/// Store the parts on a row (clears them when `p` is not structured;
+/// governorate and directions are kept either way).
 pub fn write_parts(c: &Connection, table: &str, key: &str, id: &str, p: &AddressParts) -> AppResult<()> {
+    let (g, d) = (p.governorate.clone(), p.directions.clone());
     let p = if p.is_structured() { p.clone() } else { AddressParts::default() };
     c.execute(
-        &format!("UPDATE {table} SET flat=?2, building=?3, road=?4, block=?5, landmark=?6 WHERE {key}=?1"),
-        params![id, p.flat, p.building, p.road, p.block, p.landmark],
+        &format!("UPDATE {table} SET flat=?2, building=?3, road=?4, block=?5, landmark=?6, governorate=?7, directions=?8 WHERE {key}=?1"),
+        params![id, p.flat, p.building, p.road, p.block, p.landmark, g, d],
     )?;
     Ok(())
 }
@@ -156,6 +192,7 @@ mod tests {
             road: Some("4518".into()),
             block: Some("245".into()),
             landmark: Some("near the mosque".into()),
+            ..Default::default()
         }
         .cleaned()
         .unwrap();
@@ -166,5 +203,17 @@ mod tests {
         assert!(bad_block.cleaned().is_err());
         let only_landmark = AddressParts { landmark: Some("blue gate".into()), ..Default::default() }.cleaned().unwrap();
         assert!(only_landmark.line().is_none());
+        let g = AddressParts { building: Some("1".into()), governorate: Some("Capital".into()), ..Default::default() }.cleaned().unwrap();
+        assert_eq!(g.governorate.as_deref(), Some("capital"));
+        assert!(AddressParts { governorate: Some("west".into()), ..Default::default() }.cleaned().is_err());
+    }
+
+    #[test]
+    fn areas_are_normalized_not_guessed() {
+        assert_eq!(normalize_area(Some("  JUFAIR ")).as_deref(), Some("Juffair"));
+        assert_eq!(normalize_area(Some("الجفير")).as_deref(), Some("Juffair"));
+        assert_eq!(normalize_area(Some("Near   Juffair mall")).as_deref(), Some("Near Juffair mall"));
+        assert_eq!(normalize_area(Some("Zinj")).as_deref(), Some("Zinj"));
+        assert_eq!(normalize_area(Some("  ")), None);
     }
 }
