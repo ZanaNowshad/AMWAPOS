@@ -179,7 +179,10 @@ test("scale rule, duplicate merge, pricing review and a scale label on a phone o
   await expect(page.getByRole("row", { name: /Laban W5/ })).toHaveCount(0);
 
   // The till: a phone order with a scale label.
-  await rpc(page, "shift.open", { opening_float_minor: 0, operation_id: `w5-${Date.now()}` }, t);
+  // The till needs an open shift (an earlier flow may already have one).
+  await rpc(page, "shift.open", { opening_float_minor: 0, operation_id: `w5-${Date.now()}` }, t).catch((e: Error) => {
+    if (!String(e.message).includes("already have an open shift")) throw e;
+  });
   await login(page);
   await expect(page.getByTestId("pos")).toBeVisible();
   await page.getByTestId("sale-channel").selectOption("phone");
