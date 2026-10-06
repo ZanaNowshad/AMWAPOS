@@ -702,6 +702,14 @@ splitting them further would have left commits that do not build.
   including the Wave 4 flow and the English/Arabic sweep of every Admin page.
 - The benchmark figures above are from the release run of the Wave 4 code before the dashboard
   hint was added; the hint changes only the dashboard, not the sale path or the engine.
+- - CI on `43b4a84`: Windows build + tests + installer, frontend, end-to-end and dependency audit
+  passed; the Linux Rust job failed in one pre-existing hub test,
+  `an_unreachable_capability_check_is_retried_slowly_and_publishes_nothing` (the file is not
+  changed by Wave 5). Root cause: a race in the test. The catalogue worker may check the
+  capability (supported) while the test environment starts, before the test switches the fake to
+  failing; the once-a-minute re-check limit then holds "supported" longer than the test waits.
+  It passed 6 of 6 locally and on Windows. Fixed in the test by asking for "check again" after
+  switching (honoured at once), keeping every assertion, including the once-a-minute limit.
 - CI on the final head: pending at the time of writing.
 
 ## Merchant OS Wave 5: retail commercial foundation, 2026-10-06
@@ -744,4 +752,12 @@ Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
 | Ten invariants together | Complete | `wave5.rs` invariants test | — |
 | English and Arabic for every new screen, message, permission and setting | Complete | vitest; e2e sweep | Visual check on real tills |
 
-CI on the final head: pending at the time of writing.
+- CI on `43b4a84`: Windows build + tests + installer, frontend, end-to-end and dependency audit
+  passed; the Linux Rust job failed in one pre-existing hub test,
+  `an_unreachable_capability_check_is_retried_slowly_and_publishes_nothing` (the file is not
+  changed by Wave 5). Root cause: a race in the test. The catalogue worker may check the
+  capability (supported) while the test environment starts, before the test switches the fake to
+  failing; the once-a-minute re-check limit then holds "supported" longer than the test waits.
+  It passed 6 of 6 locally and on Windows. Fixed in the test by asking for "check again" after
+  switching (honoured at once), keeping every assertion, including the once-a-minute limit.
+- CI on the final head: pending at the time of writing.

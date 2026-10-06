@@ -684,6 +684,10 @@ async fn rapid_sync_presses_make_one_run_and_only_whatsapp_and_product_managers_
 async fn an_unreachable_capability_check_is_retried_slowly_and_publishes_nothing() {
     let e = env(Some(CatalogCapability::Supported)).await;
     e.fake.state.catalog.fail_capability.store(true, Ordering::SeqCst);
+    // The worker may already have checked (and found it supported) while the
+    // test environment started; an explicit "check again" makes the failing
+    // check happen now instead of after the once-a-minute limit.
+    call(&e.rt, "whatsapp.catalog_recheck", Some(&e.t), json!({})).await;
     product(&e, "Waiting", 700, json!({})).await;
     let st = capability(&e, "unavailable").await;
     assert!(st["capability"]["detail"].is_string());
