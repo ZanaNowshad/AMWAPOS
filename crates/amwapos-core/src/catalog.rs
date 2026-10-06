@@ -63,6 +63,18 @@ pub fn price_sql_for(price_type: &str, col: &str) -> String {
     )
 }
 
+/// The price for a sale channel held in a SQL expression (`channel_expr`,
+/// e.g. `o.channel`), using the same deterministic fallback.
+pub fn price_sql_by_channel(channel_expr: &str) -> String {
+    format!(
+        "(CASE {channel_expr} WHEN 'whatsapp' THEN {} WHEN 'phone' THEN {} WHEN 'web' THEN {} ELSE {} END)",
+        price_sql_for("whatsapp", "amount_minor"),
+        price_sql_for("phone", "amount_minor"),
+        price_sql_for("web", "amount_minor"),
+        PRICE_SQL
+    )
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Page<T> {
     pub rows: Vec<T>,
@@ -1574,38 +1586,194 @@ pub(crate) fn set_price(
     effective_from: &str,
     actor: &audit::Actor,
 ) -> AppResult<Option<i64>> {
+    set_price_typed(c, s, pid, &PriceList::RETAIL, Some(amount_minor), reason, effective_from, actor)
+}
+
+/// Which price list a price belongs to, and where it came from.
+pub(crate) struct PriceList<'a> {
+    pub price_type: &'a str,
+    pub branch_id: Option<&'a str>,
+    pub policy_id: Option<&'a str>,
+    pub batch_id: Option<&'a str>,
+}
+
+impl PriceList<'static> {
+    pub const RETAIL: PriceList<'static> = PriceList { price_type: "retail", branch_id: None, policy_id: None, batch_id: None };
+}
+
+/// Set (or, with `None`, end) the price of one list from `effective_from`.
+/// Earlier rows of the same list are closed, never edited or deleted.
+/// Returns the list's previous own price.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn set_price_typed(
+    c: &Connection,
+    s: &Session,
+    pid: &str,
+    list: &PriceList,
+    amount_minor: Option<i64>,
+    reason: Option<&str>,
+    effective_from: &str,
+    actor: &audit::Actor,
+) -> AppResult<Option<i64>> {
     let exists: bool = c.query_row("SELECT 1 FROM products WHERE product_id=?1", [pid], |_| Ok(true)).optional()?.unwrap_or(false);
     if !exists {
         return Err(AppError::not_found("Product"));
     }
-    let old = current_price(c, pid)?;
+    if !PRICE_TYPES.contains(&list.price_type) {
+        return Err(AppError::validation("Unknown price list."));
+    }
+    if amount_minor.is_none() && list.price_type == "retail" && list.branch_id.is_none() {
+        return Err(AppError::validation("The retail price cannot be removed."));
+    }
+    let old: Option<i64> = if list.price_type == "retail" && list.branch_id.is_none() {
+        current_price(c, pid)?
+    } else {
+        c.query_row(
+            "SELECT amount_minor FROM product_prices WHERE product_id=?1 AND price_type=?2 AND branch_id IS ?3
+               AND effective_from <= amw_now() AND (effective_to IS NULL OR effective_to > amw_now())
+             ORDER BY effective_from DESC, price_id DESC LIMIT 1",
+            params![pid, list.price_type, list.branch_id],
+            |r| r.get(0),
+        )
+        .optional()?
+    };
     // Close any price rows still open at the new effective time; drop future ones superseded.
     c.execute(
         "UPDATE product_prices SET effective_to=?2
-         WHERE product_id=?1 AND price_type='retail' AND branch_id IS NULL AND (effective_to IS NULL OR effective_to > ?2) AND effective_from < ?2",
-        params![pid, effective_from],
+         WHERE product_id=?1 AND price_type=?3 AND branch_id IS ?4 AND (effective_to IS NULL OR effective_to > ?2) AND effective_from < ?2",
+        params![pid, effective_from, list.price_type, list.branch_id],
     )?;
     c.execute(
         "UPDATE product_prices SET effective_to=effective_from
-         WHERE product_id=?1 AND price_type='retail' AND branch_id IS NULL AND effective_from >= ?2 AND (effective_to IS NULL OR effective_to > effective_from)",
-        params![pid, effective_from],
+         WHERE product_id=?1 AND price_type=?3 AND branch_id IS ?4 AND effective_from >= ?2 AND (effective_to IS NULL OR effective_to > effective_from)",
+        params![pid, effective_from, list.price_type, list.branch_id],
     )?;
-    c.execute(
-        "INSERT INTO product_prices(price_id, product_id, branch_id, price_type, amount_minor, effective_from, reason, created_by, created_at)
-         VALUES (?1,?2,NULL,'retail',?3,?4,?5,?6,?7)",
-        params![new_id(), pid, amount_minor, effective_from, reason, s.user_id, time::now_str()],
-    )?;
+    if let Some(amount) = amount_minor {
+        validate::money_non_negative(amount, "Price")?;
+        c.execute(
+            "INSERT INTO product_prices(price_id, product_id, branch_id, price_type, amount_minor, effective_from, reason, created_by, created_at,
+                 policy_id, batch_id)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            params![
+                new_id(),
+                pid,
+                list.branch_id,
+                list.price_type,
+                amount,
+                effective_from,
+                reason,
+                s.user_id,
+                time::now_str(),
+                list.policy_id,
+                list.batch_id
+            ],
+        )?;
+    }
     c.execute("UPDATE products SET updated_at=?2, version=version+1 WHERE product_id=?1", params![pid, time::now_str()])?;
-    audit::record(
-        c,
-        actor,
-        "price.changed",
-        "product",
-        Some(pid),
-        Some(&json!({ "price_minor": old })),
-        Some(&json!({ "price_minor": amount_minor, "effective_from": effective_from, "reason": reason })),
-    )?;
+    let mut before = json!({ "price_minor": old });
+    let mut after = json!({ "price_minor": amount_minor, "effective_from": effective_from, "reason": reason });
+    if list.price_type != "retail" || list.branch_id.is_some() {
+        for v in [&mut before, &mut after] {
+            v["price_type"] = json!(list.price_type);
+            v["branch_id"] = json!(list.branch_id);
+        }
+    }
+    if list.batch_id.is_some() {
+        after["batch_id"] = json!(list.batch_id);
+        after["policy_id"] = json!(list.policy_id);
+    }
+    audit::record(c, actor, "price.changed", "product", Some(pid), Some(&before), Some(&after))?;
     Ok(old)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelPriceRow {
+    pub price_type: String,
+    pub branch_id: Option<String>,
+    /// This list's own price; None: not set.
+    pub own_price_minor: Option<i64>,
+    /// What a sale on this channel pays (falls back to retail).
+    pub effective_price_minor: Option<i64>,
+    /// "Using retail price": the list has no price of its own.
+    pub using_retail: bool,
+}
+
+impl AppCore {
+    /// The product's price per channel, and which ones fall back to retail.
+    pub fn product_channel_prices(&self, token: &str, product_id: &str) -> AppResult<Vec<ChannelPriceRow>> {
+        let s = self.session(token)?;
+        s.require("products.view")?;
+        let pid = validate::id(product_id, "Product")?;
+        self.db.read(|c| {
+            let mut out = vec![];
+            for t in CHANNEL_PRICE_TYPES {
+                let own: Option<i64> = c
+                    .query_row(
+                        "SELECT amount_minor FROM product_prices WHERE product_id=?1 AND price_type=?2 AND branch_id IS NULL
+                           AND effective_from <= amw_now() AND (effective_to IS NULL OR effective_to > amw_now())
+                         ORDER BY effective_from DESC, price_id DESC LIMIT 1",
+                        params![pid, t],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                let (eff, src): (Option<i64>, Option<String>) = c.query_row(
+                    &format!(
+                        "SELECT {}, {} FROM products p WHERE p.product_id=?1",
+                        price_sql_for(t, "amount_minor"),
+                        price_sql_for(t, "price_type")
+                    ),
+                    [&pid],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                out.push(ChannelPriceRow {
+                    price_type: t.to_string(),
+                    branch_id: None,
+                    own_price_minor: own,
+                    effective_price_minor: eff,
+                    using_retail: src.as_deref() != Some(t),
+                });
+            }
+            Ok(out)
+        })
+    }
+
+    /// Set or remove a channel's price for a product (hub only).
+    pub fn product_channel_price_set(
+        &self,
+        token: &str,
+        product_id: &str,
+        price_type: &str,
+        amount_minor: Option<i64>,
+        branch_id: Option<String>,
+        reason: Option<String>,
+    ) -> AppResult<Vec<ChannelPriceRow>> {
+        let s = self.session(token)?;
+        s.require("prices.manage")?;
+        self.require_back_office_writable()?;
+        let pid = validate::id(product_id, "Product")?;
+        if !CHANNEL_PRICE_TYPES.contains(&price_type) {
+            return Err(AppError::validation("Choose a channel: WhatsApp, phone or web."));
+        }
+        let reason = clean_opt(&reason, "Reason", 200)?;
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let branch = match branch_id.as_deref().filter(|b| !b.is_empty()) {
+                Some(b) => {
+                    let ok: bool =
+                        tx.query_row("SELECT 1 FROM branches WHERE branch_id=?1", [b], |_| Ok(true)).optional()?.unwrap_or(false);
+                    if !ok {
+                        return Err(AppError::not_found("Branch"));
+                    }
+                    Some(b.to_string())
+                }
+                None => None,
+            };
+            let list = PriceList { price_type, branch_id: branch.as_deref(), policy_id: None, batch_id: None };
+            set_price_typed(tx, &s, &pid, &list, amount_minor, reason.as_deref(), &time::now_str(), &actor)?;
+            Ok(())
+        })?;
+        self.product_channel_prices(token, &pid)
+    }
 }
 
 #[cfg(test)]

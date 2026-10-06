@@ -188,7 +188,7 @@ fn order_select() -> String {
             COALESCE((SELECT SUM(l.qty_milli * COALESCE({price},0) / 1000) FROM digital_order_lines l
                       LEFT JOIN products p ON p.product_id=l.product_id WHERE l.order_id=o.order_id),0)
          FROM digital_orders o LEFT JOIN customers cu ON cu.customer_id=o.customer_id",
-        price = crate::catalog::PRICE_SQL
+        price = crate::catalog::price_sql_by_channel("o.channel")
     )
 }
 
@@ -484,7 +484,7 @@ impl AppCore {
                     let mut st = c.prepare(&format!(
                         "SELECT COALESCE(p.name, l.description), l.qty_milli, l.qty_milli * COALESCE({},0) / 1000
                          FROM digital_order_lines l LEFT JOIN products p ON p.product_id=l.product_id WHERE l.order_id=?1 ORDER BY l.line_no",
-                        crate::catalog::PRICE_SQL
+                        crate::catalog::price_sql_by_channel("(SELECT channel FROM digital_orders WHERE order_id=l.order_id)")
                     ))?;
                     let rows = st
                         .query_map([oid], |r| {

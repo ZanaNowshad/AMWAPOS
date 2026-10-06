@@ -41,7 +41,6 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::audit;
-use crate::catalog::PRICE_SQL;
 use crate::error::{AppError, AppResult};
 use crate::service::AppCore;
 use crate::settings;
@@ -191,8 +190,10 @@ struct ProductData {
 }
 
 fn load_products(c: &Connection, only: Option<&str>) -> AppResult<Vec<ProductData>> {
+    // The WhatsApp catalogue shows WhatsApp prices (retail when none is set).
+    let price_sql = crate::catalog::price_sql_for("whatsapp", "amount_minor");
     let sql = format!(
-        "SELECT p.product_id, p.sku, p.name, p.name_ar, p.description, p.active, {PRICE_SQL},
+        "SELECT p.product_id, p.sku, p.name, p.name_ar, p.description, p.active, {price_sql},
                 CASE WHEN i.image_hash IS NULL THEN NULL ELSE p.image_hash END
          FROM products p LEFT JOIN product_images i ON i.image_hash = p.image_hash {}",
         if only.is_some() { "WHERE p.product_id = ?1" } else { "" }

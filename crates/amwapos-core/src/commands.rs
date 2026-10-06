@@ -97,6 +97,15 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "barcodes.set_kind" => out(core.barcode_set_kind(tk()?, &req::<String>(&args, "barcode_id")?, opt(&args, "kind")?)),
         "products.set_plu" => out(core.product_set_plu(tk()?, &req::<String>(&args, "product_id")?, opt(&args, "plu")?)),
         "pos.set_channel" => out(core.pos_set_channel(tk()?, &req::<String>(&args, "channel")?)),
+        "products.channel_prices" => out(core.product_channel_prices(tk()?, &req::<String>(&args, "product_id")?)),
+        "products.channel_price_set" => out(core.product_channel_price_set(
+            tk()?,
+            &req::<String>(&args, "product_id")?,
+            &req::<String>(&args, "price_type")?,
+            opt(&args, "amount_minor")?,
+            opt(&args, "branch_id")?,
+            opt(&args, "reason")?,
+        )),
         "scale_rules.list" => out(core.scale_rules_list(tk()?)),
         "duplicates.list" => out(core.duplicates_list(tk()?, opt::<bool>(&args, "include_later")?.unwrap_or(false), opt(&args, "limit")?)),
         "duplicates.decide" => out(core.duplicate_decide(

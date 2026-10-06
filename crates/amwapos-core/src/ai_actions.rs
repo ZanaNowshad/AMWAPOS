@@ -304,6 +304,7 @@ fn is_read_command(c: &str) -> bool {
         "supplier_invoices.match",
         "supplier_returns.list",
         "scale_rules.list",
+        "products.channel_prices",
         "duplicates.list",
         "products.merge_preview",
         "products.merges",

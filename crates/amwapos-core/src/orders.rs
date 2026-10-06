@@ -138,10 +138,11 @@ fn load_order(c: &Connection, id: &str) -> AppResult<OrderView> {
         .optional()?
         .ok_or_else(|| AppError::not_found("Order"))?;
     o.reservations = crate::reservations::for_order(c, id)?;
+    // Priced as the till will price it: the order's channel first.
     let sql = format!(
         "SELECT l.line_no, l.product_id, p.name, l.description, l.qty_milli, {} FROM digital_order_lines l
          LEFT JOIN products p ON p.product_id=l.product_id WHERE l.order_id=?1 ORDER BY l.line_no",
-        crate::catalog::PRICE_SQL
+        crate::catalog::price_sql_for(crate::catalog::price_type_for_channel(Some(o.channel.as_str())), "amount_minor")
     );
     let mut st = c.prepare(&sql)?;
     o.lines = st

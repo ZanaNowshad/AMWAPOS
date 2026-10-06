@@ -735,3 +735,137 @@ fn an_order_rung_up_carries_its_channel_before_pricing() {
     let sale = pay(&e, t);
     assert_eq!(e.core.sale_get(t, &sale.sale_id).unwrap().channel.as_deref(), Some("whatsapp"));
 }
+
+// ------------------------------------------------------------------ channel prices
+
+fn set_ch(e: &Env, pid: &str, ty: &str, amount: Option<i64>, branch: Option<&str>) {
+    e.core.product_channel_price_set(&e.owner_token, pid, ty, amount, branch.map(String::from), None).unwrap();
+}
+
+#[test]
+fn channel_price_fallback_is_deterministic_and_documented() {
+    let e = env();
+    let t = &e.owner_token;
+    e.core.settings_save(t, "features", json!({ "org.multi_branch": true })).unwrap();
+    let branch = e.core.require_device().unwrap().branch_id;
+    let pid = e.product("Cake", "9300001", 1_000, 500, 10_000);
+    e.open_shift(t, 0);
+    let price_on = |ch: &str| -> i64 {
+        e.core.pos_set_channel(t, ch).unwrap();
+        let c = e.core.pos_scan(t, "9300001", None).unwrap().cart;
+        let p = c.lines[0].unit_price_minor;
+        e.core.pos_cancel_sale(t, None).unwrap();
+        p
+    };
+    // retail only
+    assert_eq!(price_on("whatsapp"), 1_000);
+    // branch retail beats retail
+    e.core.branch_price_set(t, &pid, &branch, Some(950)).unwrap();
+    assert_eq!(price_on("whatsapp"), 950);
+    assert_eq!(price_on("pos"), 950);
+    // channel price beats branch retail
+    set_ch(&e, &pid, "whatsapp", Some(900), None);
+    assert_eq!(price_on("whatsapp"), 900);
+    assert_eq!(price_on("pos"), 950, "the till keeps retail");
+    // branch + channel beats channel
+    set_ch(&e, &pid, "whatsapp", Some(880), Some(&branch));
+    assert_eq!(price_on("whatsapp"), 880);
+    // removing them falls back step by step
+    set_ch(&e, &pid, "whatsapp", None, Some(&branch));
+    assert_eq!(price_on("whatsapp"), 900);
+    set_ch(&e, &pid, "whatsapp", None, None);
+    assert_eq!(price_on("whatsapp"), 950);
+    let rows = e.core.product_channel_prices(t, &pid).unwrap();
+    let wa = rows.iter().find(|r| r.price_type == "whatsapp").unwrap();
+    assert!(wa.using_retail && wa.own_price_minor.is_none());
+    // Unknown lists are refused; the retail price cannot be removed this way.
+    assert_eq!(e.core.product_channel_price_set(t, &pid, "retail", None, None, None).unwrap_err().code, ErrorCode::Validation);
+}
+
+#[test]
+fn retail_is_unchanged_without_channel_prices() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    let pid = e.product("Soap", "9300002", 700, 300, 10_000);
+    for ch in ["pos", "whatsapp", "phone", "web", "other"] {
+        e.core.pos_set_channel(t, ch).unwrap();
+        let c = e.core.pos_scan(t, "9300002", None).unwrap().cart;
+        assert_eq!(c.lines[0].unit_price_minor, 700, "{ch}");
+        assert_eq!(c.lines[0].price_type.as_deref(), Some("retail"));
+        e.core.pos_cancel_sale(t, None).unwrap();
+    }
+    for ty in ["whatsapp", "phone", "web"] {
+        let sql = amwapos_core::catalog::price_sql_for(ty, "amount_minor");
+        let v: i64 = e
+            .core
+            .db
+            .read(|c| Ok(c.query_row(&format!("SELECT {sql} FROM products p WHERE p.product_id=?1"), [&pid], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!(v, 700);
+    }
+    assert_eq!(amwapos_core::catalog::price_sql_for("retail", "amount_minor"), amwapos_core::catalog::PRICE_SQL);
+}
+
+#[test]
+fn channel_price_is_snapshotted_on_the_sale_and_matches_the_order() {
+    let e = env();
+    let t = &e.owner_token;
+    e.core.settings_save(t, "features", json!({ "orders.digital": true })).unwrap();
+    e.open_shift(t, 0);
+    let pid = e.product("Honey jar", "9300003", 3_000, 1_800, 10_000);
+    set_ch(&e, &pid, "whatsapp", Some(2_800), None);
+    let o = e
+        .core
+        .order_save(
+            t,
+            None,
+            serde_json::from_value(
+                json!({ "channel": "whatsapp", "phone": "33334444", "lines": [{ "product_id": pid, "qty_milli": 2000 }] }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    // The order's estimate uses the same prices the till will charge.
+    assert_eq!(o.estimate_minor, 5_600);
+    e.core.order_confirm(t, &o.order_id).unwrap();
+    let cart = e.core.order_convert(t, &o.order_id, &op()).unwrap();
+    assert_eq!(cart.totals.total_minor, 5_600);
+    assert!(!cart.lines[0].using_retail);
+    let sale = pay(&e, t);
+    // The price is kept on the sale: a later change does not touch it.
+    set_ch(&e, &pid, "whatsapp", Some(2_500), None);
+    let d = e.core.sale_get(t, &sale.sale_id).unwrap();
+    assert_eq!((d.items[0].unit_price_minor, d.total_minor), (2_800, 5_600));
+    let pt: String = one(&e, &format!("SELECT price_type FROM sale_items WHERE sale_id='{}'", sale.sale_id));
+    assert_eq!(pt, "whatsapp");
+    // Same cart, same channel, same configuration: the same price every time.
+    let mut seen = std::collections::HashSet::new();
+    for _ in 0..3 {
+        e.core.pos_set_channel(t, "whatsapp").unwrap();
+        seen.insert(e.core.pos_scan(t, "9300003", Some(2_000)).unwrap().cart.totals.total_minor);
+        e.core.pos_cancel_sale(t, None).unwrap();
+    }
+    assert_eq!(seen.len(), 1);
+    // Price history records each change with its list.
+    let n: i64 = one(&e, &format!("SELECT COUNT(*) FROM product_prices WHERE product_id='{pid}' AND price_type='whatsapp'"));
+    assert_eq!(n, 2);
+}
+
+#[test]
+fn switching_channel_reprices_catalogue_lines_only() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    let pid = e.product("Nuts", "9300004", 1_000, 600, 10_000);
+    set_ch(&e, &pid, "phone", Some(1_100), None);
+    e.core.pos_scan(t, "9300004", None).unwrap();
+    let c = e.core.pos_set_channel(t, "phone").unwrap();
+    assert_eq!(c.lines[0].unit_price_minor, 1_100);
+    assert_eq!(c.lines[0].price_type.as_deref(), Some("phone"));
+    let c = e.core.pos_set_channel(t, "pos").unwrap();
+    assert_eq!(c.lines[0].unit_price_minor, 1_000);
+    // Cashiers cannot set channel prices.
+    let (_, cashier) = e.user("Cash", "role_cashier", "5931");
+    assert_eq!(e.core.product_channel_price_set(&cashier, &pid, "web", Some(1), None, None).unwrap_err().code, ErrorCode::Forbidden);
+}

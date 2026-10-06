@@ -111,7 +111,8 @@ pub fn availability(c: &Connection, product_id: &str, branch_id: &str) -> AppRes
 fn load(c: &Connection, pid: &str, branch: &str) -> AppResult<Option<Cand>> {
     let sql = format!(
         "SELECT p.product_id, p.name, p.name_ar, {}, p.category_id, p.allow_decimal_quantity FROM products p WHERE p.product_id=?1 AND p.active=1",
-        crate::catalog::PRICE_SQL
+        // WhatsApp orders are priced with the WhatsApp price list (retail when none).
+        crate::catalog::price_sql_for("whatsapp", "amount_minor")
     );
     let row: Option<(String, String, Option<String>, Option<i64>, Option<String>, i64)> =
         c.query_row(&sql, [pid], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?))).optional()?;
