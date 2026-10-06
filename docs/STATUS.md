@@ -703,3 +703,45 @@ splitting them further would have left commits that do not build.
 - The benchmark figures above are from the release run of the Wave 4 code before the dashboard
   hint was added; the hint changes only the dashboard, not the sale path or the engine.
 - CI on the final head: pending at the time of writing.
+
+## Merchant OS Wave 5: retail commercial foundation, 2026-10-06
+
+Design and rules: [PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md).
+Branch `claude/amwapos-merchant-os-wave5`, based on `main` at `c681877` (Wave 4, fast-forwarded).
+Seven checkpoint commits plus two end-to-end fixes found by the full suite.
+
+Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
+- `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings` clean;
+- `cargo test --workspace`: 506 passed, 0 failed, 4 ignored (benchmark and live-network checks);
+- `tsc`, `eslint`, `prettier --check`, vitest (49), `vite build`;
+- Playwright 22 of 22, including the Wave 5 flow (scale rule and label test → duplicate merge →
+  pricing review apply → scale label on a phone order) and the English/Arabic sweep, which now
+  covers Likely duplicates, Scale barcodes, Pricing review and Pricing policies;
+- 100k-product benchmark (release build), P95: scan 1.57 ms, scale-label scan (200 rules)
+  1.45 ms, PLU scan 1.39 ms, search 5.16 ms, sale commit 11.64 ms (Wave 4: 9.73 ms; the sale path
+  gained only a cart channel read and line evidence columns). Duplicate review 0.99 s and pricing
+  review 0.91 s over 100,500 products.
+- Found by the full end-to-end suite and fixed: the address form's "More details" link was below
+  the 48 px touch size on the till; two new nav items produced a second "More tools" control.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| Barcode kinds chosen, never guessed; legacy "Not recorded" | Complete | `wave5.rs` | — |
+| PLU: unique, normalized, cross-conflicts with barcodes refused naming the owner; scan and search | Complete | `wave5.rs` (3) | — |
+| Scale barcodes: validated rules, index lookup, exact barcode wins, fail closed on ties, integer weight/price, sanity limits, evidence on lines, price kept on restore, offline via hub | Complete | `wave5.rs` (7); `sync.rs`; benchmark | Real scale printers |
+| Likely duplicates: blocking keys, evidence, normalization, Zero/size guard, Not duplicates / Review later | Complete | `wave5.rs` (2); `merge.rs` unit tests; benchmark | Real catalogues |
+| Product merge: preview, blockers, explicit choices, stock and batch conservation, history untouched, idempotent, stale preview refused, atomic, owner only | Complete | `wave5.rs` (5) | Real merges with history |
+| Addresses: governorate, directions, normalized area; WhatsApp never overwrites a saved address | Complete | `wave5.rs`; `waorders.rs`; `address.rs` unit tests | — |
+| Sales channel: explicit, before pricing, kept through hold, immutable, "Not recorded" for old sales, separate from fulfilment | Complete | `wave5.rs` (2) | — |
+| Channel prices through the one resolver, documented fallback, "Using retail price", snapshot on the sale, order estimate = sale | Complete | `wave5.rs` (4); `sync.rs` | — |
+| Pricing policies, precedence, ambiguity surfaced, markup vs margin, explicit cost basis; recommendations only | Complete | `wave5.rs` (3); `policies.rs` unit tests | Real supplier costs |
+| Rounding never below the minimum margin (exhaustive property test), VAT-inclusive correct | Complete | `policies.rs` unit tests | — |
+| Margin review groups, dismiss/postpone, bulk apply atomic/idempotent/audited with bound approval, history only for applied changes | Complete | `wave5.rs` (2); e2e | — |
+| Reports: sales by channel (no fake channel profit), price changes; dashboard cards | Complete | `wave5.rs` | — |
+| Permissions `catalog.merge` (owner), `pricing.policy`, `barcode_rules.manage`; removals stick; cashiers none | Complete | `wave5.rs` | — |
+| AI: reads only; Wave 5 writes have no tool; old tools cannot set PLU/governorate/channel; never below minimum margin | Complete | `wave5.rs`; `ai_admin.rs` | — |
+| Upgrade from schema 30 fabricates nothing; batches copied exactly | Complete | `wave5.rs` upgrade test | — |
+| Ten invariants together | Complete | `wave5.rs` invariants test | — |
+| English and Arabic for every new screen, message, permission and setting | Complete | vitest; e2e sweep | Visual check on real tills |
+
+CI on the final head: pending at the time of writing.
