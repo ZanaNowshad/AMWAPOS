@@ -227,7 +227,7 @@ export function AddressFields({
           </div>
         </div>
       ) : (
-        <button type="button" className="link hint" onClick={() => setMore(true)}>
+        <button type="button" className="link addr-more" onClick={() => setMore(true)}>
           {t("More details: governorate, directions")}
         </button>
       )}

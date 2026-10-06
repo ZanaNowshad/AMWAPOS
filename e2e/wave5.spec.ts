@@ -175,7 +175,8 @@ test("scale rule, duplicate merge, pricing review and a scale label on a phone o
   await expect(apply).toContainText("Laban W5");
   await apply.getByRole("button", { name: /Apply 1 price/ }).click();
   await expect(page.getByText("1 price(s) applied")).toBeVisible();
-  await expect(page.getByText("All active products are within your margin rules.")).toBeVisible();
+  // Laban now meets its minimum margin and leaves the group.
+  await expect(page.getByRole("row", { name: /Laban W5/ })).toHaveCount(0);
 
   // The till: a phone order with a scale label.
   await rpc(page, "shift.open", { opening_float_minor: 0, operation_id: `w5-${Date.now()}` }, t);

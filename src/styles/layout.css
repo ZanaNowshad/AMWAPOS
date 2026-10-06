@@ -4358,3 +4358,10 @@ table.diff tr.changed {
   padding: 2px 8px;
   font-size: 13px;
 }
+
+/* "More details" on the address form: a full-size touch target on the till. */
+.addr-more {
+  min-height: 48px;
+  align-self: flex-start;
+  padding: 0 4px;
+}

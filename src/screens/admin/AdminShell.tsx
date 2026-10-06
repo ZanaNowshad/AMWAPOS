@@ -195,7 +195,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: Percent,
         perm: ["pricing.policy", "prices.manage"],
         element: PricingPoliciesPage,
-        advanced: true,
       },
       {
         path: "duplicates",
@@ -210,7 +209,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: ScanLine,
         perm: ["barcode_rules.manage"],
         element: ScaleRulesPage,
-        advanced: true,
       },
       {
         path: "unknown-barcodes",
