@@ -312,3 +312,14 @@ commits.
 - The real disposal routine.
 - Use on the 1024×768 till panel.
 - A till returning from offline over the store Wi-Fi.
+
+## Product merge and stock (Wave 5)
+
+A product merge moves stock with paired `adjust` movements (`source_type` `product_merge`) per
+branch and location, so the total never changes. Each batch's remaining quantity leaves the
+retired product's batch and enters a new batch of the kept product. The new batch has provenance
+`merge`, points at the old one through `merged_from_lot_id`, and keeps the supplier, dates, code
+and cost. Batch facts stay immutable. The kept product's average cost becomes the
+quantity-weighted average of the two. Weight labels from scales move stock by the weighed
+quantity; price labels move one labelled pack. See
+[PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md).

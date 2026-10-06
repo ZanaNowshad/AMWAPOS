@@ -394,3 +394,14 @@ The upgrade test builds a schema-29 store and checks all of this.
   substitutions agreed by phone).
 - Real supplier credit notes and how long they take.
 - The screens on the 1024×768 back-office panel with real catalogues.
+
+## Wave 5 interactions
+
+- **Merges.** A product merge carries supplier terms to the kept product. Where both products
+  have terms with the same supplier, the owner chooses which to keep; the preferred supplier is
+  kept. Supplier document mappings move with the product.
+- **Open documents block a merge:** purchase orders, requisitions, receiving drafts, supplier
+  returns not yet sent, supplier invoices not yet posted, and invoice scans under review.
+- **Pricing policies** can be scoped to a product's preferred supplier. They work from the
+  average cost or the last cost paid, as each policy states. A new supplier cost puts the product
+  under "Cost changed" in the pricing review; no price changes by itself.

@@ -194,6 +194,23 @@ A record that was never posted (a duplicate, a wrong scan) is removed from the l
 record** in its drawer; a posted one is undone with **Reverse** instead. Supplier documents only
 reads paper into drafts; every supplier invoice is reviewed, posted, voided and paid here.
 
+## Prices, scale labels and duplicates (Wave 5)
+
+- **Scale barcodes** (Catalog → Scale barcodes, owner or manager). Add one rule per label format
+  your scales print: prefix, length, where the item code and the weight or price sit, decimals
+  and check digit. Give each product its PLU (product → Barcodes). Use "Try a code" on a printed
+  label before selling with it. Two rules that both fit a label stop the sale until you give one
+  a higher priority. The largest weight and price a label may carry are in Settings → POS.
+- **Channel.** At the till, mark phone (or other) orders with the channel picker in the sale
+  header. Customer orders keep their own channel. Channel prices are on the product's Pricing
+  tab; with none set, retail is used.
+- **Pricing review** (Catalog → Pricing review). Work through "Below minimum margin" first, then
+  "Cost changed". Nothing changes until you press Accept or Apply. A price below a minimum margin
+  needs a manager who may set pricing policies.
+- **Likely duplicates** (Catalog → Likely duplicates). Mark pairs "Not duplicates" or "Review
+  later". Only the owner can merge, and a merge cannot be undone: finish or cancel open orders,
+  counts and sales for the product first.
+
 ## Restore
 
 Admin → Backups → Restore does the following:

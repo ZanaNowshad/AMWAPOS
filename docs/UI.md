@@ -235,3 +235,27 @@ overdue + hub "Update needed" with the admin banner and nav flyout.
   approved requisitions to convert, returns waiting for a credit note, products to order — each
   linking to its screen, shown only to people who can act.
 
+
+## Wave 5 surfaces
+
+- **Catalog → Pricing review.** Group tabs with counts; per row Inspect, Accept, a typed new
+  price, Dismiss and Postpone; select several and Apply. An apply preview shows prices below the
+  minimum margin; the approval dialog appears only when needed. Empty state: "All active products
+  are within your margin rules."
+- **Catalog → Likely duplicates.** Each pair shows its evidence chips and a match score, with Not
+  duplicates, Review later and Merge…. The merge dialog shows what moves, what blocks it and the
+  choices to make, then an irreversible confirmation. Empty state: "No likely duplicate products
+  found."
+- **Pricing policies and Scale barcodes** (More tools). Each has a list, a drawer editor and plain
+  wording ("Markup on cost" vs "Target margin on price"). Scale barcodes adds a code tester. Empty
+  state: "No scale barcode rules configured."
+- **Product.** The Barcodes tab gains a type for each barcode ("Not recorded" until chosen) and
+  the PLU card. The Pricing tab gains Channel prices ("Retail price will be used when no channel
+  price is set.") and labels channel rows in the price history. A merged product shows "Merged
+  into …".
+- **Till.** A sale-channel picker in the sale header, a "Using retail price" chip, and
+  "Scale label: weight/price" chips on lines.
+- **Addresses.** Governorate and directions sit behind "More details".
+- **Dashboard.** Cards for prices below minimum margin, recommendations, cost changes and likely
+  duplicates, each linking to its workflow and loaded after the dashboard.
+- All new strings are in Arabic. The English/Arabic sweep covers the four new pages.

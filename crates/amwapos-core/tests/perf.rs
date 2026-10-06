@@ -211,6 +211,84 @@ fn perf_100k_products() {
     let s = Instant::now();
     e.core.dashboard(t).unwrap();
     println!("dashboard with suggested orders: {:.1} ms", s.elapsed().as_secs_f64() * 1e3);
+    // Wave 5 at scale: PLUs on 10,000 products, 200 scale rules (looked up
+    // by length and prefix, never scanned one by one), the duplicate review
+    // and the pricing review over all 100,000 products.
+    e.core
+        .db
+        .write(|tx| {
+            tx.execute_batch("UPDATE products SET plu = CAST(rowid AS TEXT) WHERE rowid <= 10000;")?;
+            for i in 0..200 {
+                let prefix = format!("{}", 20 + (i % 10));
+                let len = 13 - (i / 100) as i64; // 13 and 12 digits
+                tx.execute(
+                    "INSERT INTO scale_barcode_rules(rule_id, name, prefix, length, item_start, item_length, value_kind, value_start, value_length,
+                        decimals, check_digit, active, priority, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, 3, 5, 'weight', 8, 4, 3, 'none', 1, ?5, 'x', 'x')",
+                    rusqlite::params![format!("R{i:03}"), format!("Rule {i}"), prefix, len, i as i64],
+                )?;
+            }
+            // 500 near-duplicates to find (same words, different case and spacing).
+            tx.execute_batch(
+                "INSERT INTO products(product_id, sku, name, tax_rule_id, unit, created_at, updated_at, allow_decimal_quantity)
+                   SELECT 'dup' || rowid, 'D' || rowid, upper(name), tax_rule_id, unit, created_at, updated_at, 1 FROM products WHERE rowid <= 500;
+                 UPDATE products SET allow_decimal_quantity = 1 WHERE rowid <= 10000;",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let _ = e.core.pos_cancel_sale(t, None);
+    let mut scale = vec![];
+    let mut plus = vec![];
+    for i in 0..1000 {
+        if i % 10 == 0 {
+            let _ = e.core.pos_cancel_sale(t, None);
+        }
+        // Prefix 29, 13 digits: the highest-priority rule for it wins.
+        let item = 1 + rng.next(9_999);
+        let code = format!("29{item:05}{:04}00", 100 + rng.next(900));
+        let s = Instant::now();
+        let r = e.core.pos_scan(t, &code, None).unwrap();
+        scale.push(s.elapsed());
+        assert_eq!(r.outcome, "added");
+        let s = Instant::now();
+        e.core.pos_scan(t, &format!("{}", 1 + rng.next(9_999)), Some(1000)).unwrap();
+        plus.push(s.elapsed());
+    }
+    let _ = e.core.pos_cancel_sale(t, None);
+    let (sc, pl) = (p95(scale), p95(plus));
+    println!("P95 scale-label scan (200 rules): {:.2} ms (target 50)", sc.as_secs_f64() * 1e3);
+    println!("P95 PLU scan:                     {:.2} ms (target 50)", pl.as_secs_f64() * 1e3);
+    let s = Instant::now();
+    let dups = e.core.duplicates_list(t, false, Some(500)).unwrap();
+    let dup_t = s.elapsed();
+    let found = dups["pairs"].as_array().unwrap().len();
+    println!("duplicate review over {} products: {:.0} ms ({found} pairs)", n + 500, dup_t.as_secs_f64() * 1e3);
+    assert!(found >= 400, "the near-duplicates are found: {found}");
+    e.core
+        .pricing_policy_save(
+            t,
+            serde_json::from_value(serde_json::json!({ "name": "Global", "scope": "global", "target_margin_bp": 3000, "min_margin_bp": 1500, "rounding_step_minor": 50 }))
+                .unwrap(),
+        )
+        .unwrap();
+    let s = Instant::now();
+    let rv = e.core.pricing_review(t, Some("below_min_margin".into()), Some(100), None).unwrap();
+    let rv_t = s.elapsed();
+    println!(
+        "pricing review over {} products: {:.0} ms ({} below minimum, {} recommendations)",
+        n + 500,
+        rv_t.as_secs_f64() * 1e3,
+        rv["counts"]["below_min_margin"],
+        rv["counts"]["recommendation"]
+    );
+    let s = Instant::now();
+    e.core.commercial_summary(t).unwrap();
+    println!("commercial summary (dashboard cards): {:.0} ms", s.elapsed().as_secs_f64() * 1e3);
+    assert!(sc < Duration::from_millis(50), "scale scan {sc:?}");
+    assert!(pl < Duration::from_millis(50), "PLU scan {pl:?}");
+    assert!(dup_t < Duration::from_secs(10), "duplicates {dup_t:?}");
+    assert!(rv_t < Duration::from_secs(10), "pricing review {rv_t:?}");
     assert!(rep < Duration::from_secs(10), "replenishment {rep:?}");
     assert!(a < Duration::from_millis(50));
     assert!(b < Duration::from_millis(150));

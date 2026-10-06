@@ -498,3 +498,103 @@ fn batches_on_the_hub_converge_after_a_till_sells_offline() {
     assert_eq!((est, rec), (15_000, 2_000), "sales are estimates; the waste is the only recorded removal");
     assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM stock_movements WHERE type='sale'"), 2);
 }
+
+/// Wave 5: scale rules, PLUs and channel prices are hub-owned and reach the
+/// tills; a till sells scale labels offline and converges after a price
+/// change. Policies stay on the hub (recommendations only).
+#[test]
+fn scale_rules_plu_and_channel_prices_reach_tills_and_converge() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    // Hub: a weighed product with a PLU and a scale rule.
+    let tax = hub.tax_rule();
+    let cheese = hub
+        .core
+        .product_create(
+            &ht,
+            serde_json::from_value(serde_json::json!({
+                "name": "Halloumi", "tax_rule_id": tax, "unit": "kg", "allow_decimal_quantity": true,
+                "price_minor": 3_200, "cost_minor": 2_000, "barcodes": [], "opening_stock_milli": 20_000, "plu": "42"
+            }))
+            .unwrap(),
+        )
+        .unwrap()
+        .row
+        .product_id;
+    let rule = hub
+        .core
+        .scale_rule_save(
+            &ht,
+            serde_json::from_value(serde_json::json!({
+                "name": "Deli", "prefix": "21", "length": 13, "item_start": 3, "item_length": 5, "value_kind": "weight",
+                "value_start": 8, "value_length": 5, "decimals": 3, "check_digit": "ean"
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+    let t1 = pair(&hub, "Till 2", "T02");
+    sync_once(&hub.core, &t1.core, false);
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM scale_barcode_rules"), 1, "rule replicated");
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM products WHERE plu='42'"), 1, "PLU replicated");
+    // Policies are back office: never on the till.
+    assert_eq!(count(&t1.core, "SELECT COUNT(*) FROM pricing_policies"), 0);
+    // The till cannot change rules (hub-owned).
+    let mut r2 = rule.clone();
+    r2.name = "X".into();
+    assert_eq!(t1.core.scale_rule_save(&t1.token, r2).unwrap_err().code, ErrorCode::Conflict);
+    // Offline: the till sells a scale label with no hub.
+    let ean = |body: &str| (0..10).map(|d| format!("{body}{d}")).find(|c| amwapos_core::barcodes::gs1_check_ok(c)).unwrap();
+    t1.core.shift_open(&t1.token, 0, &op()).unwrap();
+    let code = ean("210004201250");
+    let cart = t1.core.pos_scan(&t1.token, &code, None).unwrap().cart;
+    assert_eq!(cart.lines[0].line_total_minor, 4_000);
+    let sale = t1
+        .core
+        .pos_finalize(
+            &t1.token,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![TenderInput { method: "cash".into(), amount_minor: 4_000, reference: None }],
+                approval_token: None,
+                expected_total_minor: None,
+                fulfilment: None,
+            },
+        )
+        .unwrap()
+        .sale_id;
+    // Meanwhile the hub sets a WhatsApp price and a policy.
+    hub.core.product_channel_price_set(&ht, &cheese, "whatsapp", Some(3_000), None, None).unwrap();
+    hub.core
+        .pricing_policy_save(
+            &ht,
+            serde_json::from_value(serde_json::json!({ "name": "Min 10%", "scope": "global", "min_margin_bp": 1_000 })).unwrap(),
+        )
+        .unwrap();
+    sync_once(&hub.core, &t1.core, false);
+    // The sale arrived with its evidence and channel.
+    let (rid, ch): (String, String) = hub
+        .core
+        .db
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT i.scale_rule_id, s.channel FROM sale_items i JOIN sales s ON s.sale_id=i.sale_id WHERE s.sale_id=?1",
+                [&sale],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?)
+        })
+        .unwrap();
+    assert_eq!((rid.as_str(), ch.as_str()), (rule.rule_id.as_str(), "pos"));
+    // The till now prices WhatsApp sales like the hub.
+    t1.core.pos_set_channel(&t1.token, "whatsapp").unwrap();
+    let c = t1.core.pos_scan(&t1.token, "42", Some(1_000)).unwrap().cart;
+    assert_eq!(c.lines[0].unit_price_minor, 3_000);
+    hub.core.pos_set_channel(&ht, "whatsapp").unwrap();
+    let h = hub.core.pos_scan(&ht, "42", Some(1_000)).unwrap().cart;
+    assert_eq!(h.lines[0].unit_price_minor, c.lines[0].unit_price_minor, "same cart + channel + configuration = same price");
+    // Stock converged: 20 − 1.25 on both.
+    let q = "SELECT qty_milli FROM stock_levels WHERE product_id IN (SELECT product_id FROM products WHERE plu='42')";
+    assert_eq!(count(&hub.core, q), 18_750);
+    assert_eq!(count(&t1.core, q), 18_750);
+}

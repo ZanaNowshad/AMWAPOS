@@ -5538,4 +5538,7 @@ export const AR: Record<string, string> = {
   "Every applied price change with its list, reason, policy and who made it":
     "كل تغيير سعر مطبّق مع قائمته وسببه وسياسته ومن أجراه",
   "Price changes in the period": "تغييرات الأسعار في الفترة",
+  "Merge duplicate products into one (cannot be undone)": "دمج المنتجات المكررة في منتج واحد (لا يمكن التراجع)",
+  "Set pricing policies and apply recommended prices": "وضع سياسات التسعير وتطبيق الأسعار الموصى بها",
+  "Set up scale barcode rules": "إعداد قواعد باركود الميزان",
 };

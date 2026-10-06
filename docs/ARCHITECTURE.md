@@ -245,3 +245,18 @@ How the rules are enforced:
   and WhatsApp chats can become draft orders: see `docs/DOCUMENTS_AND_ORDERS.md`. Models are
   checked against `ocr/models/models.json`; without the English model OCR reports
   `ocr_model_missing` and cannot be switched on.
+
+## Wave 5: pricing and catalogue
+
+See [PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md).
+
+- **Modules.** `barcodes.rs` covers barcode kinds, PLU and scale rules, with an index lookup by
+  length and prefix. `merge.rs` covers blocking-key duplicate detection and the one-transaction
+  merge. `policies.rs` covers policies, integer rounding, the review and the atomic apply.
+- **One price resolver.** `catalog::price_sql_for(price_type)` is the single resolver, and its
+  `retail` form is exactly `PRICE_SQL`. The cart's channel picks the price list before any line
+  is priced.
+- **Scan order.** Exact barcode, then PLU, then scale rule, then unknown. Ambiguous scale rules
+  fail closed.
+- **Sync.** `scale_barcode_rules` is hub-owned and replicated. Policies, review decisions,
+  price-change batches, duplicate decisions and merge records stay on the hub.

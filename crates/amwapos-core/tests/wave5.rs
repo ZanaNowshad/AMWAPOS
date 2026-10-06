@@ -1167,3 +1167,137 @@ fn the_assistant_cannot_set_wave5_fields_through_older_tools() {
         assert!(amwapos_core::ai_tools::NO_TOOL.iter().any(|(c, _)| *c == cmd), "{cmd}");
     }
 }
+
+// ------------------------------------------------------------------ upgrade, permissions, invariants
+
+#[test]
+fn upgrading_fabricates_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("amwapos.db");
+    {
+        let c = rusqlite::Connection::open(&path).unwrap();
+        amwapos_core::db::migrate_until(&c, &path, 30).unwrap();
+        c.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             INSERT INTO products(product_id, sku, name, tax_rule_id, created_at, updated_at) VALUES ('p1','S1','Milk','t','x','x'), ('p2','S2','milk','t','x','x');
+             INSERT INTO product_barcodes(barcode_id, product_id, barcode, is_primary, source, created_at) VALUES ('b1','p1','4006381333931',1,'manual','x');
+             INSERT INTO product_prices(price_id, product_id, price_type, amount_minor, effective_from, created_at) VALUES ('pr1','p1','retail',500,'2026-01-01','x');
+             INSERT INTO stock_lots(lot_id, lot_number, product_id, branch_id, received_at, qty_received_milli, unit_cost_minor, provenance, created_at)
+               VALUES ('l1','L-00001','p1','br','x',5000,300,'receiving','x');
+             INSERT INTO customers(customer_id, name, created_at, updated_at, building, block) VALUES ('c1','Ali','x','x','12','221');",
+        )
+        .unwrap();
+    }
+    let core =
+        amwapos_core::service::AppCore::open(dir.path(), std::sync::Arc::new(amwapos_core::service::MemorySecretStore::default())).unwrap();
+    let n = |sql: &str| core.db.read(|c| Ok(c.query_row(sql, [], |r| r.get::<_, i64>(0))?)).unwrap();
+    assert_eq!(n("SELECT COUNT(*) FROM product_barcodes WHERE kind IS NOT NULL"), 0, "no barcode kind guessed");
+    assert_eq!(n("SELECT COUNT(*) FROM products WHERE plu IS NOT NULL OR merged_into_product_id IS NOT NULL"), 0);
+    assert_eq!(
+        n("SELECT (SELECT COUNT(*) FROM scale_barcode_rules) + (SELECT COUNT(*) FROM pricing_policies) + (SELECT COUNT(*) FROM product_merges)
+            + (SELECT COUNT(*) FROM product_duplicate_decisions) + (SELECT COUNT(*) FROM price_recommendation_decisions) + (SELECT COUNT(*) FROM price_change_batches)"),
+        0
+    );
+    assert_eq!(n("SELECT COUNT(*) FROM product_prices WHERE price_type<>'retail' OR policy_id IS NOT NULL OR batch_id IS NOT NULL"), 0);
+    assert_eq!(n("SELECT COUNT(*) FROM customers WHERE governorate IS NOT NULL OR directions IS NOT NULL"), 0, "no governorate guessed");
+    assert_eq!(
+        n("SELECT COUNT(*) FROM stock_lots WHERE lot_id='l1' AND qty_received_milli=5000 AND provenance='receiving'"),
+        1,
+        "batches kept exactly"
+    );
+    assert_eq!(n("SELECT COUNT(*) FROM sales WHERE channel IS NOT NULL"), 0);
+    // Batches stay immutable after the rebuild.
+    assert!(core.db.write(|c| Ok(c.execute("UPDATE stock_lots SET qty_received_milli=1", [])?)).is_err());
+}
+
+#[test]
+fn new_permissions_are_narrow_and_an_owner_removal_sticks() {
+    let e = env();
+    let perms = |role: &str| -> Vec<String> {
+        e.core
+            .db
+            .read(|c| {
+                let mut st = c.prepare("SELECT permission_code FROM role_permissions WHERE role_id=?1")?;
+                let v = st.query_map([role], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+                Ok(v)
+            })
+            .unwrap()
+    };
+    let has = |role: &str, p: &str| perms(role).iter().any(|x| x == p);
+    assert!(has("role_owner", "catalog.merge"));
+    assert!(!has("role_manager", "catalog.merge"), "merging is the owner's");
+    assert!(has("role_manager", "pricing.policy") && has("role_manager", "barcode_rules.manage"));
+    for p in ["catalog.merge", "pricing.policy", "barcode_rules.manage", "prices.manage"] {
+        assert!(!has("role_cashier", p), "{p}");
+    }
+    e.core
+        .db
+        .write(|tx| Ok(tx.execute("DELETE FROM role_permissions WHERE role_id='role_manager' AND permission_code='pricing.policy'", [])?))
+        .unwrap();
+    e.core.db.write(|tx| amwapos_core::auth::seed_roles(tx)).unwrap();
+    assert!(!has("role_manager", "pricing.policy"), "an owner's removal is never re-granted");
+}
+
+/// The ten invariants of docs/PRICING_AND_CATALOGUE.md, checked together on
+/// one store after a mixed day of work.
+#[test]
+fn wave5_invariants_hold_together() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    let a = e.product("Juice 1L", "9700001", 1_000, 600, 10_000);
+    let b = e.product("Juice 1 L", "9700002", 1_000, 600, 5_000);
+    let w = weighed(&e, "Olives", "42", 2_000);
+    e.core.scale_rule_save(t, rule("W", "21", "weight", 0)).unwrap();
+    e.core.scale_rule_save(t, rule("A", "2", "price", 0)).unwrap();
+    // Sales: a normal one, a scale one.
+    e.core.pos_scan(t, "9700002", Some(2_000)).unwrap();
+    let s1 = pay(&e, t);
+    let snap = |e: &Env| -> String {
+        one(e, "SELECT group_concat(sale_item_id||':'||product_id||':'||line_total_minor||':'||effective_unit_price_minor, ',') FROM sale_items")
+    };
+    let receipts = |e: &Env| -> String { one(e, "SELECT group_concat(sha256, ',') FROM receipt_snapshots") };
+    // 5. Two rules at the same priority: nothing is charged.
+    let code = ean("210004201250");
+    assert!(e.core.pos_scan(t, &code, None).is_err());
+    assert!(e.core.pos_get_cart(t).unwrap().lines.is_empty());
+    let before_items = snap(&e);
+    let before_receipts = receipts(&e);
+    let total = total_stock(&e);
+    // 7. A policy never rewrites a price.
+    let p_before = prices(&e);
+    policy(
+        &e,
+        json!({ "name": "Global 40%", "scope": "global", "target_margin_bp": 4_000, "min_margin_bp": 2_000, "rounding_step_minor": 50 }),
+    );
+    review(&e, None);
+    assert_eq!(prices(&e), p_before);
+    // 1, 2, 3. Merge: total stock, receipts and sale snapshots unchanged.
+    e.core.product_merge(t, merge_req(&e, &b, &a, MergeChoices::default())).unwrap();
+    assert_eq!(total_stock(&e), total);
+    assert_eq!(receipts(&e), before_receipts);
+    assert_eq!(snap(&e), before_items);
+    let _ = s1;
+    // 4. One code, one product: the merged barcode answers only to the kept product.
+    let owners: i64 = one(&e, "SELECT COUNT(DISTINCT product_id) FROM product_barcodes WHERE barcode='9700002'");
+    assert_eq!(owners, 1);
+    assert_eq!(e.core.barcode_add(t, &w, "9700002", false).unwrap_err().code, ErrorCode::Duplicate);
+    // 8. Every recommendation meets its floor.
+    for r in review(&e, None)["rows"].as_array().unwrap() {
+        if let (Some(rec), Some(fp)) = (r["recommended_minor"].as_i64(), r["floor_price_minor"].as_i64()) {
+            assert!(rec >= fp, "{r}");
+        }
+    }
+    // 9. Retail unchanged without channel prices; 6. same cart + channel = same price.
+    let mut seen = std::collections::HashSet::new();
+    for ch in ["pos", "whatsapp", "pos"] {
+        e.core.pos_set_channel(t, ch).unwrap();
+        seen.insert(e.core.pos_scan(t, "9700001", Some(1_000)).unwrap().cart.totals.total_minor);
+        e.core.pos_cancel_sale(t, None).unwrap();
+    }
+    assert_eq!(seen.into_iter().collect::<Vec<_>>(), vec![1_000]);
+    // 10. The till prices and sells with no hub, internet or AI: everything
+    // above ran on a standalone store with the AI switched off.
+    let ai: i64 = one(&e, "SELECT COUNT(*) FROM ai_messages");
+    assert_eq!(ai, 0);
+}

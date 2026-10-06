@@ -408,3 +408,19 @@ docs → one checkpoint commit with CI green on Linux and Windows.
 
 Multi-tenant, HR/attendance, production/BOM, marketplace settlement, loyalty
 tiers, replacing the Rust WhatsApp adapter — as stated in the brief.
+
+## Wave 5 delivered: retail commercial foundation (2026-10-06)
+
+Design and rules: [PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md). It was delivered in seven
+checkpoints, each committed separately:
+
+1. barcode kinds, PLU and scale barcodes;
+2. duplicate review and the product merge;
+3. Bahrain address additions and the sales channel;
+4. channel prices through the one resolver;
+5. pricing policies, rounding and margin protection;
+6. screens, Arabic, AI reads, reports and dashboard;
+7. tests, performance and docs.
+
+The sales channel came before channel pricing, as recommended in section I. Promotions, coupons,
+bundles and kits stay in Wave 6.
