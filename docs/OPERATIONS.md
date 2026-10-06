@@ -147,6 +147,38 @@ On the hub computer (or the only computer), go to Admin → Business → End of 
   recent selling rate. "Not enough recent sales" means the product is too
   new to say.
 
+## Ordering from suppliers (Wave 4)
+
+Admin → Purchasing, on the hub computer. Details: [PROCUREMENT.md](PROCUREMENT.md).
+
+- **Once per supplier:** Suppliers → (supplier) → **Ordering terms**: for each product, the
+  units in one pack, the minimum order (packs), the lead time (days) and whether this is the
+  preferred supplier. These are what Suggested orders use; what you type here wins over what
+  supplier documents say.
+- **Each order day:** **Suggested orders** → "To order". Each row says why (open it for the
+  figures). Tick the rows and press **Create requisition**. Rows under "Needs a decision" need a
+  supplier or a lead time first. Nothing is ordered from this screen.
+- **Requisition:** check quantities, enter a cost where there is none, **Submit**. Someone who
+  approves purchasing presses **Approve** (or **Reject**, with a reason), then **Create purchase
+  orders**: one draft per supplier.
+- **Purchase order:** if approval is on (Settings → Purchasing), the draft shows "Needs
+  approval"; an approver presses **Approve**. Changing the supplier, lines, quantities, costs or
+  taxes afterwards needs a new approval. Then **Place Order**.
+- **Delivery:** open the order → **Receive goods**. Type what you accept, what you refuse (with
+  the reason; it goes back with the driver and is not stock or waste), what you keep although
+  damaged, and the batch and expiry. If something is missing, choose **Keep on order** or
+  **Cancel the rest**. If more came than ordered, tick **Keep the extra**; beyond the tolerance a
+  manager approves. If another product came instead, press **Another product came instead** and
+  accept the substitute. Cost differences do not stop the delivery.
+- **Supplier invoice:** in Payables, the invoice drawer shows **Order, goods received and
+  invoice**. "Blocked" means it charges for more than was received: receive the goods or ask
+  for a corrected invoice. "Needs review": an approver checks the differences and presses
+  **Accept the differences** with a reason before it is posted.
+- **Returning goods:** **Supplier returns** → **New return**: supplier, products (and the
+  batch), quantity, reason → **Save Draft** → **Confirm: goods leave stock**. When the
+  supplier's credit note comes, press **Record the credit note** and post it in Payables. A
+  return confirmed by mistake is reversed, never deleted.
+
 ## Paying suppliers (Payables)
 
 Admin → Purchasing → Payables, on the hub computer.

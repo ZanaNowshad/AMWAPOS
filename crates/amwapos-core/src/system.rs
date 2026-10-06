@@ -115,6 +115,7 @@ impl AppCore {
                 settings::KEY_RECEIPT => serde_json::to_value(settings::get::<settings::ReceiptSettings>(c, key)?)?,
                 settings::KEY_SECURITY => serde_json::to_value(settings::get::<settings::SecuritySettings>(c, key)?)?,
                 settings::KEY_INVENTORY => serde_json::to_value(settings::get::<settings::InventorySettings>(c, key)?)?,
+                settings::KEY_PURCHASING => serde_json::to_value(settings::get::<settings::PurchasingSettings>(c, key)?)?,
                 settings::KEY_PRINTER => serde_json::to_value(settings::get::<settings::PrinterSettings>(c, key)?)?,
                 settings::KEY_BACKUP => serde_json::to_value(settings::get::<settings::BackupSettings>(c, key)?)?,
                 settings::KEY_APPEARANCE => serde_json::to_value(settings::get::<settings::AppearanceSettings>(c, key)?)?,

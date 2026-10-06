@@ -175,6 +175,43 @@ fn perf_100k_products() {
     let s = Instant::now();
     e.core.dashboard(t).unwrap();
     println!("dashboard: {:.1} ms", s.elapsed().as_secs_f64() * 1e3);
+    // Replenishment at scale (Wave 4): 100,000 products, three suppliers
+    // each, half of them below a reorder point. The engine reads every
+    // product in a fixed number of grouped queries (no query per product).
+    e.core
+        .db
+        .write(|tx| {
+            for (id, name) in [("SUPA", "Alpha"), ("SUPB", "Bravo"), ("SUPC", "Charlie")] {
+                tx.execute(
+                    "INSERT INTO suppliers(supplier_id, name, active, created_at, updated_at) VALUES (?1,?2,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')",
+                    [id, name],
+                )?;
+            }
+            tx.execute_batch(
+                "INSERT INTO supplier_products(supplier_id, product_id, units_per_case, pack_source, moq_packs, lead_time_days, preferred, created_at, updated_at)
+                   SELECT s.supplier_id, p.product_id, 12, 'person', 1, 2 + (rowid % 5), CASE WHEN s.supplier_id='SUPA' THEN 1 ELSE 0 END, 'x', 'x'
+                   FROM products p CROSS JOIN (SELECT 'SUPA' AS supplier_id UNION ALL SELECT 'SUPB' UNION ALL SELECT 'SUPC') s;
+                 UPDATE products SET reorder_point_milli = 150000 WHERE rowid % 2 = 0;",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let mut runs = vec![];
+    let mut to_order = 0;
+    for _ in 0..3 {
+        let s = Instant::now();
+        let v =
+            e.core.replenishment(t, serde_json::from_value(serde_json::json!({ "states": ["order"], "limit": 5000 })).unwrap()).unwrap();
+        runs.push(s.elapsed());
+        to_order = v["counts"]["order"].as_i64().unwrap_or(0);
+    }
+    let rep = runs.iter().min().copied().unwrap();
+    println!("replenishment over {n} products ({to_order} to order): {:.0} ms", rep.as_secs_f64() * 1e3);
+    assert!(to_order >= (n as i64) / 2 - 1000, "half the products are below their reorder point: {to_order}");
+    let s = Instant::now();
+    e.core.dashboard(t).unwrap();
+    println!("dashboard with suggested orders: {:.1} ms", s.elapsed().as_secs_f64() * 1e3);
+    assert!(rep < Duration::from_secs(10), "replenishment {rep:?}");
     assert!(a < Duration::from_millis(50));
     assert!(b < Duration::from_millis(150));
     assert!(c < Duration::from_millis(100));

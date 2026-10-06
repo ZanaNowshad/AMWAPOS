@@ -59,6 +59,9 @@ pub struct AppCore {
     device: RwLock<Option<DeviceIdentity>>,
     pub migration: MigrationReport,
     pub started_at: chrono::DateTime<chrono::Utc>,
+    /// Dashboard hint only: the number of products to order per branch and
+    /// business date, kept for a few minutes (Suggested orders is always live).
+    pub(crate) to_order_hint: std::sync::Mutex<std::collections::HashMap<(String, String), (std::time::Instant, usize)>>,
 }
 
 pub const DB_FILE: &str = "amwapos.db";
@@ -92,6 +95,7 @@ impl AppCore {
             device: RwLock::new(device),
             migration,
             started_at: crate::time::now(),
+            to_order_hint: Default::default(),
         })
     }
 

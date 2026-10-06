@@ -117,6 +117,20 @@ order (`lots::replay`):
 Batches plus stock in no batch equal stock on hand. See
 [INVENTORY.md](INVENTORY.md).
 
+## Procurement
+
+One deterministic replenishment engine (`replenish.rs`) reads every product
+in a fixed number of grouped queries and decides each with a pure function;
+it shares the demand definition with Days of stock left
+(`lots::demand_all`). Suggestions never order: a requisition recomputes
+them, approved requisitions become draft purchase orders, and approval is a
+durable record bound to a fingerprint of the order's material details.
+Receiving records every difference; only accepted goods become stock. The
+Document Intelligence `reconcile` is the single three-way matcher, and
+Payables posting is gated on it. Supplier returns are lot-aware
+`supplier_return` movements; credit notes move no stock. See
+[PROCUREMENT.md](PROCUREMENT.md).
+
 ## Printing
 
 After the sale commits, a print job is queued in the same transaction, and printing starts once

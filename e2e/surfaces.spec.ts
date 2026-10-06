@@ -61,9 +61,13 @@ const ROUTES = [
   "stock-cover",
   "stocktake",
   "transfers",
+  "suggested-orders",
+  "requisitions",
   "suppliers",
   "purchase-orders",
   "receiving",
+  "supplier-returns",
+  "supplier-returns/new",
   "payables",
   "invoice-scan",
   "reports",
@@ -99,6 +103,7 @@ const SETTINGS = [
   "receipt",
   "printer",
   "inventory",
+  "purchasing",
   "security",
   "backup",
   "appearance",
@@ -209,6 +214,13 @@ test("every Admin destination renders cleanly in English and Arabic at 1024×768
     if (custs[0]) records.customer = `customers/${custs[0].customer_id}`;
     const sups = await rpc(page, "suppliers.list", {}, t).catch(() => []);
     if (sups[0]) records.supplier = `suppliers/${sups[0].supplier_id}`;
+    const reqs = await rpc(page, "requisitions.list", {}, t).catch(() => ({ rows: [] }));
+    if (reqs.rows[0]) records.requisition = `requisitions/${reqs.rows[0].requisition_id}`;
+    const pos = await rpc(page, "po.list", {}, t).catch(() => []);
+    if (pos[0]) records.po = `purchase-orders/${pos[0].po_id}`;
+    const rets = await rpc(page, "supplier_returns.list", {}, t).catch(() => ({ rows: [] }));
+    if (rets.rows[0]) records.supplierReturn = `supplier-returns/${rets.rows[0].return_id}`;
+    records.supplierPerformance = "reports/supplier_performance";
     records.report = "reports/sales";
     records.profit = "reports/operating_profit";
     records.expenseReport = "reports/expenses";

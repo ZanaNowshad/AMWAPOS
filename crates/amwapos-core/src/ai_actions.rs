@@ -172,7 +172,7 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         // ---- leaves the store ---------------------------------------------
         "whatsapp.queue" | "whatsapp.outbox_action" | "waorders.reply" => ExternalCommunication,
         // Settings that change what is sent or who may do what.
-        "settings.save" if matches!(key, Some("features") | Some("security") | Some("inventory")) => CommitRecord,
+        "settings.save" if matches!(key, Some("features") | Some("security") | Some("inventory") | Some("purchasing")) => CommitRecord,
         // ---- drafts -------------------------------------------------------
         "po.save"
         | "requisitions.from_suggestions"

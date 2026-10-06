@@ -140,12 +140,14 @@ transitions are audited.
 - Settings in `inventory`: expiry thresholds, waste approval value, shrinkage approval.
 - No FEFO allocation table: the estimate is computed on read (deterministic and order-independent), so it is never stored as evidence.
 
-### Wave 4
-- `supplier_product_map` + `supplier_sku, supplier_barcode, description, pack_size_milli, moq_milli, lead_time_days, preferred, active, last_cost_minor, last_ordered_at, last_received_at` (keys stay; human-confirmed rows authoritative).
-- `requisitions(req_id, number, branch_id, status[draft|submitted|approved|rejected|cancelled|converted], requested_by, needed_by, reason, decided_by/at, po_id?)` + lines.
-- `purchase_orders.status` CHECK adds `submitted|approved|rejected`; `approved_by/at`; settings `purchasing.po_approval` (off|over_amount|always).
-- `goods_receipt_items` + `qty_ordered_milli, qty_damaged_milli, qty_rejected_milli, substitute_for_product_id?, lot_id?`; `receipt_discrepancies(…, kind[short|over|damaged|rejected|substituted|cost], qty, amount, status)`.
-- `supplier_returns(return_id, number, supplier_id, branch_id, reason, status[draft|confirmed|credited|cancelled], credit_invoice_id?, operation_id UNIQUE)` + lines (product, lot?, qty, unit_cost).
+### Wave 4 (as built; see PROCUREMENT.md)
+- `supplier_product_map` unchanged (document aliases, many per product). NEW `supplier_products(supplier_id, product_id PK, supplier_code, units_per_case CHECK > 0, pack_source[person|document], moq_packs CHECK > 0, lead_time_days, preferred (one per product), active, terms_confirmed_by/at, version)` for the orderable terms; seeded from facts only. Last/typical costs are derived (cost history, receipts), not stored.
+- `products.max_stock_milli` (optional order-up-to).
+- `requisitions(requisition_id, number, branch_id, status[draft|submitted|approved|rejected|cancelled|converted], note, created/submitted/decided/converted by+at, decision_note, convert_operation_id UNIQUE, create_operation_id UNIQUE, version)` + `requisition_lines(…, source[manual|replenishment], evidence_json, po_id, po_item_id)`.
+- No new PO status (rebuilding the CHECK was avoided): approval is a durable `purchase_order_approvals(approval_id, po_id, po_version, fingerprint, total_minor, policy_mode, threshold_minor, approved_by/at, note, invalidated_at/reason, operation_id UNIQUE)` that covers a fingerprint of the material details; `purchase_orders.requisition_id`; `purchase_order_items.requisition_line_id, qty_cancelled_milli`. Settings key `purchasing`.
+- `goods_receipt_items` + `qty_delivered_milli`, `substitute_for_product_id`; NEW `receipt_discrepancies(…, kind[shortage|overage|damaged|rejected|substitution], qty_milli, reason, resolution[open|backorder|cancelled|accepted|rejected], approved_by, resolved_by/at)`. Cost differences are computed in the match, not stored as discrepancies.
+- `supplier_invoices` + `match_accepted_by/at/fingerprint/note`.
+- `supplier_returns(return_id, number, supplier_id, branch_id, receipt_id?, po_id?, status[draft|confirmed|credited|cancelled|reversed], expected_credit_minor, credit_invoice_id UNIQUE, confirm/reverse operation ids UNIQUE)` + `supplier_return_lines(…, lot_id?, qty_milli, unit_cost_minor, reason, movement_id, reversal_movement_id)`.
 
 ### Wave 5
 - `product_barcodes.kind[ean13|ean8|upc|code128|internal|plu|supplier]`.
@@ -186,21 +188,21 @@ draft → submitted → approved → converted (PO created, req_id on PO)
               └→ rejected        draft|submitted → cancelled
 ```
 
-**Purchase order (policy-gated)**
+**Purchase order (as built: one status system, approval as a property of the draft)**
 ```
-draft → [submitted → approved] → ordered → partially_received → received
-  │          └→ rejected
-  └────────────→ cancelled  (only before any receipt)
+draft ──(approval valid, when the policy needs it)──→ ordered → partially_received → received
+  └────────────→ cancelled  (only before any receipt)        └─ close short (rest cancelled)
 ```
-Approval off ⇒ `draft → ordered` exactly as today.
+Approval off ⇒ `draft → ordered` exactly as before. A material edit voids the approval.
 
-**Receiving**: a goods receipt is a one-shot append document. Discrepancies
-are separate rows: `open → accepted | claimed (→ supplier return / credit note) | written_off`.
+**Receiving**: a goods receipt is a one-shot append document. Differences
+are separate rows: shortage `open → backorder | cancelled`; overage / damaged kept /
+substitution `accepted`; refused `rejected` (never stock, never waste).
 
 **Supplier return**
 ```
-draft → confirmed (stock leaves: movement supplier_return) → credited (AP credit note linked)
-  └→ cancelled (draft only)
+draft → confirmed (stock leaves: movement supplier_return) → credited (AP credit note posted)
+  └→ cancelled (draft only)     confirmed → reversed (compensating movements)
 ```
 
 **Cash variance case / alert (shared `cases`)**
@@ -315,10 +317,9 @@ fails CI.
 | pos.void_sale | ✓ | ✓ (cashier via bound approval) | | | | |
 | lots.manage | ✓ | ✓ | | ✓ | | |
 | waste.manage | ✓ | ✓ | | ✓ | | |
-| replenishment.view | ✓ | ✓ | | ✓ | | |
+| replenishment.view (as built: `inventory.view`, `requisitions.create` or `purchasing.manage`) | ✓ | ✓ | | ✓ | | |
 | requisitions.create | ✓ | ✓ | | ✓ | | |
-| requisitions.approve | ✓ | ✓ | | | | |
-| purchasing.approve (PO) | ✓ | ✓ | | | | |
+| purchasing.approve (requisitions, POs, over-deliveries, invoice matches; as built, one permission) | ✓ | ✓ | | | | |
 | supplier_returns.manage | ✓ | ✓ | | ✓ | | |
 | catalog.merge | ✓ | | | | | |
 | pricing.policy | ✓ | | | | | |

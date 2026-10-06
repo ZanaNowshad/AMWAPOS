@@ -452,7 +452,7 @@ impl AppCore {
                 ("submitted", "reject") => "rejected",
                 ("draft" | "submitted" | "approved", "cancel") => "cancelled",
                 (c, a) if c == action_target(a) => return Ok(()), // repeated click
-                _ => return Err(AppError::conflict(format!("A requisition that is {cur} cannot be {}.", action_words(action)))),
+                _ => return Err(AppError::conflict(format!("A requisition that is {cur} cannot be {}.", action_target(action)))),
             };
             if action == "submit" {
                 let missing: i64 = tx.query_row(
@@ -572,15 +572,6 @@ impl AppCore {
 }
 
 fn action_target(a: &str) -> &'static str {
-    match a {
-        "submit" => "submitted",
-        "approve" => "approved",
-        "reject" => "rejected",
-        _ => "cancelled",
-    }
-}
-
-fn action_words(a: &str) -> &'static str {
     match a {
         "submit" => "submitted",
         "approve" => "approved",

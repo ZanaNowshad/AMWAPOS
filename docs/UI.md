@@ -200,3 +200,38 @@ payment (cash + change, and PAY/Confirm again at 1024×700); shift close; refund
 step 2; AI empty / tools + thinking / high-risk proposal with diff; till
 assistant over a 6-line cart; Arabic POS + assistant; dark compact; backup
 overdue + hub "Update needed" with the admin banner and nav flyout.
+
+## Wave 4 surfaces
+
+- **Purchasing → Suggested orders** (`/admin/suggested-orders`): tabs To order / Needs a decision
+  / Enough stock / Cannot tell yet, with counts. Columns: product (`dir="auto"`), usable, on the
+  way, sells a day, reorder at, supplier (+ alternatives), suggested ("2 × 6 = 12"), estimated
+  cost (cost viewers only), and why (a state chip and warnings). Rows are selectable on "To
+  order"; **Create requisition (n)**. A row opens a drawer with the stock position line by line,
+  the levels and where they came from, the reasons and the other suppliers' terms.
+- **Purchasing → Requisitions** and the requisition page: status chip, Edit (draft), Submit,
+  Approve / Reject (with a reason), Create purchase orders, Cancel. Each line shows where it came
+  from ("Suggested", with the evidence drawer, or "Typed by a person") and its purchase order.
+- **Purchase order:** "Needs approval" / "Approved" chips; the Approval card (`po-approval`)
+  with the policy, the Approve button and the history (invalidated approvals marked). Receive
+  goods (`po-receive`): still expected, accepted, refused (+ reason), damaged kept, unit cost
+  (with the order cost when it differs), batch and expiry, "If short" (Keep on order / Cancel the
+  rest), "Keep the extra" when over, and "Another product came instead" with an explicit accept.
+  Delivery differences (`po-discrepancies`): short, extra, damaged kept, refused, substitute,
+  with Keep on order / Cancel the rest on open shortages.
+- **Payables → invoice drawer:** Order, goods received and invoice (`invoice-match`): ordered,
+  received, invoiced (+ other invoices), order cost, invoice cost, last confirmed, typical, and a
+  result per line; the outcome chip; Accept the differences (approvers, with a reason).
+- **Purchasing → Supplier returns** and the return page: lines with batch, quantity and reason;
+  Save Draft, Confirm: goods leave stock, Cancel return, Reverse (with a reason), Record the
+  credit note; expected credit vs the credit note and the difference.
+- **Suppliers → Ordering terms** (`supplier-terms`) and the terms drawer: pack (confirmed or from
+  documents), minimum, lead time, preferred, active, document evidence and cost baselines.
+- **Product → Inventory → Ordering** (`product-replenish`): the product's state, the suggestion
+  and the maximum stock.
+- **Settings → Purchasing:** safety days, days between orders, demand window, approval mode and
+  amount, quantity tolerance, cost tolerances (amount and %).
+- **Dashboard:** requisitions and purchase orders waiting for approval, shortages to decide,
+  approved requisitions to convert, returns waiting for a credit note, products to order — each
+  linking to its screen, shown only to people who can act.
+

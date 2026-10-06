@@ -486,7 +486,32 @@ pub fn run(c: &Connection, branch: &str, today: &str, only: Option<&[String]>) -
     Ok(out)
 }
 
+const HINT_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
 impl AppCore {
+    /// How many products the engine suggests ordering, for the dashboard. A
+    /// hint kept for five minutes (the engine reads every product); the
+    /// Suggested orders screen always computes live and refreshes it.
+    pub(crate) fn to_order_count(&self, c: &Connection, branch: &str, today: &str, fresh: bool) -> AppResult<usize> {
+        let key = (branch.to_string(), today.to_string());
+        if !fresh {
+            if let Some((at, n)) = self.to_order_hint.lock().ok().and_then(|m| m.get(&key).copied()) {
+                if at.elapsed() < HINT_TTL {
+                    return Ok(n);
+                }
+            }
+        }
+        let n = run(c, branch, today, None)?.iter().filter(|r| r.assessment.state == "order").count();
+        self.remember_to_order(branch, today, n);
+        Ok(n)
+    }
+
+    fn remember_to_order(&self, branch: &str, today: &str, n: usize) {
+        if let Ok(mut m) = self.to_order_hint.lock() {
+            m.insert((branch.to_string(), today.to_string()), (std::time::Instant::now(), n));
+        }
+    }
+
     /// Suggested orders: every product's replenishment decision with its
     /// evidence. Reading only; nothing is ordered.
     pub fn replenishment(&self, token: &str, f: ReplenishFilter) -> AppResult<Value> {
@@ -503,6 +528,9 @@ impl AppCore {
             let mut counts: HashMap<&str, i64> = HashMap::new();
             for r in &rows {
                 *counts.entry(r.assessment.state).or_default() += 1;
+            }
+            if f.product_ids.is_none() {
+                self.remember_to_order(&branch, &today, counts.get("order").copied().unwrap_or(0) as usize);
             }
             let default_states = ["order", "no_supplier", "no_lead_time", "invalid_pack"];
             let wanted: Vec<String> = f.states.clone().unwrap_or_else(|| default_states.iter().map(|x| x.to_string()).collect());

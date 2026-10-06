@@ -1344,7 +1344,7 @@ impl AppCore {
             }
             if s.has("requisitions.create") || s.has("purchasing.manage") {
                 let today = time::business_date(time::now(), &time::day(c)?)?;
-                let to_order = crate::replenish::run(c, &s.branch_id, &today, None)?.iter().filter(|r| r.assessment.state == "order").count();
+                let to_order = self.to_order_count(c, &s.branch_id, &today, false)?;
                 if to_order > 0 {
                     attention.push(json!({ "kind": "suggested_orders", "severity": "info", "count": to_order, "text": format!("{to_order} product(s) to order"), "link": "/admin/suggested-orders" }));
                 }

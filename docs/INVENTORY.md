@@ -247,8 +247,15 @@ When it cannot be said, the answer gives the reason instead:
 It never shows infinity. Dead stock (the existing report) is a separate
 idea.
 
-Wave 4 (procurement) will use these figures. Wave 3 adds no reordering,
-supplier catalogue or purchase-order approval.
+Wave 4 (procurement) uses the same demand functions for Suggested orders
+([PROCUREMENT.md](PROCUREMENT.md)): `lots::demand` for one product and
+`lots::demand_all`, which computes every product in a fixed number of
+grouped queries. Suggested orders also leave out expired use-by stock and
+use the batches to warn about stock expiring before the next delivery.
+
+Goods refused at receiving never enter stock and are not waste; a supplier
+return is a `supplier_return` movement out of the batch named on the line
+(evidence, like waste), reversed by a compensating movement.
 
 ## Permissions
 
