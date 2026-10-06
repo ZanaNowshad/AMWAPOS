@@ -395,9 +395,122 @@ export const api = {
     receive: (a: {
       po_id: string;
       reference?: string | null;
-      lines: { po_item_id: string; qty_milli: number; unit_cost_minor?: number | null }[];
+      lines: T.PoReceiveLineInput[];
       operation_id: string;
+      shortages?: { po_item_id: string; decision: "backorder" | "cancel" }[];
+      approval_token?: string | null;
     }) => call<T.PoDetail>("po.receive", a),
+    approve: (po_id: string, operation_id: string, note?: string | null) =>
+      call<T.PoDetail>("po.approve", { po_id, operation_id, note: note ?? null }),
+    decideShortage: (discrepancy_id: string, decision: "backorder" | "cancel") =>
+      call<T.PoDetail>("receiving.shortage_decide", { discrepancy_id, decision }),
+    openShortages: () =>
+      call<{
+        rows: {
+          discrepancy_id: string;
+          po_id: string;
+          po_number: string;
+          supplier: string;
+          product_name: string;
+          product_name_ar: string | null;
+          qty_milli: number;
+          created_at: string;
+        }[];
+      }>("receiving.open_shortages", {}),
+  },
+  procurement: {
+    suggestions: (f: {
+      states?: string[];
+      supplier_id?: string | null;
+      search?: string | null;
+      product_ids?: string[];
+    }) => call<T.ReplenishResult>("replenish.list", f),
+    catalogue: (f: { supplier_id?: string | null; product_id?: string | null }) =>
+      call<{ rows: T.SupplierCatalogueRow[] }>("supplier.catalogue", f),
+    saveTerms: (terms: {
+      supplier_id: string;
+      product_id: string;
+      supplier_code?: string | null;
+      units_per_case?: number | null;
+      moq_packs?: number | null;
+      lead_time_days?: number | null;
+      preferred: boolean;
+      active: boolean;
+      expected_version?: number | null;
+    }) => call<T.SupplierTerms>("supplier.terms_save", terms),
+    maxStock: (product_id: string, max_stock_milli: number | null) =>
+      call<{ product_id: string; reorder_point_milli: number; max_stock_milli: number | null }>("products.max_stock", {
+        product_id,
+        max_stock_milli,
+      }),
+  },
+  requisitions: {
+    list: (status?: string | null) =>
+      call<{ rows: T.RequisitionRow[] }>("requisitions.list", { status: status ?? null }),
+    get: (requisition_id: string) => call<T.Requisition>("requisitions.get", { requisition_id }),
+    create: (r: {
+      note?: string | null;
+      lines: { product_id: string; supplier_id?: string | null; qty_milli: number; unit_cost_minor?: number | null }[];
+      operation_id: string;
+    }) => call<T.Requisition>("requisitions.create", r),
+    fromSuggestions: (product_ids: string[], operation_id: string, note?: string | null) =>
+      call<T.Requisition>("requisitions.from_suggestions", { product_ids, operation_id, note: note ?? null }),
+    save: (
+      requisition_id: string,
+      requisition: {
+        note?: string | null;
+        lines: {
+          line_id?: string | null;
+          product_id: string;
+          supplier_id?: string | null;
+          qty_milli: number;
+          unit_cost_minor?: number | null;
+        }[];
+        expected_version?: number;
+      },
+    ) => call<T.Requisition>("requisitions.save", { requisition_id, requisition }),
+    act: (requisition_id: string, action: "submit" | "approve" | "reject" | "cancel", note?: string | null) =>
+      call<T.Requisition>("requisitions.set_status", { requisition_id, action, note: note ?? null }),
+    convert: (requisition_id: string, operation_id: string) =>
+      call<T.Requisition>("requisitions.convert", { requisition_id, operation_id }),
+  },
+  supplierReturns: {
+    list: (status?: string | null, supplier_id?: string | null) =>
+      call<{ rows: T.SupplierReturnRow[] }>("supplier_returns.list", {
+        status: status ?? null,
+        supplier_id: supplier_id ?? null,
+      }),
+    get: (return_id: string) => call<T.SupplierReturn>("supplier_returns.get", { return_id }),
+    save: (
+      return_id: string | null,
+      ret: {
+        supplier_id: string;
+        receipt_id?: string | null;
+        note?: string | null;
+        lines: {
+          product_id: string;
+          lot_id?: string | null;
+          qty_milli: number;
+          unit_cost_minor?: number | null;
+          reason: string;
+        }[];
+        operation_id?: string | null;
+      },
+    ) => call<T.SupplierReturn>("supplier_returns.save", { return_id, return: ret }),
+    cancel: (return_id: string) => call<T.SupplierReturn>("supplier_returns.cancel", { return_id }),
+    confirm: (return_id: string, operation_id: string) =>
+      call<T.SupplierReturn>("supplier_returns.confirm", { return_id, operation_id }),
+    reverse: (return_id: string, reason: string, operation_id: string) =>
+      call<T.SupplierReturn>("supplier_returns.reverse", { return_id, reason, operation_id }),
+    draftCredit: (return_id: string, supplier_number: string, date: string) =>
+      call<T.SupplierReturn>("supplier_returns.draft_credit", { return_id, supplier_number, date }),
+    linkCredit: (return_id: string, invoice_id: string) =>
+      call<T.SupplierReturn>("supplier_returns.link_credit", { return_id, invoice_id }),
+  },
+  invoiceMatch: {
+    get: (invoice_id: string) => call<T.InvoiceMatch>("supplier_invoices.match", { invoice_id }),
+    accept: (invoice_id: string, note: string) =>
+      call<T.InvoiceMatch>("supplier_invoices.accept_match", { invoice_id, note }),
   },
   customers: {
     search: (q?: string, include_inactive = false, limit?: number) =>

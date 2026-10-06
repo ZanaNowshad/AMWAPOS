@@ -854,6 +854,9 @@ export interface PoRow {
   line_count: number;
   total_minor: number;
   received_pct: number;
+  /** For a draft under the approval policy. */
+  approval_state: "needs_approval" | "approved" | null;
+  requisition_id: string | null;
 }
 
 export interface PoLine {
@@ -866,10 +869,45 @@ export interface PoLine {
   allow_decimal_quantity: boolean;
   qty_ordered_milli: number;
   qty_received_milli: number;
+  qty_cancelled_milli: number;
   qty_remaining_milli: number;
   unit_cost_minor: number;
   tax_rate_bp: number;
   total_minor: number;
+}
+
+export interface PoApprovalRecord {
+  approval_id: string;
+  po_version: number;
+  total_minor: number;
+  approved_by: string;
+  approved_by_name: string | null;
+  approved_at: string;
+  note: string | null;
+  invalidated_at: string | null;
+  invalidated_reason: string | null;
+  policy_mode: string;
+}
+
+export interface ReceiptDiscrepancy {
+  discrepancy_id: string;
+  receipt_id: string;
+  po_item_id: string | null;
+  product_id: string;
+  product_name: string;
+  product_name_ar: string | null;
+  substitute_product_id: string | null;
+  substitute_name: string | null;
+  kind: "shortage" | "overage" | "damaged" | "rejected" | "substitution";
+  qty_milli: number;
+  reason: string | null;
+  resolution: "open" | "backorder" | "cancelled" | "accepted" | "rejected";
+  approved_by: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  note: string | null;
+  created_at: string;
+  created_by_name: string | null;
 }
 
 export interface PoDetail extends PoRow {
@@ -885,6 +923,278 @@ export interface PoDetail extends PoRow {
     created_at: string;
     user_name: string | null;
   }[];
+  approval: {
+    mode: "off" | "always" | "above_threshold";
+    threshold_minor: number;
+    required: boolean;
+    valid: boolean;
+    current_approval_id: string | null;
+    history: PoApprovalRecord[];
+  };
+  discrepancies: ReceiptDiscrepancy[];
+}
+
+export interface PoReceiveLineInput {
+  po_item_id: string;
+  qty_milli: number;
+  unit_cost_minor?: number | null;
+  lot?: { supplier_lot_code?: string | null; expires_on?: string | null; confirm_warnings?: boolean } | null;
+  delivered_milli?: number | null;
+  rejected?: { qty_milli: number; reason: string; note?: string | null }[];
+  damaged_kept_milli?: number;
+  substitute_product_id?: string | null;
+  accept_substitution?: boolean;
+  accept_overage?: boolean;
+}
+
+export interface SupplierChoice {
+  supplier_id: string;
+  supplier_name: string;
+  units_per_case: number | null;
+  pack_source: "person" | "document" | null;
+  moq_packs: number | null;
+  lead_time_days: number | null;
+  preferred: boolean;
+  last_cost_minor: number | null;
+}
+
+export type ReplenishState =
+  | "order"
+  | "covered"
+  | "insufficient_history"
+  | "no_demand"
+  | "no_supplier"
+  | "no_lead_time"
+  | "inactive"
+  | "invalid_pack";
+
+export interface ReplenishRow {
+  product_id: string;
+  name: string;
+  name_ar: string | null;
+  sku: string;
+  category: string | null;
+  facts: {
+    on_hand_milli: number;
+    held_milli: number;
+    expired_use_by_milli: number;
+    open_po_milli: number;
+    draft_po_milli: number;
+    transfers_in_milli: number;
+    requisitioned_milli: number;
+    net_sold_milli: number;
+    history_days: number;
+    window_days: number;
+    expiring_soon_milli: number;
+    waste_milli: number;
+    reorder_point_milli: number;
+    max_stock_milli: number | null;
+    allow_decimal: boolean;
+  };
+  state: ReplenishState;
+  reasons: string[];
+  warnings: string[];
+  usable_milli: number;
+  inbound_milli: number;
+  position_milli: number;
+  per_day_milli: number;
+  days_used: number;
+  reorder_point_milli: number | null;
+  reorder_point_source: "product" | "demand" | null;
+  order_up_to_milli: number | null;
+  order_up_to_source: "max_stock" | "demand" | "reorder_point" | null;
+  need_milli: number;
+  supplier: SupplierChoice | null;
+  supplier_reason: string | null;
+  alternatives: SupplierChoice[];
+  packs: number | null;
+  suggested_milli: number;
+  estimated_cost_minor: number | null;
+}
+
+export interface ReplenishResult {
+  today: string;
+  branch_id: string;
+  rows: ReplenishRow[];
+  counts: Record<string, number>;
+  estimated_cost_minor: number | null;
+  settings: { safety_days: number; order_cycle_days: number; demand_window_days: number };
+}
+
+export interface RequisitionLine {
+  line_id: string;
+  line_no: number;
+  product_id: string;
+  product_name: string;
+  product_name_ar: string | null;
+  sku: string;
+  allow_decimal_quantity: boolean;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  qty_milli: number;
+  packs: number | null;
+  units_per_case: number | null;
+  unit_cost_minor: number | null;
+  line_total_minor: number | null;
+  source: "manual" | "replenishment";
+  evidence: Record<string, unknown> | null;
+  po_id: string | null;
+  po_number: string | null;
+}
+
+export interface Requisition {
+  requisition_id: string;
+  number: string;
+  status: "draft" | "submitted" | "approved" | "rejected" | "cancelled" | "converted";
+  note: string | null;
+  created_at: string;
+  branch_id: string;
+  created_by_name: string | null;
+  submitted_at: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  converted_at: string | null;
+  version: number;
+  decided_by_name: string | null;
+  lines: RequisitionLine[];
+  estimated_total_minor: number | null;
+  purchase_orders: { po_id: string; po_number: string; status: string; total_minor: number | null }[];
+  skipped?: { product_id: string; name: string; state: string }[];
+}
+
+export interface RequisitionRow {
+  requisition_id: string;
+  number: string;
+  status: Requisition["status"];
+  note: string | null;
+  created_at: string;
+  created_by_name: string | null;
+  line_count: number;
+  supplier_count: number;
+}
+
+export interface SupplierTerms {
+  supplier_id: string;
+  supplier_name: string;
+  supplier_active: boolean;
+  product_id: string;
+  supplier_code: string | null;
+  units_per_case: number | null;
+  pack_source: "person" | "document" | null;
+  moq_packs: number | null;
+  lead_time_days: number | null;
+  preferred: boolean;
+  active: boolean;
+  terms_confirmed_by: string | null;
+  terms_confirmed_at: string | null;
+  version: number;
+}
+
+export interface SupplierCatalogueRow {
+  terms: SupplierTerms;
+  product_name: string;
+  product_name_ar: string | null;
+  sku: string;
+  allow_decimal_quantity: boolean;
+  document_evidence: { kind: string; key: string; units_per_case: number | null; uses: number; confirmed_at: string }[];
+  costs: {
+    last_confirmed_minor: number | null;
+    last_confirmed_at: string | null;
+    typical_minor: number | null;
+    typical_receipts: number;
+  } | null;
+}
+
+export interface MatchLine {
+  product_id: string | null;
+  product_name: string | null;
+  line_no: number | null;
+  po_item_id: string | null;
+  ordered_milli: number | null;
+  received_milli: number | null;
+  invoiced_milli: number | null;
+  invoiced_elsewhere_milli: number | null;
+  po_cost_minor: number | null;
+  invoice_cost_minor: number | null;
+  last_cost_minor: number | null;
+  typical_cost_minor: number | null;
+  cost_variance_minor: number | null;
+  value_variance_minor: number | null;
+  cost_variance_pct: string | null;
+  po_vat_rate_bp: number | null;
+  invoice_vat_rate_bp: number | null;
+  states: string[];
+  notes: string[];
+  outcome: "matched" | "within_tolerance" | "review" | "blocked";
+}
+
+export interface InvoiceMatch {
+  invoice_id: string;
+  posting: string;
+  match: {
+    po_id: string;
+    po_number: string;
+    po_status: string;
+    three_way: boolean;
+    lines: MatchLine[];
+    summary: string[];
+    outcome: "matched" | "within_tolerance" | "review" | "blocked";
+    fingerprint: string;
+    tolerance: { cost_tolerance_minor: number; cost_tolerance_bp: number } | null;
+  } | null;
+  acceptance: { by: string | null; at: string | null; note: string | null; still_applies: boolean } | null;
+}
+
+export interface SupplierReturnLine {
+  line_id: string;
+  line_no: number;
+  product_id: string;
+  product_name: string;
+  product_name_ar: string | null;
+  sku: string;
+  lot_id: string | null;
+  lot_number: string | null;
+  supplier_lot_code: string | null;
+  qty_milli: number;
+  unit_cost_minor: number | null;
+  value_minor: number | null;
+  reason: string;
+  movement_id: string | null;
+  reversal_movement_id: string | null;
+}
+
+export interface SupplierReturn {
+  return_id: string;
+  number: string;
+  supplier_id: string;
+  supplier_name: string;
+  receipt_id: string | null;
+  po_id: string | null;
+  status: "draft" | "confirmed" | "credited" | "cancelled" | "reversed";
+  note: string | null;
+  expected_credit_minor: number | null;
+  credit_invoice_id: string | null;
+  credit_note: { number: string; total_minor: number | null; posting: string; supplier_number: string | null } | null;
+  actual_credit_minor: number | null;
+  credit_difference_minor: number | null;
+  created_at: string;
+  confirmed_at: string | null;
+  reversed_at: string | null;
+  reversal_reason: string | null;
+  version: number;
+  lines: SupplierReturnLine[];
+}
+
+export interface SupplierReturnRow {
+  return_id: string;
+  number: string;
+  supplier_name: string;
+  status: SupplierReturn["status"];
+  expected_credit_minor: number | null;
+  created_at: string;
+  confirmed_at: string | null;
+  credit_invoice_id: string | null;
+  line_count: number;
 }
 
 export interface CustomerInput {

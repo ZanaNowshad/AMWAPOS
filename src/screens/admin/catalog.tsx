@@ -47,6 +47,7 @@ import { NewProductImageField, ProductImageField } from "./productImageField";
 import { WaCatalogProductLine } from "./waCatalog";
 import { ProductImage } from "../../components/ProductImage";
 import { ProductBatchesCard } from "./stockTruth";
+import { ProductMaxStockCard } from "./procurement";
 
 export function ProductsPage() {
   const { has } = useSession();
@@ -705,6 +706,7 @@ export function ProductEditorPage() {
       {tab === "inventory" && detail ? (
         <div style={{ marginTop: 16 }}>
           <ProductBatchesCard productId={detail.product_id} />
+          <ProductMaxStockCard productId={detail.product_id} />
         </div>
       ) : null}
       {tab === "history" && detail ? <HistoryTab productId={detail.product_id} /> : null}

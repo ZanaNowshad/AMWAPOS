@@ -5,7 +5,6 @@ import { api } from "../../api";
 import type { PoDetail, PoRow, PosSearchRow, SupplierInput, SupplierRow } from "../../api/types";
 import { useSession } from "../../state/session";
 import { useToast } from "../../components/toast";
-import { newOperationId } from "../../lib/ids";
 import {
   formatAmount,
   formatMoney,
@@ -32,6 +31,7 @@ import {
 } from "../../components/ui";
 import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
 import { codeLabel } from "../../i18n/codes";
+import { PoApprovalCard, PoDiscrepanciesCard, PoReceivePanel, SupplierTermsCard } from "./procurement";
 import { t } from "../../i18n";
 
 const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = {
@@ -200,7 +200,7 @@ export function SuppliersPage() {
 export function SupplierDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
-  const [tab, setTab] = useState<"overview" | "pos" | "products">("overview");
+  const [tab, setTab] = useState<"overview" | "pos" | "products" | "terms">("overview");
   const [editing, setEditing] = useState(false);
   const { data, error, reload } = useLoad(() => api.suppliers.get(id!), [id]);
   if (error) return <Banner tone="danger">{error}</Banner>;
@@ -233,10 +233,12 @@ export function SupplierDetailPage() {
           { key: "overview", label: t("Overview") },
           { key: "pos", label: t("Purchase orders") },
           { key: "products", label: t("Products") },
+          { key: "terms", label: t("Ordering terms") },
         ]}
         value={tab}
         onChange={setTab}
       />
+      {tab === "terms" ? <SupplierTermsCard supplierId={s.supplier_id} /> : null}
       {tab === "overview" ? (
         <div className="card card-pad">
           <dl className="kv">
@@ -309,7 +311,8 @@ export function SupplierDetailPage() {
 export function PurchaseOrdersPage() {
   const nav = useNavigate();
   const { has } = useSession();
-  const [status, setStatus] = useState("");
+  const [params] = useSearchParams();
+  const [status, setStatus] = useState(params.get("status") ?? "");
   const { data, loading, error } = useLoad(() => api.po.list(status || undefined), [status]);
   return (
     <div>
@@ -388,9 +391,6 @@ export function PoEditorPage() {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<PosSearchRow[]>([]);
   const [receiving, setReceiving] = useState(params.get("receive") === "1");
-  const [recv, setRecv] = useState<Record<string, { qty: string; cost: string }>>({});
-  const [recvRef, setRecvRef] = useState("");
-  const [recvOp, setRecvOp] = useState(newOperationId);
   const [confirm, setConfirm] = useState<null | "order" | "cancel" | "close">(null);
   const suppliers = useLoad(() => api.suppliers.list(), []);
   const act = useAction();
@@ -411,17 +411,6 @@ export function PoEditorPage() {
         cost: formatAmount(l.unit_cost_minor),
         tax: formatPercent(l.tax_rate_bp).replace("%", ""),
       })),
-    );
-    setRecv(
-      Object.fromEntries(
-        d.lines.map((l) => [
-          l.po_item_id,
-          {
-            qty: l.qty_remaining_milli > 0 ? formatQty(l.qty_remaining_milli) : "",
-            cost: formatAmount(l.unit_cost_minor),
-          },
-        ]),
-      ),
     );
   };
   useEffect(() => {
@@ -473,30 +462,6 @@ export function PoEditorPage() {
     }
   };
 
-  const doReceive = async () => {
-    if (!po) return;
-    const rl = po.lines
-      .map((l) => ({
-        po_item_id: l.po_item_id,
-        qty_milli: parseQty(recv[l.po_item_id]?.qty ?? "") ?? 0,
-        unit_cost_minor: parseMoney(recv[l.po_item_id]?.cost ?? ""),
-      }))
-      .filter((l) => l.qty_milli > 0);
-    const r = await act.run(() =>
-      api.po.receive({ po_id: po.po_id, reference: recvRef || null, lines: rl, operation_id: recvOp }),
-    );
-    if (r) {
-      toast(
-        "success",
-        t("Goods received"),
-        r.status === "received" ? t("Purchase order fully received") : t("Partial delivery recorded"),
-      );
-      setReceiving(false);
-      setRecvOp(newOperationId());
-      await load();
-    }
-  };
-
   if (!isNew && !po) return act.error ? <Banner tone="danger">{act.error}</Banner> : <Skeleton rows={10} />;
   return (
     <div>
@@ -511,7 +476,9 @@ export function PoEditorPage() {
           <div className="tiny">{t("Purchase order")}</div>
           <h1>
             {isNew ? t("New purchase order") : po!.po_number}{" "}
-            {po ? <Chip tone={PO_TONE[po.status]}>{poLabel(po.status)}</Chip> : null}
+            {po ? <Chip tone={PO_TONE[po.status]}>{poLabel(po.status)}</Chip> : null}{" "}
+            {po?.approval_state === "needs_approval" ? <Chip tone="warning">{t("Needs approval")}</Chip> : null}
+            {po?.approval_state === "approved" ? <Chip tone="success">{t("Approved")}</Chip> : null}
           </h1>
         </div>
         {editable && has("purchasing.manage") ? (
@@ -575,73 +542,16 @@ export function PoEditorPage() {
           <TextInput label={t("Notes")} value={notes} onChange={(e) => setNotes(e.target.value)} disabled={!editable} />
         </div>
       </div>
+      {po ? <PoApprovalCard po={po} onChange={() => void act.run(load)} /> : null}
       {receiving && po ? (
-        <div className="card">
-          <div className="card-head">
-            <h3 className="grow">{t("Receive goods")}</h3>
-            <input
-              className="input"
-              style={{ width: 240 }}
-              placeholder={t("Delivery note / invoice ref")}
-              value={recvRef}
-              onChange={(e) => setRecvRef(e.target.value)}
-            />
-          </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t("Product")}</th>
-                <th className="num">{t("Ordered")}</th>
-                <th className="num">{t("Previously received")}</th>
-                <th className="num">{t("Receiving now")}</th>
-                <th className="num">{t("Unit cost")}</th>
-                <th className="num">{t("Remaining")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {po.lines.map((l) => (
-                <tr key={l.po_item_id}>
-                  <td>
-                    {l.product_name}
-                    <div className="tiny mono">{l.primary_barcode}</div>
-                  </td>
-                  <td className="num">{formatQty(l.qty_ordered_milli)}</td>
-                  <td className="num">{formatQty(l.qty_received_milli)}</td>
-                  <td className="num">
-                    <input
-                      className="input num"
-                      style={{ width: 100 }}
-                      value={recv[l.po_item_id]?.qty ?? ""}
-                      disabled={l.qty_remaining_milli === 0}
-                      onChange={(e) =>
-                        setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], qty: e.target.value } })
-                      }
-                      aria-label={t("Receive {0}", l.product_name)}
-                    />
-                  </td>
-                  <td className="num">
-                    <input
-                      className="input num"
-                      style={{ width: 110 }}
-                      value={recv[l.po_item_id]?.cost ?? ""}
-                      onChange={(e) =>
-                        setRecv({ ...recv, [l.po_item_id]: { ...recv[l.po_item_id], cost: e.target.value } })
-                      }
-                      aria-label={t("Cost {0}", l.product_name)}
-                    />
-                  </td>
-                  <td className="num">{formatQty(l.qty_remaining_milli)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="card-body row">
-            <Button onClick={() => setReceiving(false)}>{t("Cancel")}</Button>
-            <Button variant="primary" className="right" onClick={doReceive} loading={act.busy}>
-              {t("Receive goods")}
-            </Button>
-          </div>
-        </div>
+        <PoReceivePanel
+          po={po}
+          onCancel={() => setReceiving(false)}
+          onDone={() => {
+            setReceiving(false);
+            void act.run(load);
+          }}
+        />
       ) : (
         <div className="card">
           <div className="card-head">
@@ -791,6 +701,7 @@ export function PoEditorPage() {
           </table>
         </div>
       ) : null}
+      {po ? <PoDiscrepanciesCard po={po} onChange={() => void act.run(load)} /> : null}
       {confirm && po ? (
         <Confirm
           title={

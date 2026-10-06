@@ -13,6 +13,7 @@ import { Confirm, DataTable, Drawer, useAction, useLoad } from "./common";
 import { formatAmount, formatMoney, parseMoney } from "../../lib/money";
 import { todayLocal } from "../../lib/time";
 import { newOperationId } from "../../lib/ids";
+import { InvoiceMatchCard } from "./procurement";
 import { t } from "../../i18n";
 
 export const BUCKET_LABEL: Record<ApBucket, () => string> = {
@@ -599,6 +600,7 @@ function InvoiceDrawer({ id, onClose, onChanged }: { id: string; onClose: () => 
                 : t("Reviewed. Posting adds it to what you owe this supplier.")}
             </Banner>
           ) : null}
+          {!credit ? <InvoiceMatchCard invoiceId={id} onChange={onChanged} /> : null}
           {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
           <div className="row wrap">
             {data.status === "draft" && (has("payables.review") || has("purchasing.manage")) ? (

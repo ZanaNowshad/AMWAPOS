@@ -1255,6 +1255,7 @@ type Section =
   | "receipt"
   | "printer"
   | "inventory"
+  | "purchasing"
   | "security"
   | "backup"
   | "appearance"
@@ -1280,6 +1281,7 @@ export function SettingsPage() {
     ["receipt", t("Receipts")],
     ["printer", t("Printers")],
     ["inventory", t("Inventory")],
+    ["purchasing", t("Purchasing")],
     ["security", t("Security")],
     ["backup", t("Backups")],
     ["appearance", t("Appearance")],
@@ -1319,6 +1321,7 @@ export function SettingsPage() {
           {section === "receipt" ? <ReceiptSettings /> : null}
           {section === "printer" ? <PrinterSettings /> : null}
           {section === "inventory" ? <JsonSettings k="inventory" /> : null}
+          {section === "purchasing" ? <JsonSettings k="purchasing" /> : null}
           {section === "security" ? <JsonSettings k="security" /> : null}
           {section === "backup" ? <JsonSettings k="local.backup" /> : null}
           {section === "appearance" ? <AppearanceSettings /> : null}
@@ -1535,7 +1538,16 @@ const LABELS: Record<string, Record<string, () => string>> = {
     waste_shrinkage_needs_approval: () => t("Shrinkage (unexplained difference) needs a manager"),
     require_adjust_reason: () => t("Ask for a reason on stock adjustments"),
     stocktake_blind_default: () => t("Hide expected quantities while counting"),
-    invoice_cost_variance_bp: () => t("Flag supplier prices that differ from the order by more than (%)"),
+  },
+  purchasing: {
+    safety_days: () => t("Safety stock (days)"),
+    order_cycle_days: () => t("Days between orders"),
+    demand_window_days: () => t("Measure sales over"),
+    po_approval_mode: () => t("Purchase order approval"),
+    po_approval_threshold_minor: () => t("Orders that need approval: above"),
+    qty_tolerance_bp: () => t("Extra delivered without a manager (%)"),
+    cost_tolerance_minor: () => t("Cost difference accepted on a line (amount)"),
+    cost_tolerance_bp: () => t("Cost difference accepted per unit (%)"),
   },
   security: {
     pin_min_length: () => t("Shortest PIN (digits)"),
@@ -1616,11 +1628,22 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
     ),
     require_adjust_reason: t("Require a reason for manual stock adjustments."),
     stocktake_blind_default: t("New stocktakes hide expected quantities while counting."),
-    invoice_cost_variance_bp: t(
-      "On a supplier document matched to a purchase order, smaller differences are shown but not flagged.",
-    ),
     expiry_later_days: t("Each batch shows one state: urgent, soon or later, by its days left."),
     waste_approval_cost_minor: t("Recording waste worth more than this asks a manager to approve (0 = never)."),
+  },
+  purchasing: {
+    safety_days: t("Suggested orders keep this many days of extra stock on top of the supplier's lead time."),
+    order_cycle_days: t("A suggested order lasts this long after the delivery arrives."),
+    demand_window_days: t("Daily sales are measured over this many past days (units sold less refunds)."),
+    po_approval_mode: t(
+      "Off keeps ordering as before. With approval, a purchase order is placed only after someone who approves purchasing approves it as it is; changing it afterwards needs a new approval.",
+    ),
+    qty_tolerance_bp: t(
+      "More than ordered, up to this share of the order, is kept without a manager (the person still confirms it).",
+    ),
+    cost_tolerance_minor: t(
+      "An invoice cost difference is within tolerance only when it is within both limits; beyond either, the invoice needs review before it is posted.",
+    ),
   },
   security: {
     pin_min_length: t("Minimum PIN length."),
@@ -1645,95 +1668,134 @@ function JsonSettings({ k }: { k: string }) {
   if (!data) return <Skeleton />;
   return (
     <div className="card card-pad col gap-16">
-      {Object.entries(data).map(([key, v]) => {
-        const help = DESCRIPTIONS[k]?.[key];
-        const label =
-          LABELS[k]?.[key]?.() ??
-          key
-            .replace(/_/g, " ")
-            .replace(/^\w/, (c) => c.toUpperCase())
-            .replace(/ (bp|minor)$/, "");
-        if (typeof v === "boolean") {
+      {Object.entries(data)
+        // Moved to Purchasing (one cost tolerance for documents and invoices).
+        .filter(([key]) => !(k === "inventory" && key === "invoice_cost_variance_bp"))
+        .map(([key, v]) => {
+          const help = DESCRIPTIONS[k]?.[key];
+          const label =
+            LABELS[k]?.[key]?.() ??
+            key
+              .replace(/_/g, " ")
+              .replace(/^\w/, (c) => c.toUpperCase())
+              .replace(/ (bp|minor)$/, "");
+          if (typeof v === "boolean") {
+            return (
+              <div key={key}>
+                <Checkbox label={label} checked={v} onChange={(x) => setData({ ...data, [key]: x })} />
+                {help ? (
+                  <div className="tiny" style={{ marginInlineStart: 24 }}>
+                    {help}
+                  </div>
+                ) : null}
+              </div>
+            );
+          }
+          if (key === "day_cutoff_minutes") {
+            // Midnight to 06:00 in half hours; stored as minutes after midnight.
+            const options = Array.from({ length: 13 }, (_, i) => i * 30);
+            const hhmm = (m: number) =>
+              `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+            return (
+              <Field key={key} label={label} hint={help}>
+                <select
+                  className="select"
+                  value={Number(v)}
+                  onChange={(e) => setData({ ...data, [key]: Number(e.target.value) })}
+                  data-testid="day-cutoff"
+                >
+                  {options.map((m) => (
+                    <option key={m} value={m}>
+                      {m === 0 ? t("Midnight") : hhmm(m)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            );
+          }
+          if (key === "po_approval_mode") {
+            return (
+              <Field key={key} label={label} hint={help}>
+                <select
+                  className="select"
+                  value={String(v)}
+                  onChange={(e) => setData({ ...data, [key]: e.target.value })}
+                >
+                  <option value="off">{t("Off")}</option>
+                  <option value="always">{t("Every purchase order")}</option>
+                  <option value="above_threshold">{t("Above an amount")}</option>
+                </select>
+              </Field>
+            );
+          }
+          if (key === "demand_window_days") {
+            return (
+              <Field key={key} label={label} hint={help}>
+                <select
+                  className="select"
+                  value={Number(v)}
+                  onChange={(e) => setData({ ...data, [key]: Number(e.target.value) })}
+                >
+                  {[7, 30, 60, 90].map((d) => (
+                    <option key={d} value={d}>
+                      {t("Last {0} days", d)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            );
+          }
+          if (typeof v === "number") {
+            // Money in the store currency, percentages as %, everything else a whole number.
+            const kind = key.endsWith("_minor") ? "money" : key.endsWith("_bp") ? "percent" : "int";
+            return (
+              <NumberSetting
+                key={key}
+                label={label}
+                hint={help}
+                value={v}
+                format={
+                  kind === "money"
+                    ? formatAmount
+                    : kind === "percent"
+                      ? (x) => formatPercent(x).replace("%", "")
+                      : String
+                }
+                parse={
+                  kind === "money"
+                    ? parseMoney
+                    : kind === "percent"
+                      ? parsePercent
+                      : (x) => (/^\s*\d+\s*$/.test(x) ? Number(x.trim()) : null)
+                }
+                onChange={(x) => setData({ ...data, [key]: x })}
+              />
+            );
+          }
+          if (key === "costing_method") {
+            return (
+              <Field key={key} label={label} hint={help}>
+                <select
+                  className="select"
+                  value={String(v)}
+                  onChange={(e) => setData({ ...data, [key]: e.target.value })}
+                >
+                  <option value="weighted_average">{t("Weighted average")}</option>
+                  <option value="manual">{t("Manual")}</option>
+                </select>
+              </Field>
+            );
+          }
           return (
-            <div key={key}>
-              <Checkbox label={label} checked={v} onChange={(x) => setData({ ...data, [key]: x })} />
-              {help ? (
-                <div className="tiny" style={{ marginInlineStart: 24 }}>
-                  {help}
-                </div>
-              ) : null}
-            </div>
-          );
-        }
-        if (key === "day_cutoff_minutes") {
-          // Midnight to 06:00 in half hours; stored as minutes after midnight.
-          const options = Array.from({ length: 13 }, (_, i) => i * 30);
-          const hhmm = (m: number) =>
-            `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-          return (
-            <Field key={key} label={label} hint={help}>
-              <select
-                className="select"
-                value={Number(v)}
-                onChange={(e) => setData({ ...data, [key]: Number(e.target.value) })}
-                data-testid="day-cutoff"
-              >
-                {options.map((m) => (
-                  <option key={m} value={m}>
-                    {m === 0 ? t("Midnight") : hhmm(m)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          );
-        }
-        if (typeof v === "number") {
-          // Money in the store currency, percentages as %, everything else a whole number.
-          const kind = key.endsWith("_minor") ? "money" : key.endsWith("_bp") ? "percent" : "int";
-          return (
-            <NumberSetting
+            <TextInput
               key={key}
               label={label}
+              value={String(v ?? "")}
               hint={help}
-              value={v}
-              format={
-                kind === "money" ? formatAmount : kind === "percent" ? (x) => formatPercent(x).replace("%", "") : String
-              }
-              parse={
-                kind === "money"
-                  ? parseMoney
-                  : kind === "percent"
-                    ? parsePercent
-                    : (x) => (/^\s*\d+\s*$/.test(x) ? Number(x.trim()) : null)
-              }
-              onChange={(x) => setData({ ...data, [key]: x })}
+              onChange={(e) => setData({ ...data, [key]: e.target.value })}
             />
           );
-        }
-        if (key === "costing_method") {
-          return (
-            <Field key={key} label={label} hint={help}>
-              <select
-                className="select"
-                value={String(v)}
-                onChange={(e) => setData({ ...data, [key]: e.target.value })}
-              >
-                <option value="weighted_average">{t("Weighted average")}</option>
-                <option value="manual">{t("Manual")}</option>
-              </select>
-            </Field>
-          );
-        }
-        return (
-          <TextInput
-            key={key}
-            label={label}
-            value={String(v ?? "")}
-            hint={help}
-            onChange={(e) => setData({ ...data, [key]: e.target.value })}
-          />
-        );
-      })}
+        })}
       <SaveBar
         busy={act.busy}
         error={act.error}

@@ -54,6 +54,8 @@ import {
   CalendarClock,
   Trash2,
   Hourglass,
+  Lightbulb,
+  Undo2,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
@@ -72,6 +74,13 @@ import { SalesPage, RefundsPage, ShiftsPage, CashEventsPage } from "./sales";
 import { ProductsPage, ProductEditorPage, CategoriesPage, PricingPage, UnknownBarcodesPage } from "./catalog";
 import { InventoryPage, MovementsPage, StocktakesPage, StocktakeDetailPage, ReceivingPage } from "./inventory";
 import { SuppliersPage, SupplierDetailPage, PurchaseOrdersPage, PoEditorPage } from "./purchasing";
+import {
+  RequisitionDetailPage,
+  RequisitionsPage,
+  SuggestedOrdersPage,
+  SupplierReturnEditorPage,
+  SupplierReturnsPage,
+} from "./procurement";
 import { CustomersPage, CustomerDetailPage, DeliveriesPage } from "./customers";
 import { ReportsHome, ReportViewer, AnalyticsPage } from "./reports";
 import { UsersPage, RolesPage, ProfilePage } from "./staff";
@@ -211,6 +220,20 @@ const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: t("PURCHASING"),
     items: [
+      {
+        path: "suggested-orders",
+        label: t("Suggested orders"),
+        icon: Lightbulb,
+        perm: ["inventory.view", "requisitions.create", "purchasing.manage"],
+        element: SuggestedOrdersPage,
+      },
+      {
+        path: "requisitions",
+        label: t("Requisitions"),
+        icon: ClipboardList,
+        perm: ["requisitions.create", "purchasing.approve", "purchasing.manage"],
+        element: RequisitionsPage,
+      },
       { path: "suppliers", label: t("Suppliers"), icon: Building2, perm: "suppliers.manage", element: SuppliersPage },
       {
         path: "purchase-orders",
@@ -225,6 +248,13 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: PackageCheck,
         perm: "inventory.receive",
         element: ReceivingPage,
+      },
+      {
+        path: "supplier-returns",
+        label: t("Supplier returns"),
+        icon: Undo2,
+        perm: ["supplier_returns.manage", "purchasing.manage"],
+        element: SupplierReturnsPage,
       },
       {
         path: "payables",
@@ -369,6 +399,16 @@ const EXTRA: { path: string; perm?: string | string[]; element: ComponentType; l
   { path: "stocktake/:id", perm: "stocktake.manage", element: StocktakeDetailPage },
   { path: "suppliers/:id", perm: "suppliers.manage", element: SupplierDetailPage },
   { path: "purchase-orders/:id", perm: ["purchasing.manage", "inventory.receive"], element: PoEditorPage },
+  {
+    path: "requisitions/:id",
+    perm: ["requisitions.create", "purchasing.approve", "purchasing.manage"],
+    element: RequisitionDetailPage,
+  },
+  {
+    path: "supplier-returns/:id",
+    perm: ["supplier_returns.manage", "purchasing.manage"],
+    element: SupplierReturnEditorPage,
+  },
   { path: "invoice-scan/:id", perm: ["ocr.scan", "purchasing.manage"], element: DocumentReviewPage },
   { path: "customers/:id", perm: "customers.view", element: CustomerDetailPage },
   { path: "reports/:key", perm: undefined, element: ReportViewer },
