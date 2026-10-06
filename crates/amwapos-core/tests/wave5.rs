@@ -869,3 +869,213 @@ fn switching_channel_reprices_catalogue_lines_only() {
     let (_, cashier) = e.user("Cash", "role_cashier", "5931");
     assert_eq!(e.core.product_channel_price_set(&cashier, &pid, "web", Some(1), None, None).unwrap_err().code, ErrorCode::Forbidden);
 }
+
+// ------------------------------------------------------------------ policies, rounding, margin
+
+use amwapos_core::policies::Policy;
+
+fn policy(e: &Env, v: serde_json::Value) -> Policy {
+    e.core.pricing_policy_save(&e.owner_token, serde_json::from_value(v).unwrap()).unwrap()
+}
+
+fn review(e: &Env, group: Option<&str>) -> serde_json::Value {
+    e.core.pricing_review(&e.owner_token, group.map(String::from), Some(500), None).unwrap()
+}
+
+fn row<'a>(r: &'a serde_json::Value, pid: &str, ty: &str) -> Option<&'a serde_json::Value> {
+    r["rows"].as_array().unwrap().iter().find(|x| x["product_id"] == pid && x["price_type"] == ty)
+}
+
+fn prices(e: &Env) -> String {
+    one(e, "SELECT group_concat(price_id||':'||amount_minor||':'||COALESCE(effective_to,''), ',') FROM (SELECT * FROM product_prices ORDER BY price_id)")
+}
+
+#[test]
+fn policies_recommend_and_never_rewrite_a_price() {
+    let e = env();
+    let t = &e.owner_token;
+    // VAT 10% included (setup default). Cost 1.000; price 1.200 → margin 8.3% on net.
+    let pid = e.product("Olive oil", "9400001", 1_200, 1_000, 10_000);
+    let before = prices(&e);
+    let p = policy(
+        &e,
+        json!({ "name": "Store 25% margin", "scope": "global", "target_margin_bp": 2_500, "min_margin_bp": 1_500,
+                 "rounding_step_minor": 50, "cost_basis": "average" }),
+    );
+    assert_eq!(p.version, 1);
+    // Invariant 7: saving a policy changes no price.
+    assert_eq!(prices(&e), before);
+    let r = review(&e, None);
+    let x = row(&r, &pid, "retail").expect("listed");
+    // 1.000 × 1.10 ÷ 0.75 = 1.4667 → step 0.050 → 1.450 is below 25% target but above the
+    // 15% floor (1.2941): nearest step wins; the floor is never breached.
+    assert_eq!(x["recommended_minor"], 1_450);
+    assert_eq!(x["floor_price_minor"], 1_295);
+    let groups: Vec<&str> = x["groups"].as_array().unwrap().iter().map(|g| g.as_str().unwrap()).collect();
+    assert!(groups.contains(&"below_min_margin") && groups.contains(&"recommendation"), "{groups:?}");
+    assert_eq!(r["counts"]["below_min_margin"], 1);
+    assert_eq!(x["policy_name"], "Store 25% margin");
+    assert_eq!(x["cost_basis"], "average");
+    // Still nothing changed: recommendations only.
+    assert_eq!(prices(&e), before);
+    assert_eq!(e.core.product_get(t, &pid).unwrap().row.price_minor, Some(1_200));
+}
+
+#[test]
+fn policy_validation_and_specific_scope_wins() {
+    let e = env();
+    let t = &e.owner_token;
+    let cat = e.core.category_save(t, None, "Dairy", None, 0).unwrap().category_id;
+    let bad = |v: serde_json::Value| e.core.pricing_policy_save(t, serde_json::from_value(v).unwrap()).unwrap_err().code;
+    assert_eq!(bad(json!({ "name": "x", "scope": "global", "markup_bp": 100, "target_margin_bp": 100 })), ErrorCode::Validation);
+    assert_eq!(bad(json!({ "name": "x", "scope": "category", "target_margin_bp": 100 })), ErrorCode::Validation);
+    assert_eq!(bad(json!({ "name": "x", "scope": "global", "target_margin_bp": 100, "rounding_step_minor": 7 })), ErrorCode::Validation);
+    assert_eq!(bad(json!({ "name": "x", "scope": "global", "target_margin_bp": 1_000, "min_margin_bp": 2_000 })), ErrorCode::Validation);
+    assert_eq!(bad(json!({ "name": "x", "scope": "global" })), ErrorCode::Validation);
+    policy(&e, json!({ "name": "All 20% markup", "scope": "global", "markup_bp": 2_000 }));
+    policy(
+        &e,
+        json!({ "name": "Dairy 30% margin", "scope": "category", "scope_id": cat, "target_margin_bp": 3_000, "rounding_step_minor": 5 }),
+    );
+    let milk = e.product("Milk", "9400002", 500, 400, 1_000);
+    let tax = e.tax_rule();
+    let mut d = e.core.product_get(t, &milk).unwrap();
+    e.core
+        .product_update(
+            t,
+            serde_json::from_value(json!({ "product_id": milk, "expected_version": d.version, "name": "Milk", "category_id": cat, "tax_rule_id": tax, "unit": "pcs" }))
+                .unwrap(),
+        )
+        .unwrap();
+    d = e.core.product_get(t, &milk).unwrap();
+    assert_eq!(d.row.category_id.as_deref(), Some(cat.as_str()));
+    let r = review(&e, None);
+    let x = row(&r, &milk, "retail").unwrap();
+    assert_eq!(x["policy_name"], "Dairy 30% margin", "the category is more specific than global");
+    // 0.400 × 1.10 ÷ 0.70 = 0.62857 → 0.630
+    assert_eq!(x["recommended_minor"], 630);
+    // Two policies with the same scope and priority are surfaced as ambiguous.
+    policy(&e, json!({ "name": "Dairy 35% margin", "scope": "category", "scope_id": cat, "target_margin_bp": 3_500 }));
+    let r = review(&e, None);
+    assert_eq!(r["ambiguous"].as_array().unwrap().len(), 1, "{}", r["ambiguous"]);
+    // Cashiers cannot see or set policies.
+    let (_, cashier) = e.user("Cash", "role_cashier", "5931");
+    assert_eq!(e.core.pricing_policies_list(&cashier).unwrap_err().code, ErrorCode::Forbidden);
+    assert_eq!(e.core.pricing_review(&cashier, None, None, None).unwrap_err().code, ErrorCode::Forbidden);
+}
+
+#[test]
+fn review_groups_dismiss_postpone_and_channel_gaps() {
+    let e = env();
+    let t = &e.owner_token;
+    let a = e.product("Rice 5kg", "9400010", 3_000, 2_000, 1_000);
+    let b = e.product("Sugar 1kg", "9400011", 800, 500, 1_000);
+    // No policy yet: listed as "no policy".
+    let r = review(&e, Some("no_policy"));
+    assert_eq!(r["total"], 2);
+    policy(&e, json!({ "name": "Global 30%", "scope": "global", "target_margin_bp": 3_000, "rounding_step_minor": 25 }));
+    policy(
+        &e,
+        json!({ "name": "WhatsApp 35%", "scope": "channel", "scope_id": "whatsapp", "target_margin_bp": 3_500, "rounding_step_minor": 25 }),
+    );
+    let r = review(&e, None);
+    assert_eq!(r["counts"]["no_policy"], 0);
+    // A channel with a policy but no price of its own: "Retail price will be used".
+    let wa = row(&r, &a, "whatsapp").unwrap();
+    assert!(wa["groups"].to_string().contains("channel_price_missing"));
+    assert_eq!(wa["policy_name"], "WhatsApp 35%");
+    // Dismiss hides it while cost and suggestion stay the same.
+    e.core.pricing_decide(t, &a, "retail", Some("dismissed".into()), None).unwrap();
+    assert!(row(&review(&e, None), &a, "retail").is_none());
+    // Postpone hides it until the date.
+    e.core.pricing_decide(t, &b, "retail", Some("postponed".into()), Some("2099-01-01".into())).unwrap();
+    assert!(row(&review(&e, None), &b, "retail").is_none());
+    assert_eq!(e.core.pricing_decide(t, &b, "retail", Some("postponed".into()), None).unwrap_err().code, ErrorCode::Validation);
+    // A cost change brings the dismissed one back, in "cost changed".
+    e.core.product_cost_update(t, &a, 2_400, Some("New supplier price".into())).unwrap();
+    let r = review(&e, None);
+    let x = row(&r, &a, "retail").expect("back after a cost change");
+    assert!(x["groups"].to_string().contains("cost_changed"), "{}", x["groups"]);
+}
+
+#[test]
+fn bulk_apply_is_atomic_idempotent_audited_and_guards_the_margin() {
+    let e = env();
+    let t = &e.owner_token;
+    let a = e.product("Tea A", "9400020", 1_000, 600, 1_000);
+    let b = e.product("Tea B", "9400021", 1_000, 600, 1_000);
+    policy(
+        &e,
+        json!({ "name": "Min 20%", "scope": "global", "min_margin_bp": 2_000, "target_margin_bp": 3_000, "rounding_step_minor": 5 }),
+    );
+    // Preview changes nothing and flags the price below the floor.
+    let items = json!([{ "product_id": a, "amount_minor": 950 }, { "product_id": b, "amount_minor": 700 }]);
+    let before = prices(&e);
+    let pv = e.core.pricing_apply_preview(t, serde_json::from_value(items.clone()).unwrap()).unwrap();
+    assert_eq!(pv["below_min_margin"], 1, "0.700 is below the 0.825 floor (0.600 × 1.10 ÷ 0.80)");
+    assert_eq!(prices(&e), before);
+    // A manager without pricing.policy needs an approval bound to these prices.
+    e.core
+        .db
+        .write(|c| Ok(c.execute("DELETE FROM role_permissions WHERE role_id='role_manager' AND permission_code='pricing.policy'", [])?))
+        .unwrap();
+    let (_, mgr) = e.user("Mgr", "role_manager", "5932");
+    let req = |op: &str, tok: Option<String>| -> amwapos_core::policies::ApplyRequest {
+        serde_json::from_value(json!({ "items": items, "operation_id": op, "reason": "Review", "approval_token": tok })).unwrap()
+    };
+    let opid = op();
+    let asked = e.core.pricing_apply(&mgr, req(&opid, None)).unwrap_err();
+    assert_eq!(asked.code, ErrorCode::ApprovalRequired);
+    assert_eq!(prices(&e), before, "nothing applied");
+    let binding = asked.details.as_ref().unwrap()["binding"].as_str().unwrap().to_string();
+    let appr = e.core.approve(&mgr, &e.owner_id, OWNER_PIN, "pricing.policy", "x", Some(&binding)).unwrap();
+    let tok = appr["approval_token"].as_str().unwrap().to_string();
+    let r = e.core.pricing_apply(&mgr, req(&opid, Some(tok))).unwrap();
+    assert_eq!(r["applied"], 2);
+    assert_eq!(e.core.product_get(t, &a).unwrap().row.price_minor, Some(950));
+    assert_eq!(e.core.product_get(t, &b).unwrap().row.price_minor, Some(700));
+    // Idempotent: the same operation returns the same result, nothing twice.
+    let again = e.core.pricing_apply(&mgr, req(&opid, None)).unwrap();
+    assert_eq!(again["batch_id"], r["batch_id"]);
+    let n: i64 = one(&e, "SELECT COUNT(*) FROM product_prices WHERE batch_id IS NOT NULL");
+    assert_eq!(n, 2, "price history: only the applied changes");
+    let (approved, count): (Option<String>, i64) = e
+        .core
+        .db
+        .read(|c| Ok(c.query_row("SELECT approved_by, item_count FROM price_change_batches", [], |r| Ok((r.get(0)?, r.get(1)?)))?))
+        .unwrap();
+    assert_eq!((approved.as_deref(), count), (Some(e.owner_id.as_str()), 2));
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM audit_logs WHERE event_type='pricing.applied'"), 1);
+    // Unchanged prices are skipped (no history row).
+    let r = e
+        .core
+        .pricing_apply(
+            t,
+            serde_json::from_value(json!({ "items": [{ "product_id": a, "amount_minor": 950 }], "operation_id": op() })).unwrap(),
+        )
+        .unwrap();
+    assert_eq!((r["applied"].as_i64(), r["skipped_unchanged"].as_i64()), (Some(0), Some(1)));
+    // Atomic: one bad item (archived product) and nothing is applied.
+    e.core.product_set_active(t, &b, false).unwrap();
+    let before = prices(&e);
+    let bad =
+        json!({ "items": [{ "product_id": a, "amount_minor": 990 }, { "product_id": b, "amount_minor": 990 }], "operation_id": op() });
+    assert!(e.core.pricing_apply(t, serde_json::from_value(bad).unwrap()).is_err());
+    assert_eq!(prices(&e), before);
+    // Cashiers cannot apply prices.
+    let (_, cashier) = e.user("Cash", "role_cashier", "5931");
+    let c = json!({ "items": [{ "product_id": a, "amount_minor": 999 }], "operation_id": op() });
+    assert_eq!(e.core.pricing_apply(&cashier, serde_json::from_value(c).unwrap()).unwrap_err().code, ErrorCode::Forbidden);
+}
+
+#[test]
+fn the_assistant_cannot_price_below_a_minimum_margin() {
+    let e = env();
+    let a = e.product("Coffee", "9400030", 2_000, 1_000, 1_000);
+    policy(&e, json!({ "name": "Min 25%", "scope": "global", "min_margin_bp": 2_500 }));
+    // Floor: 1.000 × 1.10 ÷ 0.75 = 1.4667 → 1.467
+    let err = e.core.ai_margin_guard(&[(a.clone(), 1_400)]).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Validation);
+    assert!(err.message.contains("minimum margin"), "{}", err.message);
+    assert!(e.core.ai_margin_guard(&[(a, 1_500)]).is_ok());
+}

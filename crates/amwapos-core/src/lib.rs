@@ -43,6 +43,7 @@ pub mod ocrflow;
 pub mod orders;
 pub mod payables;
 pub mod pdf;
+pub mod policies;
 pub mod pos;
 pub mod pricing;
 pub mod printing;

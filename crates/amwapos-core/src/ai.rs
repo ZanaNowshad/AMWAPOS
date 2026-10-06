@@ -1742,6 +1742,7 @@ impl AppCore {
                 let p = self.product_get(token, &s_arg(input, "product_id")?)?;
                 let new = parse_decimal(&s_arg(input, "new_price")?, digits)?;
                 validate::money_non_negative(new, "Price")?;
+                self.ai_margin_guard(&[(p.row.product_id.clone(), new)])?;
                 let (risk, reasons) = rate_price_change(p.row.price_minor, new, p.row.cost_minor);
                 (
                     "price_change",
@@ -2044,6 +2045,8 @@ impl AppCore {
                         return Err(AppError::conflict("The price changed after this proposal was made. Ask again for a fresh proposal."));
                     }
                     let new = p.params["new_price_minor"].as_i64().unwrap_or(0);
+                    // A policy may have changed since the proposal: checked again.
+                    self.ai_margin_guard(&[(pid.clone(), new)])?;
                     let reason = format!("AI proposal {}: {}", p.proposal_number, p.params["reason"].as_str().unwrap_or(""));
                     self.product_price_update(token, &pid, new, Some(reason.chars().take(200).collect()), None)?;
                     Ok(json!({ "product_id": pid, "previous_price_minor": p.preview["old_price_minor"], "new_price_minor": new }))
@@ -2545,6 +2548,15 @@ impl AppCore {
                 )
             }
             Kind::Propose => {
+                if spec.cmd == "products.bulk_price" {
+                    let items: Vec<(String, i64)> = input["changes"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter().filter_map(|c| Some((c["product_id"].as_str()?.to_string(), c["amount_minor"].as_i64()?))).collect()
+                        })
+                        .unwrap_or_default();
+                    self.ai_margin_guard(&items)?;
+                }
                 if let Some(k) = crate::ai_tools::forbidden_key_in(spec.cmd, input) {
                     return Err(AppError::forbidden(&format!("ai.{k}")).with_details(
                         json!({ "kind": "ai_forbidden_field", "field": k, "message": format!("Only a person can set {k}.") }),
@@ -2553,6 +2565,26 @@ impl AppCore {
                 self.ai_propose_command(s, token, cid, spec, input)
             }
         }
+    }
+
+    /// The AI never proposes a price below a pricing policy's minimum margin:
+    /// only a person can decide that (with `pricing.policy` or an approval).
+    pub fn ai_margin_guard(&self, items: &[(String, i64)]) -> AppResult<()> {
+        let branch = self.require_device()?.branch_id;
+        self.db.read(|c| {
+            for (pid, price) in items {
+                if let Some((floor, min, policy)) = crate::policies::floor_for(c, pid, &branch, "retail")? {
+                    if *price < floor {
+                        return Err(AppError::validation(format!(
+                            "No proposal recorded: this price is below the minimum margin of {}% set by the pricing policy \"{policy}\". Only a person can price below a minimum margin.",
+                            minor_to_pct(min)
+                        ))
+                        .with_details(json!({ "kind": "below_min_margin", "product_id": pid, "floor_price_minor": floor })));
+                    }
+                }
+            }
+            Ok(())
+        })
     }
 
     /// Sanitize, cap and envelope a read result (also used for runtime reads).

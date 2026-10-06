@@ -106,6 +106,18 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "branch_id")?,
             opt(&args, "reason")?,
         )),
+        "pricing.policies" => out(core.pricing_policies_list(tk()?)),
+        "pricing.policy_save" => out(core.pricing_policy_save(tk()?, req(&args, "policy")?)),
+        "pricing.review" => out(core.pricing_review(tk()?, opt(&args, "group")?, opt(&args, "limit")?, opt(&args, "offset")?)),
+        "pricing.decide" => out(core.pricing_decide(
+            tk()?,
+            &req::<String>(&args, "product_id")?,
+            &opt::<String>(&args, "price_type")?.unwrap_or_else(|| "retail".into()),
+            opt(&args, "decision")?,
+            opt(&args, "until")?,
+        )),
+        "pricing.apply_preview" => out(core.pricing_apply_preview(tk()?, req(&args, "items")?)),
+        "pricing.apply" => out(core.pricing_apply(tk()?, all(&args)?)),
         "scale_rules.list" => out(core.scale_rules_list(tk()?)),
         "duplicates.list" => out(core.duplicates_list(tk()?, opt::<bool>(&args, "include_later")?.unwrap_or(false), opt(&args, "limit")?)),
         "duplicates.decide" => out(core.duplicate_decide(

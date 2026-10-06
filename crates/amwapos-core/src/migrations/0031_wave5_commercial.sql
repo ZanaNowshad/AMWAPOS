@@ -177,6 +177,8 @@ CREATE TABLE pricing_policies (
   rounding_step_minor INTEGER NOT NULL DEFAULT 1 CHECK (rounding_step_minor IN (1,5,10,25,50,100,250,500,1000)),
   ending_minor        INTEGER CHECK (ending_minor IS NULL OR ending_minor BETWEEN 0 AND 999),
   priority            INTEGER NOT NULL DEFAULT 0,
+  -- The cost a policy works from: the average cost, or the last cost paid.
+  cost_basis          TEXT NOT NULL DEFAULT 'average' CHECK (cost_basis IN ('average','last')),
   active              INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1)),
   created_by          TEXT NOT NULL,
   created_at          TEXT NOT NULL,
