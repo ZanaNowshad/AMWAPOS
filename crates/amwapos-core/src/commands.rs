@@ -106,6 +106,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             opt(&args, "branch_id")?,
             opt(&args, "reason")?,
         )),
+        "commercial.summary" => out(core.commercial_summary(tk()?)),
         "pricing.policies" => out(core.pricing_policies_list(tk()?)),
         "pricing.policy_save" => out(core.pricing_policy_save(tk()?, req(&args, "policy")?)),
         "pricing.review" => out(core.pricing_review(tk()?, opt(&args, "group")?, opt(&args, "limit")?, opt(&args, "offset")?)),

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Minus, Percent, Plus, ScanBarcode, Tag, Trash2, Hash, Star, UserRound } from "lucide-react";
-import type { Cart } from "../../api/types";
+import type { Cart, SaleChannel } from "../../api/types";
 import { formatMoney, formatQty, formatPercent } from "../../lib/money";
 import { Button } from "../../components/ui";
 import { ProductImage } from "../../components/ProductImage";
@@ -19,6 +19,7 @@ export function CartPanel({
   canPriceOverride,
   onRedeem,
   onCustomer,
+  onChannel,
 }: {
   cart: Cart;
   selectedLine: string | null;
@@ -33,6 +34,8 @@ export function CartPanel({
   /** Loyalty: open the redeem dialog (only when loyalty is on and a customer is set). */
   onRedeem?: () => void;
   onCustomer?: () => void;
+  /** Where the sale comes from (decides which prices apply). */
+  onChannel?: (c: SaleChannel) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -52,6 +55,21 @@ export function CartPanel({
           </button>
         ) : null}
         <span className="grow" />
+        {onChannel && !cart.order ? (
+          <select
+            className="input channel-select"
+            aria-label={t("Sale channel")}
+            data-testid="sale-channel"
+            value={cart.channel ?? "pos"}
+            onChange={(e) => onChannel(e.target.value as SaleChannel)}
+          >
+            <option value="pos">{t("Till")}</option>
+            <option value="phone">{t("Phone order")}</option>
+            <option value="whatsapp">{t("WhatsApp")}</option>
+            <option value="web">{t("Web")}</option>
+            <option value="other">{t("Other")}</option>
+          </select>
+        ) : null}
         <span className="line-count" data-testid="line-count">
           {t(
             cart.lines.length === 1 ? "{0} line · {1} items" : "{0} lines · {1} items",
@@ -98,6 +116,16 @@ export function CartPanel({
                       </span>
                     ) : null}
                     {l.price_overridden ? <span className="chip warning">{t("Price changed")}</span> : null}
+                    {l.using_retail ? (
+                      <span className="chip" data-testid="using-retail">
+                        {t("Using retail price")}
+                      </span>
+                    ) : null}
+                    {l.scale ? (
+                      <span className="chip brand" data-testid="scale-line">
+                        {l.scale.kind === "weight" ? t("Scale label: weight") : t("Scale label: price")}
+                      </span>
+                    ) : null}
                     {l.discount_minor > 0 ? (
                       <span className="chip brand money">
                         −{formatMoney(l.discount_minor)}

@@ -1,3 +1,4 @@
+import { CommercialCards } from "./commercial";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ChevronRight, CircleAlert, RefreshCw } from "lucide-react";
 import { api } from "../../api";
@@ -74,6 +75,7 @@ export function Dashboard() {
           </Button>
         }
       />
+      <CommercialCards />
       <div className="kpis">
         {cards.map((c) => (
           <div key={c.label} className="card kpi">

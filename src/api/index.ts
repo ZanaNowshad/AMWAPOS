@@ -65,6 +65,7 @@ export const api = {
       call<void>("pos.held_delete", { cart_id, approval_token }),
     cancel: (approval_token?: string | null) => call<T.Cart>("pos.cancel", { approval_token }),
     loyaltyRedeem: (points: number) => call<T.Cart>("pos.loyalty_redeem", { points }),
+    setChannel: (channel: T.SaleChannel) => call<T.Cart>("pos.set_channel", { channel }),
     finalize: (
       a: {
         cart_id: string;
@@ -298,8 +299,23 @@ export const api = {
         barcodes: string[];
         opening_stock_milli?: number | null;
         image_b64?: string | null;
+        plu?: string | null;
       },
     ) => call<T.ProductDetail>("products.create", a),
+    setPlu: (product_id: string, plu: string | null) => call<T.ProductDetail>("products.set_plu", { product_id, plu }),
+    channelPrices: (product_id: string) => call<T.ChannelPriceRow[]>("products.channel_prices", { product_id }),
+    channelPriceSet: (product_id: string, price_type: string, amount_minor: number | null, reason?: string | null) =>
+      call<T.ChannelPriceRow[]>("products.channel_price_set", { product_id, price_type, amount_minor, reason }),
+    mergePreview: (source_product_id: string, target_product_id: string) =>
+      call<T.MergePreview>("products.merge_preview", { source_product_id, target_product_id }),
+    merge: (a: {
+      source_product_id: string;
+      target_product_id: string;
+      choices: T.MergeChoices;
+      preview_hash: string;
+      operation_id: string;
+    }) => call<{ merge_id: string }>("products.merge", a),
+    merges: (product_id?: string | null) => call<Record<string, unknown>[]>("products.merges", { product_id }),
     /** Stored images by hash, as data URLs (unknown hashes are left out). */
     images: (hashes: string[]) => call<Record<string, string>>("products.images", { hashes }),
     imageState: (product_id: string) => call<T.ProductImageState>("products.image_state", { product_id }),
@@ -332,6 +348,8 @@ export const api = {
       call<T.ProductDetail>("barcodes.add", { product_id, barcode, make_primary }),
     remove: (barcode_id: string) => call<T.ProductDetail>("barcodes.remove", { barcode_id }),
     setPrimary: (barcode_id: string) => call<T.ProductDetail>("barcodes.set_primary", { barcode_id }),
+    setKind: (barcode_id: string, kind: T.BarcodeKind | null) =>
+      call<T.ProductDetail>("barcodes.set_kind", { barcode_id, kind }),
     unknown: (status?: string) => call<T.UnknownBarcodeRow[]>("barcodes.unknown_list", { status }),
     dismiss: (barcode: string) => call<void>("barcodes.unknown_dismiss", { barcode }),
     reopen: (barcode: string) => call<void>("barcodes.unknown_reopen", { barcode }),
@@ -340,6 +358,39 @@ export const api = {
         product_id,
         barcodes,
       }),
+  },
+  scaleRules: {
+    list: () => call<T.ScaleRule[]>("scale_rules.list"),
+    save: (rule: Partial<T.ScaleRule>) => call<T.ScaleRule>("scale_rules.save", { rule }),
+    test: (code: string) => call<T.ScaleTest>("scale_rules.test", { code }),
+  },
+  duplicates: {
+    list: (include_later = false) =>
+      call<{ pairs: T.DupPair[]; later_count: number }>("duplicates.list", { include_later }),
+    decide: (product_a: string, product_b: string, decision: "not_duplicates" | "later" | null) =>
+      call<void>("duplicates.decide", { product_a, product_b, decision }),
+  },
+  pricing: {
+    policies: () => call<T.PricingPolicy[]>("pricing.policies"),
+    savePolicy: (policy: Partial<T.PricingPolicy>) => call<T.PricingPolicy>("pricing.policy_save", { policy }),
+    review: (group?: string | null, limit = 200, offset = 0) =>
+      call<T.PricingReview>("pricing.review", { group, limit, offset }),
+    decide: (
+      product_id: string,
+      price_type: string,
+      decision: "dismissed" | "postponed" | null,
+      until?: string | null,
+    ) => call<void>("pricing.decide", { product_id, price_type, decision, until }),
+    applyPreview: (items: { product_id: string; price_type: string; amount_minor: number }[]) =>
+      call<T.PricingApplyPreview>("pricing.apply_preview", { items }),
+    apply: (
+      a: {
+        items: { product_id: string; price_type: string; amount_minor: number }[];
+        reason?: string | null;
+        operation_id: string;
+      } & Approval,
+    ) => call<{ batch_id: string; applied: number; skipped_unchanged: number }>("pricing.apply", a),
+    summary: () => call<T.CommercialSummary>("commercial.summary"),
   },
   categories: {
     list: (include_inactive = false) => call<T.CategoryRow[]>("categories.list", { include_inactive }),

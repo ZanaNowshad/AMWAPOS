@@ -253,6 +253,8 @@ pub const TOOLS: &[ToolSpec] = &[
     read("product_merges", "products.merges", &["products.manage"], "product_id:s", "Products merged so far: which into which, by whom, when."),
     read("channel_prices", "products.channel_prices", CATALOG, "product_id:s!",
         "A product's price per sales channel (WhatsApp, phone, web) and which channels use the retail price because none is set."),
+    read("commercial_summary", "commercial.summary", &["products.manage", "prices.manage"], "",
+        "Counts of catalogue and pricing work waiting: likely duplicates, prices below minimum margin, recommendations, cost changes, channel prices missing."),
     read("pricing_policies", "pricing.policies", PRICES, "", "Pricing policies: scope, markup or target margin, minimum margin, rounding, preferred ending, priority, cost basis."),
     read("pricing_review", "pricing.review", PRICES, "group:s,limit:i,offset:i",
         "Products needing price attention: below minimum margin, cost changed, no policy, channel price missing, recommendation available. Recommendations only; nothing changes until a person applies them."),

@@ -95,6 +95,10 @@ export interface PosSettings {
   return_to_scan_seconds: number;
   scan_sound: boolean;
   duplicate_scan_window_ms: number;
+  /** Largest weight a scale label may carry (thousandths of a unit). */
+  scale_max_weight_milli?: number;
+  /** Largest price a price-embedded scale label may carry (fils). */
+  scale_max_price_minor?: number;
 }
 
 export interface FeatureFlags {
@@ -171,6 +175,12 @@ export interface CartLine {
   stock_milli: number | null;
   /** Set when stock is tracked; a hint shows when stock is at or below it. */
   reorder_point_milli?: number | null;
+  /** The price list that priced the line (retail or a channel's). */
+  price_type?: string | null;
+  /** The sale's channel has its own prices but this product has none. */
+  using_retail?: boolean;
+  /** What a scale label said. */
+  scale?: { rule_id: string; kind: "weight" | "price"; value: number } | null;
 }
 
 /** Bahrain address parts; `address` is composed from them when given. */
@@ -180,6 +190,10 @@ export interface AddressParts {
   road?: string | null;
   block?: string | null;
   landmark?: string | null;
+  /** capital | muharraq | northern | southern (optional). */
+  governorate?: string | null;
+  /** How to get there. */
+  directions?: string | null;
 }
 
 export interface CustomerRef {
@@ -214,7 +228,11 @@ export interface Cart {
     address: string | null;
     phone: string | null;
   } | null;
+  /** Where the sale comes from: pos | whatsapp | phone | web | other. */
+  channel?: SaleChannel | null;
 }
+
+export type SaleChannel = "pos" | "whatsapp" | "phone" | "web" | "other";
 
 /** What happens to the goods after PAY. */
 export interface Fulfilment {
@@ -503,6 +521,8 @@ export interface SaleDetail {
   paid_minor: number;
   change_minor: number;
   cost_total_minor: number | null;
+  /** Where the sale came from; null: not recorded (older sales). */
+  channel?: SaleChannel | null;
   items: SaleItem[];
   payments: PaymentView[];
   refunds: { refund_id: string; refund_receipt_number: string; total_minor: number; created_at: string }[];
@@ -687,10 +707,18 @@ export interface BarcodeRow {
   is_primary: boolean;
   source: string;
   created_at: string;
+  /** Chosen by a person; null: not recorded. */
+  kind?: BarcodeKind | null;
+  /** What the digits look like (a suggestion). */
+  suggested_kind?: BarcodeKind | null;
 }
+
+export type BarcodeKind = "ean13" | "ean8" | "upc_a" | "upc_e" | "code128" | "internal" | "supplier";
 
 export interface PriceRow {
   price_id: string;
+  price_type?: string;
+  branch_id?: string | null;
   amount_minor: number;
   effective_from: string;
   effective_to: string | null;
@@ -719,6 +747,9 @@ export interface ProductDetail extends ProductRow {
   cost_history: CostRow[] | null;
   avg_cost_minor: number | null;
   last_cost_minor: number | null;
+  plu?: string | null;
+  /** Set when this product was merged into another. */
+  merged_into?: { product_id: string; name: string | null; merged_at: string | null } | null;
 }
 
 export interface ProductInput {
@@ -3301,4 +3332,208 @@ export interface WasteSummary {
   pct_of_sales_bp: number | null;
   pct_of_purchases_bp: number | null;
   definitions: string[];
+}
+
+// ---------------------------------------------------------------- Wave 5
+
+export interface ScaleRule {
+  rule_id: string;
+  name: string;
+  prefix: string;
+  length: number;
+  item_start: number;
+  item_length: number;
+  value_kind: "weight" | "price";
+  value_start: number;
+  value_length: number;
+  decimals: number;
+  check_digit: "none" | "ean";
+  active: boolean;
+  priority: number;
+  version: number;
+  updated_at?: string | null;
+}
+
+export interface ScaleTest {
+  outcome: "barcode" | "plu" | "scale" | "ambiguous" | "unknown";
+  message: string;
+  product_id: string | null;
+  product_name: string | null;
+  read: {
+    rule_id: string;
+    rule_name: string;
+    plu: string;
+    value_kind: string;
+    raw_value: number;
+    value_milli: number;
+  } | null;
+  rules: string[];
+}
+
+export interface DupProduct {
+  product_id: string;
+  name: string;
+  sku: string;
+  price_minor: number | null;
+  barcodes: string[];
+  category_id: string | null;
+  unit: string;
+}
+
+export interface DupEvidence {
+  kind: string;
+  detail: string;
+  points: number;
+}
+
+export interface DupPair {
+  a: DupProduct;
+  b: DupProduct;
+  score: number;
+  evidence: DupEvidence[];
+  decision: string | null;
+}
+
+export interface MergePreview {
+  source: {
+    product_id: string;
+    name: string;
+    sku: string;
+    plu: string | null;
+    price_minor: number | null;
+    unit: string;
+  };
+  target: {
+    product_id: string;
+    name: string;
+    sku: string;
+    plu: string | null;
+    price_minor: number | null;
+    unit: string;
+  };
+  blockers: { kind: string; label: string; count: number; refs: string[] }[];
+  issues: string[];
+  moves: {
+    stock: {
+      branch_id: string;
+      branch_name: string | null;
+      source_milli: number;
+      target_milli: number;
+      lots: { lot_id: string; lot_number: string; qty_milli: number; expires_on: string | null }[];
+    }[];
+    barcodes: string[];
+    aliases: number;
+    supplier_maps: number;
+    supplier_terms: {
+      supplier_id: string;
+      supplier_name: string;
+      source: Record<string, unknown>;
+      target: Record<string, unknown> | null;
+    }[];
+    plu_moves: boolean;
+  };
+  not_carried: { channel_prices: number };
+  history: { sale_lines: number; refund_lines: number; movements: number; purchase_lines: number; lots: number };
+  conflicts: {
+    price: { source: number | null; target: number | null } | null;
+    plu: { source: string; target: string } | null;
+    supplier_terms: { supplier_id: string; supplier_name: string }[];
+  };
+  preview_hash: string;
+  can_merge: boolean;
+}
+
+export interface MergeChoices {
+  price?: "target" | "source" | null;
+  plu?: "target" | "source" | null;
+  supplier_terms?: Record<string, "target" | "source">;
+}
+
+export interface ChannelPriceRow {
+  price_type: string;
+  branch_id: string | null;
+  own_price_minor: number | null;
+  effective_price_minor: number | null;
+  using_retail: boolean;
+}
+
+export interface PricingPolicy {
+  policy_id: string;
+  name: string;
+  scope: "global" | "category" | "supplier" | "branch" | "channel";
+  scope_id: string | null;
+  markup_bp: number | null;
+  target_margin_bp: number | null;
+  min_margin_bp: number | null;
+  rounding_step_minor: number;
+  ending_minor: number | null;
+  priority: number;
+  cost_basis: "average" | "last";
+  active: boolean;
+  version: number;
+  updated_at?: string | null;
+}
+
+export type PricingGroup =
+  "below_min_margin" | "cost_changed" | "no_policy" | "channel_price_missing" | "recommendation";
+
+export interface PricingReviewRow {
+  product_id: string;
+  name: string;
+  sku: string;
+  price_type: string;
+  current_minor: number | null;
+  recommended_minor: number | null;
+  cost_minor: number;
+  cost_basis: string;
+  margin_bp: number | null;
+  recommended_margin_bp: number | null;
+  floor_bp: number | null;
+  floor_price_minor: number | null;
+  policy_id: string | null;
+  policy_name: string | null;
+  ambiguous_with: string[];
+  groups: PricingGroup[];
+  tax_rate_bp: number;
+  tax_inclusive: boolean;
+}
+
+export interface PricingReview {
+  counts: Record<PricingGroup, number>;
+  total: number;
+  rows: PricingReviewRow[];
+  ambiguous: { policy: string | null; tied_with: string[] }[];
+  active_policies: number;
+}
+
+export interface PricingApplyRow {
+  product_id: string;
+  name: string;
+  price_type: string;
+  old_minor: number | null;
+  new_minor: number;
+  unchanged: boolean;
+  cost_minor: number;
+  old_margin_bp: number | null;
+  new_margin_bp: number | null;
+  floor_bp: number | null;
+  floor_price_minor: number | null;
+  below_min_margin: boolean;
+}
+
+export interface PricingApplyPreview {
+  rows: PricingApplyRow[];
+  changes: number;
+  below_min_margin: number;
+  needs_approval: boolean;
+}
+
+export interface CommercialSummary {
+  likely_duplicates?: number;
+  scale_rules?: number;
+  below_min_margin?: number;
+  recommendations?: number;
+  cost_changed?: number;
+  channel_price_missing?: number;
+  active_policies?: number;
 }

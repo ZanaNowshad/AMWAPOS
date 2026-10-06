@@ -1,7 +1,7 @@
 // Bahrain address entry: Flat / Building / Road / Block in one row, then a
-// landmark line. With no parts typed, the line is a plain free-text address
+// landmark line; governorate and directions behind "More details". With no parts typed, the line is a plain free-text address
 // (older addresses keep working). The block fills the area.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import type { AddressParts } from "../api/types";
 import { t } from "../i18n";
@@ -14,9 +14,39 @@ export interface AddrValue {
   /** Landmark when parts are typed; otherwise the whole free-text address. */
   address: string;
   area: string;
+  /** capital | muharraq | northern | southern, or "" (optional). */
+  governorate?: string;
+  /** How to get there (optional). */
+  directions?: string;
 }
 
-export const emptyAddr: AddrValue = { flat: "", building: "", road: "", block: "", address: "", area: "" };
+export const emptyAddr: AddrValue = {
+  flat: "",
+  building: "",
+  road: "",
+  block: "",
+  address: "",
+  area: "",
+  governorate: "",
+  directions: "",
+};
+
+export const GOVERNORATES = ["capital", "muharraq", "northern", "southern"] as const;
+
+export function governorateLabel(g: string | null | undefined): string {
+  switch (g) {
+    case "capital":
+      return t("Capital Governorate");
+    case "muharraq":
+      return t("Muharraq Governorate");
+    case "northern":
+      return t("Northern Governorate");
+    case "southern":
+      return t("Southern Governorate");
+    default:
+      return "";
+  }
+}
 
 const structured = (v: Pick<AddrValue, "flat" | "building" | "road" | "block">) =>
   !!(v.flat.trim() || v.building.trim() || v.road.trim() || v.block.trim());
@@ -26,6 +56,7 @@ export function addrFrom(
   src: { address?: string | null; area?: string | null; address_parts?: AddressParts | null } | null | undefined,
 ): AddrValue {
   const p = src?.address_parts;
+  const extra = { governorate: p?.governorate ?? "", directions: p?.directions ?? "" };
   if (p && (p.flat || p.building || p.road || p.block)) {
     return {
       flat: p.flat ?? "",
@@ -34,9 +65,10 @@ export function addrFrom(
       block: p.block ?? "",
       address: p.landmark ?? "",
       area: src?.area ?? "",
+      ...extra,
     };
   }
-  return { ...emptyAddr, address: src?.address ?? "", area: src?.area ?? "" };
+  return { ...emptyAddr, address: src?.address ?? "", area: src?.area ?? "", ...extra };
 }
 
 /** What the backend takes: parts (and landmark) when typed, else the line. */
@@ -45,8 +77,12 @@ export function addrPayload(v: AddrValue): {
   area: string | null;
   address_parts: AddressParts | null;
 } {
-  const o = (s: string) => s.trim() || null;
-  if (!structured(v)) return { address: o(v.address), area: o(v.area), address_parts: null };
+  const o = (s: string | undefined) => (s ?? "").trim() || null;
+  const extra = { governorate: o(v.governorate), directions: o(v.directions) };
+  if (!structured(v)) {
+    const keep = extra.governorate || extra.directions;
+    return { address: o(v.address), area: o(v.area), address_parts: keep ? extra : null };
+  }
   return {
     address: null,
     area: o(v.area),
@@ -56,6 +92,7 @@ export function addrPayload(v: AddrValue): {
       road: o(v.road),
       block: o(v.block),
       landmark: o(v.address),
+      ...extra,
     },
   };
 }
@@ -137,6 +174,9 @@ export function AddressFields({
     </div>
   );
   const problem = addrProblem(value);
+  // Progressive disclosure: governorate and directions only when asked for
+  // (or already filled in).
+  const [more, setMore] = useState(() => !!(value.governorate || value.directions));
   return (
     <div className="addr-fields col gap-8">
       <div className="addr-row">
@@ -156,6 +196,41 @@ export function AddressFields({
           data-testid={idPrefix === "send" ? "send-address" : `${idPrefix}-line`}
         />
       </div>
+      {more ? (
+        <div className="addr-row">
+          <div className="field">
+            <label htmlFor={`${idPrefix}-gov`}>{t("Governorate (optional)")}</label>
+            <select
+              id={`${idPrefix}-gov`}
+              className="input"
+              value={value.governorate ?? ""}
+              onChange={(e) => onChange({ ...value, governorate: e.target.value })}
+            >
+              <option value="">{t("Not set")}</option>
+              {GOVERNORATES.map((g) => (
+                <option key={g} value={g}>
+                  {governorateLabel(g)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field grow">
+            <label htmlFor={`${idPrefix}-dir`}>{t("Directions (optional)")}</label>
+            <input
+              id={`${idPrefix}-dir`}
+              className="input"
+              value={value.directions ?? ""}
+              maxLength={300}
+              onChange={(e) => onChange({ ...value, directions: e.target.value })}
+              placeholder={t("Second gate, ring twice…")}
+            />
+          </div>
+        </div>
+      ) : (
+        <button type="button" className="link hint" onClick={() => setMore(true)}>
+          {t("More details: governorate, directions")}
+        </button>
+      )}
       {problem ? (
         <div className="hint danger-text">{problem}</div>
       ) : parts ? (

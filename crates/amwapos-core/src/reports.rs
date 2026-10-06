@@ -87,6 +87,8 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
     ("expenses", "Expenses", "Financial", "Approved and paid expenses by category"),
     ("receivables", "Customer balances", "Financial", "What customers owe, by how late it is"),
     ("refunds", "Refunds", "Sales", "Refunds with reasons and approvals"),
+    ("channels", "Sales by channel", "Sales", "Sales, basket, refunds and gross margin per sales channel (till, WhatsApp, phone, web)"),
+    ("price_changes", "Price changes", "Financial", "Every applied price change with its list, reason, policy and who made it"),
     ("cash", "Cash & shifts", "Financial", "Shift reconciliation and cash variances"),
     ("inventory", "Stock valuation", "Inventory", "On-hand quantity and value at average cost"),
     ("dead_stock", "Dead stock", "Inventory", "Stocked items with no sales in the period"),
@@ -99,7 +101,7 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
 
 fn permission_for(key: &str) -> &'static str {
     match key {
-        "margin" | "cash" | "payments" => "reports.financial",
+        "margin" | "cash" | "payments" | "price_changes" => "reports.financial",
         "operating_profit" => "reports.profit",
         "expenses" => "expenses.view",
         "receivables" => "reports.financial",
@@ -209,6 +211,8 @@ impl AppCore {
             "payments" => self.rep_payments(c, p),
             "tax" => self.rep_tax(c, p),
             "refunds" => self.rep_refunds(c, p),
+            "channels" => self.rep_channels(c, s, p),
+            "price_changes" => self.rep_price_changes(c, p),
             "operating_profit" => self.rep_operating_profit(c, p),
             "expenses" => self.rep_expenses(c, p),
             "receivables" => self.rep_receivables(c, p),
@@ -707,6 +711,153 @@ impl AppCore {
             series: Some(by_cat.iter().map(|(_, n, _, v)| json!({ "label": n, "value": v })).collect()),
             rows,
             notes: vec![],
+        })
+    }
+
+    /// Sales by where they came from. Sales before Wave 5 have no channel and
+    /// are shown as "Not recorded", never assigned. Refunds count against the
+    /// channel of the sale they refund, on the day they were made. Gross
+    /// margin is sales minus cost of goods only — not a channel profit.
+    fn rep_channels(&self, c: &Connection, s: &Session, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let fin = s.has("reports.financial");
+        let mut st = c.prepare(
+            "WITH sold AS (
+                SELECT COALESCE(channel,'') AS ch, COUNT(*) AS n, SUM(total_minor) AS total, SUM(tax_minor) AS tax, SUM(cost_total_minor) AS cost,
+                       SUM(item_count_milli) AS items
+                FROM sales WHERE completed_at>=?1 AND completed_at<?2 AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch()) GROUP BY ch),
+             ref AS (
+                SELECT COALESCE(s.channel,'') AS ch, COUNT(*) AS n, SUM(rf.total_minor) AS total, SUM(rf.tax_minor) AS tax, SUM(rf.cost_total_minor) AS cost
+                FROM refunds rf JOIN sales s ON s.sale_id=rf.original_sale_id
+                WHERE rf.created_at>=?1 AND rf.created_at<?2 AND (amw_rbranch() IS NULL OR rf.branch_id=amw_rbranch()) GROUP BY ch),
+             chans AS (SELECT ch FROM sold UNION SELECT ch FROM ref)
+             SELECT chans.ch, COALESCE(sold.n,0), COALESCE(sold.total,0), COALESCE(sold.tax,0), COALESCE(sold.cost,0), COALESCE(sold.items,0),
+                    COALESCE(ref.n,0), COALESCE(ref.total,0), COALESCE(ref.tax,0), COALESCE(ref.cost,0)
+             FROM chans LEFT JOIN sold ON sold.ch=chans.ch LEFT JOIN ref ON ref.ch=chans.ch
+             ORDER BY COALESCE(sold.total,0) DESC",
+        )?;
+        let label = |ch: &str| match ch {
+            "pos" => "Till",
+            "whatsapp" => "WhatsApp",
+            "phone" => "Phone",
+            "web" => "Web",
+            "other" => "Other",
+            _ => "Not recorded",
+        };
+        let mut sum = [0i64; 9];
+        let rows: Vec<Value> = st
+            .query_map(params![r.a, r.b], |row| {
+                let ch: String = row.get(0)?;
+                let v: Vec<i64> = (1..10).map(|i| row.get::<_, i64>(i)).collect::<Result<_, _>>()?;
+                Ok((ch, v))
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(|(ch, v)| {
+                for (i, x) in v.iter().enumerate() {
+                    sum[i] += x;
+                }
+                let (n, total, tax, cost, items, rn, rtotal, rtax, rcost) = (v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
+                let net = total - rtotal;
+                let gm = (total - tax - cost) - (rtotal - rtax - rcost);
+                let revenue = (total - tax) - (rtotal - rtax);
+                json!({ "channel": ch, "key": label(&ch), "transactions": n, "items": items, "sales": total, "average": if n > 0 { total / n } else { 0 },
+                    "refunds": rtotal, "refund_count": rn, "net": net, "revenue": revenue,
+                    "gross_margin": if fin { Some(gm) } else { None },
+                    "gross_margin_bp": if fin && revenue > 0 { Some(gm * 10_000 / revenue) } else { None } })
+            })
+            .collect();
+        let mut columns = vec![
+            col("key", "Channel", "text"),
+            col("transactions", "Transactions", "int"),
+            col("items", "Items", "qty"),
+            col("sales", "Sales", "money"),
+            col("average", "Avg basket", "money"),
+            col("refunds", "Refunds", "money"),
+            col("net", "Net sales", "money"),
+        ];
+        if fin {
+            columns.push(col("gross_margin", "Gross margin", "money"));
+            columns.push(col("gross_margin_bp", "Gross margin %", "percent_bp"));
+        }
+        let (n, total) = (sum[0], sum[1]);
+        let series = rows.iter().map(|x| json!({ "label": x["key"], "value": x["net"] })).collect();
+        let mut kpis = vec![
+            kpi("Net sales", total - sum[6], "money", None),
+            kpi("Transactions", n, "int", None),
+            kpi("Average basket", if n > 0 { total / n } else { 0 }, "money", None),
+        ];
+        let unrecorded: i64 = rows.iter().filter(|x| x["channel"] == "").map(|x| x["transactions"].as_i64().unwrap_or(0)).sum();
+        if unrecorded > 0 {
+            kpis.push(kpi("Sales with no channel recorded", unrecorded, "int", None));
+        }
+        Ok(Report {
+            key: "channels".into(),
+            title: "Sales by channel".into(),
+            from: r.from,
+            to: r.to,
+            kpis,
+            columns,
+            totals: Some(json!({ "key": "Total", "transactions": n, "items": sum[4], "sales": total, "average": if n > 0 { total / n } else { 0 },
+                "refunds": sum[6], "net": total - sum[6],
+                "gross_margin": if fin { Some((total - sum[2] - sum[3]) - (sum[6] - sum[7] - sum[8])) } else { None } })),
+            rows,
+            series: Some(series),
+            notes: vec![
+                "Gross margin is sales minus the cost of the goods. It is not a profit per channel: delivery, fees and commissions are not included.".into(),
+                "Sales made before channels were recorded are shown as Not recorded.".into(),
+            ],
+        })
+    }
+
+    /// Applied price changes (the price history), newest first.
+    fn rep_price_changes(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let limit = p.limit.unwrap_or(1000).clamp(1, 20000);
+        let mut st = c.prepare(&format!(
+            "SELECT pp.created_at, pr.name, pr.sku, pp.price_type, pp.branch_id, pp.amount_minor,
+                (SELECT o.amount_minor FROM product_prices o WHERE o.product_id=pp.product_id AND o.price_type=pp.price_type
+                   AND o.branch_id IS pp.branch_id AND o.price_id<>pp.price_id AND o.effective_from<=pp.effective_from
+                 ORDER BY o.effective_from DESC, o.price_id DESC LIMIT 1),
+                pp.reason, u.display_name, pol.name, pp.batch_id
+             FROM product_prices pp JOIN products pr ON pr.product_id=pp.product_id LEFT JOIN users u ON u.user_id=pp.created_by
+             LEFT JOIN pricing_policies pol ON pol.policy_id=pp.policy_id
+             WHERE pp.created_at>=?1 AND pp.created_at<?2 ORDER BY pp.created_at DESC, pp.price_id DESC LIMIT {limit}"
+        ))?;
+        let rows: Vec<Value> = st
+            .query_map(params![r.a, r.b], |x| {
+                let new: i64 = x.get(5)?;
+                let old: Option<i64> = x.get(6)?;
+                Ok(json!({ "at": x.get::<_, String>(0)?, "name": x.get::<_, String>(1)?, "sku": x.get::<_, String>(2)?,
+                    "list": x.get::<_, String>(3)?, "branch_id": x.get::<_, Option<String>>(4)?, "new": new, "old": old,
+                    "change": old.map(|o| new - o), "reason": x.get::<_, Option<String>>(7)?, "by": x.get::<_, Option<String>>(8)?,
+                    "policy": x.get::<_, Option<String>>(9)?, "batch": x.get::<_, Option<String>>(10)? }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let n = rows.len() as i64;
+        let ups = rows.iter().filter(|x| x["change"].as_i64().is_some_and(|d| d > 0)).count() as i64;
+        let downs = rows.iter().filter(|x| x["change"].as_i64().is_some_and(|d| d < 0)).count() as i64;
+        Ok(Report {
+            key: "price_changes".into(),
+            title: "Price changes".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![kpi("Price changes", n, "int", None), kpi("Increases", ups, "int", None), kpi("Decreases", downs, "int", None)],
+            columns: vec![
+                col("at", "When", "datetime"),
+                col("name", "Product", "text"),
+                col("list", "Price list", "text"),
+                col("old", "Old price", "money"),
+                col("new", "New price", "money"),
+                col("change", "Change", "money"),
+                col("reason", "Reason", "text"),
+                col("policy", "Policy", "text"),
+                col("by", "By", "text"),
+            ],
+            totals: None,
+            rows,
+            series: None,
+            notes: vec!["Only applied changes are listed; recommendations that were not applied leave no history.".into()],
         })
     }
 

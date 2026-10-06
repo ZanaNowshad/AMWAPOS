@@ -48,6 +48,7 @@ import { WaCatalogProductLine } from "./waCatalog";
 import { ProductImage } from "../../components/ProductImage";
 import { ProductBatchesCard } from "./stockTruth";
 import { ProductMaxStockCard } from "./procurement";
+import { BarcodeKindSelect, ChannelPricesCard, PluCard, channelLabel } from "./commercial";
 
 export function ProductsPage() {
   const { has } = useSession();
@@ -496,6 +497,18 @@ export function ProductEditorPage() {
       {/* A new product has one form; the other tabs appear once it is saved. */}
       {tabs.length > 1 ? <Tabs tabs={tabs} value={tab} onChange={setTab} /> : null}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+      {detail?.merged_into ? (
+        <Banner
+          tone="info"
+          action={
+            <button className="link" onClick={() => nav(`/admin/products/${detail.merged_into!.product_id}`)}>
+              {t("Open {0}", detail.merged_into.name ?? "")}
+            </button>
+          }
+        >
+          {t("Merged into {0}. Its history stays here; it is no longer sold.", detail.merged_into.name ?? "")}
+        </Banner>
+      ) : null}
       {tab === "general" ? (
         <div className="grid-3">
           <div className="card card-pad">
@@ -700,7 +713,12 @@ export function ProductEditorPage() {
           </div>
         </div>
       ) : null}
-      {tab === "barcodes" && detail ? <BarcodesTab detail={detail} onChanged={setDetail} canEdit={canEdit} /> : null}
+      {tab === "barcodes" && detail ? (
+        <div className="col gap-16">
+          <BarcodesTab detail={detail} onChanged={setDetail} canEdit={canEdit} />
+          <PluCard detail={detail} onChanged={loadDetail} />
+        </div>
+      ) : null}
       {tab === "pricing" && detail ? <PricingTab detail={detail} onChanged={loadDetail} /> : null}
       {tab === "inventory" && detail ? <InventoryTab detail={detail} onChanged={loadDetail} /> : null}
       {tab === "inventory" && detail ? (
@@ -763,6 +781,7 @@ function BarcodesTab({
         <thead>
           <tr>
             <th>{t("Barcode")}</th>
+            <th>{t("Type")}</th>
             <th>{t("Source")}</th>
             <th>{t("Added")}</th>
             <th>{t("Primary")}</th>
@@ -773,6 +792,12 @@ function BarcodesTab({
           {detail.barcodes.map((b) => (
             <tr key={b.barcode_id}>
               <td className="mono">{b.barcode}</td>
+              <td>
+                <BarcodeKindSelect
+                  row={b}
+                  onChanged={async () => onChanged(await api.products.get(detail.product_id))}
+                />
+              </td>
               <td>{codeLabel(b.source)}</td>
               <td>{formatShort(b.created_at)}</td>
               <td>{b.is_primary ? <Chip tone="brand">{t("Primary")}</Chip> : null}</td>
@@ -909,7 +934,15 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
               <tr key={p.price_id}>
                 <td>{formatShort(p.effective_from)}</td>
                 <td>{p.effective_to ? formatShort(p.effective_to) : <Chip tone="success">{t("Current")}</Chip>}</td>
-                <td className="num">{formatMoney(p.amount_minor)}</td>
+                <td className="num">
+                  {formatMoney(p.amount_minor)}
+                  {p.price_type && p.price_type !== "retail" ? (
+                    <>
+                      {" "}
+                      <Chip>{channelLabel(p.price_type)}</Chip>
+                    </>
+                  ) : null}
+                </td>
                 <td>{p.created_by_name ?? "—"}</td>
                 <td>{p.reason ?? "—"}</td>
               </tr>
@@ -917,6 +950,7 @@ function PricingTab({ detail, onChanged }: { detail: ProductDetail; onChanged: (
           </tbody>
         </table>
       </div>
+      <ChannelPricesCard productId={detail.product_id} />
       <BranchPricesCard productId={detail.product_id} />
       {detail.cost_history ? (
         <div className="card card-pad col gap-16">

@@ -36,7 +36,15 @@ import { WaTemplates } from "./automation";
 import { useToast } from "../../components/toast";
 import { isDesktop } from "../../api/transport";
 import { newOperationId } from "../../lib/ids";
-import { formatAmount, formatMoney, formatPercent, parseMoney, parsePercent } from "../../lib/money";
+import {
+  formatAmount,
+  formatMoney,
+  formatPercent,
+  formatQty,
+  parseMoney,
+  parsePercent,
+  parseQty,
+} from "../../lib/money";
 import { formatDateTime, formatShort, relative, todayLocal } from "../../lib/time";
 import { Banner, Button, Checkbox, Chip, Field, Modal, PageHeader, Skeleton, TextInput } from "../../components/ui";
 import { Confirm, DataTable, DateRange, Drawer, Pager, download, useAction, useLoad } from "./common";
@@ -1520,6 +1528,8 @@ const LABELS: Record<string, Record<string, () => string>> = {
     return_to_scan_seconds: () => t("Back to a new sale after (seconds)"),
     scan_sound: () => t("Beep on scans"),
     duplicate_scan_window_ms: () => t("Ignore a double scan within (milliseconds)"),
+    scale_max_weight_milli: () => t("Largest weight on a scale label"),
+    scale_max_price_minor: () => t("Largest price on a scale label"),
   },
   shift: {
     blind_close: () => t("Count the drawer before seeing the expected amount"),
@@ -1610,6 +1620,8 @@ const DESCRIPTIONS: Record<string, Record<string, string>> = {
     return_to_scan_seconds: t("Seconds before the success screen returns to a new sale (0 = wait for the cashier)."),
     scan_sound: t("Play a short tone on scans and errors."),
     duplicate_scan_window_ms: t("Ignore an identical barcode scanned again within this many milliseconds (0 = off)."),
+    scale_max_weight_milli: t("A scale label above this weight is refused at the till, never charged."),
+    scale_max_price_minor: t("A price-embedded scale label above this price is refused at the till, never charged."),
   },
   shift: {
     blind_close: t("Hide the expected drawer amount from cashiers until they have counted."),
@@ -1747,7 +1759,13 @@ function JsonSettings({ k }: { k: string }) {
           }
           if (typeof v === "number") {
             // Money in the store currency, percentages as %, everything else a whole number.
-            const kind = key.endsWith("_minor") ? "money" : key.endsWith("_bp") ? "percent" : "int";
+            const kind = key.endsWith("_minor")
+              ? "money"
+              : key.endsWith("_bp")
+                ? "percent"
+                : key.endsWith("_weight_milli")
+                  ? "qty"
+                  : "int";
             return (
               <NumberSetting
                 key={key}
@@ -1759,14 +1777,18 @@ function JsonSettings({ k }: { k: string }) {
                     ? formatAmount
                     : kind === "percent"
                       ? (x) => formatPercent(x).replace("%", "")
-                      : String
+                      : kind === "qty"
+                        ? formatQty
+                        : String
                 }
                 parse={
                   kind === "money"
                     ? parseMoney
                     : kind === "percent"
                       ? parsePercent
-                      : (x) => (/^\s*\d+\s*$/.test(x) ? Number(x.trim()) : null)
+                      : kind === "qty"
+                        ? parseQty
+                        : (x) => (/^\s*\d+\s*$/.test(x) ? Number(x.trim()) : null)
                 }
                 onChange={(x) => setData({ ...data, [key]: x })}
               />

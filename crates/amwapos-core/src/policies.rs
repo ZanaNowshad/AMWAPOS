@@ -634,6 +634,34 @@ fn apply_preview_rows(c: &Connection, branch_id: &str, items: &[ApplyItem]) -> A
 }
 
 impl AppCore {
+    /// Catalogue and pricing work waiting for a person (dashboard cards,
+    /// loaded separately so the dashboard itself stays fast). Only what the
+    /// user may act on.
+    pub fn commercial_summary(&self, token: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        let mut out = json!({});
+        self.db.read(|c| {
+            if s.has("products.manage") {
+                let dups = crate::merge::find_duplicates(c, false, 1_000)?.len();
+                out["likely_duplicates"] = json!(dups);
+                let rules: i64 = c.query_row("SELECT COUNT(*) FROM scale_barcode_rules WHERE active=1", [], |r| r.get(0))?;
+                out["scale_rules"] = json!(rules);
+            }
+            if s.has("prices.manage") && s.has("products.view_cost") {
+                let rows = review(c, &s.branch_id)?;
+                let n = |g: &str| rows.iter().filter(|r| r.groups.iter().any(|x| x == g)).count();
+                out["below_min_margin"] = json!(n("below_min_margin"));
+                out["recommendations"] = json!(n("recommendation"));
+                out["cost_changed"] = json!(n("cost_changed"));
+                out["channel_price_missing"] = json!(n("channel_price_missing"));
+                let pol: i64 = c.query_row("SELECT COUNT(*) FROM pricing_policies WHERE active=1", [], |r| r.get(0))?;
+                out["active_policies"] = json!(pol);
+            }
+            Ok(())
+        })?;
+        Ok(out)
+    }
+
     pub fn pricing_policies_list(&self, token: &str) -> AppResult<Vec<Policy>> {
         let s = self.session(token)?;
         if !s.has("pricing.policy") && !s.has("prices.manage") {

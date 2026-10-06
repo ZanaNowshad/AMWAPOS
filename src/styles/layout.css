@@ -4350,3 +4350,11 @@ table.diff tr.changed {
   background: var(--danger-soft);
   color: var(--danger);
 }
+
+/* Wave 5: the sale's channel picker in the cart header. */
+.cart-head .channel-select {
+  width: auto;
+  min-height: 32px;
+  padding: 2px 8px;
+  font-size: 13px;
+}

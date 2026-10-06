@@ -56,6 +56,10 @@ import {
   Hourglass,
   Lightbulb,
   Undo2,
+  Scale,
+  Percent,
+  Copy,
+  ScanLine,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
@@ -63,6 +67,7 @@ import { TradingDayPage } from "./tradingDay";
 import { RegistersPage } from "./registers";
 import { CasesPage } from "./cases";
 import { ExpiryPage, StockCoverPage, WastePage } from "./stockTruth";
+import { DuplicatesPage, PricingPoliciesPage, PricingReviewPage, ScaleRulesPage } from "./commercial";
 import { useSession } from "../../state/session";
 import { initials } from "../login/Login";
 import { Logo } from "../../components/Logo";
@@ -177,6 +182,36 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { path: "products", label: t("Products"), icon: Boxes, perm: "products.view", element: ProductsPage },
       { path: "categories", label: t("Categories"), icon: Layers, perm: "products.view", element: CategoriesPage },
       { path: "pricing", label: t("Pricing"), icon: Tags, perm: "prices.manage", element: PricingPage },
+      {
+        path: "pricing-review",
+        label: t("Pricing review"),
+        icon: Scale,
+        perm: "prices.manage",
+        element: PricingReviewPage,
+      },
+      {
+        path: "pricing-policies",
+        label: t("Pricing policies"),
+        icon: Percent,
+        perm: ["pricing.policy", "prices.manage"],
+        element: PricingPoliciesPage,
+        advanced: true,
+      },
+      {
+        path: "duplicates",
+        label: t("Likely duplicates"),
+        icon: Copy,
+        perm: "products.manage",
+        element: DuplicatesPage,
+      },
+      {
+        path: "scale-barcodes",
+        label: t("Scale barcodes"),
+        icon: ScanLine,
+        perm: ["barcode_rules.manage"],
+        element: ScaleRulesPage,
+        advanced: true,
+      },
       {
         path: "unknown-barcodes",
         label: t("Unknown barcodes"),

@@ -815,6 +815,12 @@ export function PosScreen({
               canPriceOverride
               onRedeem={cart.loyalty ? () => setModal({ kind: "redeem" }) : undefined}
               onCustomer={() => setModal({ kind: "customer" })}
+              onChannel={(ch) =>
+                void api.pos
+                  .setChannel(ch)
+                  .then((c) => applyCart(c))
+                  .catch(fail)
+              }
             />
           </section>
         </main>

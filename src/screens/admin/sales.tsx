@@ -1,3 +1,4 @@
+import { channelLabel } from "./commercial";
 import { useState } from "react";
 import { AlertTriangle, FileDown, Printer } from "lucide-react";
 import { api } from "../../api";
@@ -105,6 +106,8 @@ export function SaleDrawer({ saleId, onClose }: { saleId: string; onClose: () =>
                 <dd>{s.device_name}</dd>
                 <dt>{t("Customer")}</dt>
                 <dd>{s.customer_name ? `${s.customer_name} ${s.customer_phone ?? ""}` : "—"}</dd>
+                <dt>{t("Channel")}</dt>
+                <dd data-testid="sale-channel">{channelLabel(s.channel)}</dd>
               </dl>
               <table className="table">
                 <thead>

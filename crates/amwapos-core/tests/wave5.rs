@@ -1079,3 +1079,91 @@ fn the_assistant_cannot_price_below_a_minimum_margin() {
     assert!(err.message.contains("minimum margin"), "{}", err.message);
     assert!(e.core.ai_margin_guard(&[(a, 1_500)]).is_ok());
 }
+
+// ------------------------------------------------------------------ reports and summary
+
+#[test]
+fn channel_report_separates_channels_and_never_invents_one() {
+    let e = env();
+    let t = &e.owner_token;
+    e.open_shift(t, 0);
+    e.product("Bread", "9500001", 1_000, 600, 50_000);
+    // An older sale with no channel (as before Wave 5): written directly.
+    e.core.pos_scan(t, "9500001", None).unwrap();
+    let old = pay(&e, t);
+    e.core
+        .db
+        .write(|c| {
+            c.execute_batch(&format!(
+                "DROP TRIGGER trg_sales_no_update; UPDATE sales SET channel=NULL WHERE sale_id='{}';
+                 CREATE TRIGGER trg_sales_no_update BEFORE UPDATE ON sales BEGIN SELECT RAISE(ABORT, 'sales are immutable'); END;",
+                old.sale_id
+            ))?;
+            Ok(())
+        })
+        .unwrap();
+    e.core.pos_scan(t, "9500001", Some(2_000)).unwrap();
+    pay(&e, t);
+    e.core.pos_set_channel(t, "phone").unwrap();
+    e.core.pos_scan(t, "9500001", Some(3_000)).unwrap();
+    pay(&e, t);
+    let r = e.core.report_run(t, "channels", Default::default()).unwrap();
+    let by = |k: &str| r.rows.iter().find(|x| x["channel"] == k).cloned().unwrap();
+    assert_eq!(by("pos")["sales"], 2_000);
+    assert_eq!(by("phone")["sales"], 3_000);
+    assert_eq!(by("")["key"], "Not recorded");
+    assert_eq!(by("")["sales"], 1_000);
+    assert!(r.notes.iter().any(|n| n.contains("not a profit per channel")));
+    // Gross margin only with financial reports.
+    assert!(by("pos")["gross_margin"].is_i64());
+    let (_, inv) = e.user("Inv", "role_cashier", "5931");
+    assert_eq!(e.core.report_run(&inv, "channels", Default::default()).unwrap_err().code, ErrorCode::Forbidden);
+    // Price changes report lists applied changes only.
+    let pid: String = one(&e, "SELECT product_id FROM products LIMIT 1");
+    e.core.product_price_update(t, &pid, 1_100, Some("Supplier".into()), None).unwrap();
+    let r = e.core.report_run(t, "price_changes", Default::default()).unwrap();
+    let row = r.rows.iter().find(|x| x["new"] == 1_100).unwrap();
+    assert_eq!((row["old"].as_i64(), row["change"].as_i64()), (Some(1_000), Some(100)));
+}
+
+#[test]
+fn commercial_summary_counts_only_what_the_user_may_act_on() {
+    let e = env();
+    let t = &e.owner_token;
+    e.product("Cola 330ml", "9600001", 250, 150, 1_000);
+    e.product("COLA 330 ml", "9600002", 250, 150, 1_000);
+    e.product("Loss leader", "9600003", 100, 200, 1_000);
+    policy(&e, json!({ "name": "Min 10%", "scope": "global", "min_margin_bp": 1_000 }));
+    let s = e.core.commercial_summary(t).unwrap();
+    assert_eq!(s["likely_duplicates"], 1);
+    assert_eq!(s["below_min_margin"], 1);
+    let (_, cashier) = e.user("Cash", "role_cashier", "5931");
+    assert_eq!(e.core.commercial_summary(&cashier).unwrap(), json!({}));
+}
+
+#[test]
+fn the_assistant_cannot_set_wave5_fields_through_older_tools() {
+    use amwapos_core::ai_tools::forbidden_key_in;
+    assert_eq!(forbidden_key_in("products.update", &json!({ "product_id": "x", "plu": "42" })), Some("plu"));
+    assert_eq!(
+        forbidden_key_in("customers.save", &json!({ "customer": { "address_parts": null, "governorate": "capital" } })),
+        Some("governorate")
+    );
+    assert_eq!(forbidden_key_in("orders.save", &json!({ "order": { "channel": "web" } })), Some("channel"));
+    assert_eq!(forbidden_key_in("products.update", &json!({ "product_id": "x", "name": "y" })), None);
+    // Every Wave 5 write has no AI tool.
+    for cmd in [
+        "products.merge",
+        "scale_rules.save",
+        "products.set_plu",
+        "barcodes.set_kind",
+        "pos.set_channel",
+        "products.channel_price_set",
+        "pricing.policy_save",
+        "pricing.apply",
+        "pricing.decide",
+        "duplicates.decide",
+    ] {
+        assert!(amwapos_core::ai_tools::NO_TOOL.iter().any(|(c, _)| *c == cmd), "{cmd}");
+    }
+}
