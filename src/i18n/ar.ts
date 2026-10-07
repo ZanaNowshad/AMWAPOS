@@ -5745,10 +5745,8 @@ export const AR: Record<string, string> = {
   "Per offer: sales it was used in, discount given, revenue and gross margin of the lines it touched":
     "لكل عرض: المبيعات التي استُخدم فيها والخصم الممنوح والإيراد وإجمالي هامش الأسطر التي شملها",
   "Revenue (ex VAT)": "الإيراد (دون الضريبة)",
-  Code: "الرمز",
   Redemptions: "الاستخدامات",
   "Uses left": "الاستخدامات المتبقية",
-  Sold: "المباع",
   "Cost of items": "تكلفة الأصناف",
   "Items taken from stock": "الأصناف المأخوذة من المخزون",
   "Revenue of offer lines": "إيراد أسطر العروض",
@@ -5759,12 +5757,10 @@ export const AR: Record<string, string> = {
   "Only completed sales redeem a coupon; previews and held sales are not counted.":
     "لا تُستخدم القسيمة إلا في المبيعات المكتملة؛ ولا تُحتسب المعاينات والمبيعات المعلّقة.",
   "Offers and bundles to check": "عروض وحزم تحتاج مراجعة",
-  Check: "راجِع",
   "{0}: {1} items would sell below cost": "{0}: {1} صنف سيُباع بأقل من التكلفة",
   "{0} starts soon but covers no products": "{0} يبدأ قريبًا لكنه لا يشمل أي منتج",
   "{0} ends {1}": "{0} ينتهي {1}",
   "{0} starts {1} but is still a draft": "{0} يبدأ {1} لكنه ما زال مسودة",
   "Coupon {0} is used up": "نفدت استخدامات القسيمة {0}",
   "{0} cannot be made from stock (short of {1})": "لا يمكن تجهيز {0} من المخزون (نقص في {1})",
-  Cost: "التكلفة",
 };

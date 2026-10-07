@@ -442,3 +442,17 @@ Benchmark figures move by about ±2 ms between runs here.
   history.
 - Pricing policies against real supplier costs and VAT setups.
 - Arabic text on real till screens and receipts.
+
+## Wave 6: promotions are not prices
+
+Promotions, coupons and bundles are in [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md).
+
+Relationship with this document:
+- An offer changes what a sale pays while it runs. It never writes a price, never changes a
+  channel price and never moves a pricing-policy floor.
+- The resolver above is step 1 of the pipeline; offers start from its result.
+- Policies and margin floors are not applied to offers. The offer editor shows each covered
+  product's offer price and margin and warns about below-cost and negative-margin sales; nothing
+  is rewritten automatically.
+- Price-embedded scale labels never take ordinary offers. Weight labels do.
+- A bundle's price comes from the resolver like any product's.

@@ -982,3 +982,132 @@ fn reports_and_attention_are_truthful() {
     let (_, cashier) = e.user("Sara", "role_cashier", "1357");
     assert_eq!(e.core.promotions_attention(&cashier).unwrap()["items"].as_array().unwrap().len(), 0);
 }
+
+// ------------------------------------------------------------------ failure injection and replay
+
+#[test]
+fn a_failed_commit_redeems_nothing_and_a_replay_redeems_once() {
+    let e = env();
+    let t = &e.owner_token;
+    ready(&e);
+    let (parent, rice, _) = hamper(&e);
+    let tea = e.product("Tea", "600500", 2_000, 1_000, 50_000);
+    let cp = activate(&e, json!({ "name": "Five", "kind": "percent", "percent_bp": 500, "buy_products": [tea], "requires_coupon": true }));
+    coupon(&e, &cp, "FIVE", "limited", Some(1)).unwrap();
+    e.core.pos_add_product(t, &tea, Some(1_000)).unwrap();
+    e.core.pos_add_product(t, &parent, Some(1_000)).unwrap();
+    let cart = e.core.pos_set_coupon(t, Some("FIVE".into())).unwrap();
+    assert_eq!(cart.promotions.coupon.as_ref().unwrap().status, "applied");
+    let req = FinalizeRequest {
+        cart_id: cart.cart_id.clone().unwrap(),
+        operation_id: op(),
+        tenders: vec![TenderInput { method: "cash".into(), amount_minor: cart.totals.total_minor, reference: None }],
+        approval_token: None,
+        expected_total_minor: Some(cart.totals.total_minor),
+        fulfilment: None,
+    };
+    // The commit fails at its last step (writing the payment).
+    e.core
+        .db
+        .write(
+            |c| Ok(c.execute_batch("CREATE TRIGGER inject_fail BEFORE INSERT ON payments BEGIN SELECT RAISE(ABORT, 'disk full'); END;")?),
+        )
+        .unwrap();
+    assert!(e.core.pos_finalize(t, req.clone()).is_err());
+    for table in ["coupon_redemptions", "sale_item_promotions", "sales", "sale_items"] {
+        assert_eq!(one::<i64>(&e, &format!("SELECT COUNT(*) FROM {table}")), 0, "{table} rolled back");
+    }
+    assert_eq!(stock(&e, &rice), 10_000, "no component left stock");
+    assert_eq!(e.core.pos_get_cart(t).unwrap().promotions.coupon.unwrap().status, "applied", "the coupon is still available");
+    e.core.db.write(|c| Ok(c.execute_batch("DROP TRIGGER inject_fail;")?)).unwrap();
+    // The same operation committed, then replayed: one sale, one redemption.
+    let a = e.core.pos_finalize(t, req.clone()).unwrap();
+    let b = e.core.pos_finalize(t, req).unwrap();
+    assert!(b.replayed);
+    assert_eq!(a.sale_id, b.sale_id);
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM coupon_redemptions"), 1);
+    assert_eq!(one::<i64>(&e, "SELECT COUNT(*) FROM sales"), 1);
+    assert_eq!(stock(&e, &rice), 8_000);
+}
+
+#[test]
+fn concurrent_bundle_and_offer_edits_lose_nothing_silently() {
+    let e = env();
+    let t = &e.owner_token;
+    let (parent, rice, dates) = hamper(&e);
+    // Two managers edit the same bundle from version 1: the second is refused.
+    bundle(&e, &parent, &[(&rice, 1_000), (&dates, 1_000)], 1).unwrap();
+    let err = bundle(&e, &parent, &[(&rice, 3_000)], 1).unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict);
+    assert_eq!(e.core.bundles_get(t, &parent).unwrap()["version"], 2);
+    // Two status changes from the same version: the second is refused.
+    let tea = e.product("Tea", "600510", 2_000, 1_000, 50_000);
+    let id = save(&e, json!({ "name": "Tea", "kind": "percent", "percent_bp": 500, "buy_products": [tea] }));
+    let v = version(&e, &id);
+    let mv = |s: &str| {
+        e.core.promotions_set_status(
+            t,
+            serde_json::from_value(json!({ "promotion_id": id, "status": s, "version": v, "operation_id": op() })).unwrap(),
+        )
+    };
+    mv("active").unwrap();
+    assert_eq!(mv("archived").unwrap_err().code, ErrorCode::Conflict);
+}
+
+// ------------------------------------------------------------------ upgrade and permissions
+
+#[test]
+fn upgrading_fabricates_no_offer_coupon_or_bundle() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("amwapos.db");
+    {
+        let c = rusqlite::Connection::open(&path).unwrap();
+        amwapos_core::db::migrate_until(&c, &path, 31).unwrap();
+        c.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             INSERT INTO products(product_id, sku, name, tax_rule_id, created_at, updated_at) VALUES ('p1','S1','Milk','t','x','x');
+             INSERT INTO sales(sale_id, receipt_number, branch_id, device_id, shift_id, cashier_user_id, status, subtotal_minor, discount_minor,
+                 tax_minor, total_minor, paid_minor, change_minor, cost_total_minor, item_count_milli, operation_id, business_date, completed_at, created_at)
+               VALUES ('s1','T01-0000001','br','d','sh','u','completed',1000,100,0,900,900,0,500,1000,'op1','2026-01-01','2026-01-01','2026-01-01');
+             INSERT INTO sale_items(sale_item_id, sale_id, line_no, product_id, product_name_snapshot, unit, qty_milli, original_unit_price_minor,
+                 effective_unit_price_minor, gross_minor, discount_minor, tax_rate_bp, tax_inclusive, tax_minor, line_total_minor, cost_snapshot_minor)
+               VALUES ('i1','s1',1,'p1','Milk','pcs',1000,1000,1000,1000,100,0,1,0,900,500);",
+        )
+        .unwrap();
+    }
+    let core =
+        amwapos_core::service::AppCore::open(dir.path(), std::sync::Arc::new(amwapos_core::service::MemorySecretStore::default())).unwrap();
+    let n = |sql: &str| core.db.read(|c| Ok(c.query_row(sql, [], |r| r.get::<_, i64>(0))?)).unwrap();
+    assert_eq!(
+        n("SELECT (SELECT COUNT(*) FROM promotions) + (SELECT COUNT(*) FROM promotion_targets) + (SELECT COUNT(*) FROM coupons)
+            + (SELECT COUNT(*) FROM coupon_redemptions) + (SELECT COUNT(*) FROM sale_item_promotions) + (SELECT COUNT(*) FROM bundles)
+            + (SELECT COUNT(*) FROM bundle_components)"),
+        0
+    );
+    // The old manual discount stays a manual discount; its offer part is "not recorded".
+    assert_eq!(
+        n("SELECT COUNT(*) FROM sale_items WHERE discount_minor=100 AND promo_discount_minor IS NULL AND bundle_product_id IS NULL"),
+        1
+    );
+    assert_eq!(n("SELECT total_minor FROM sales WHERE sale_id='s1'"), 900);
+}
+
+#[test]
+fn wave6_permissions_are_narrow() {
+    let e = env();
+    let perms = |role: &str| -> Vec<String> {
+        e.core
+            .db
+            .read(|c| {
+                let mut st = c.prepare("SELECT permission_code FROM role_permissions WHERE role_id=?1")?;
+                let v = st.query_map([role], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+                Ok(v)
+            })
+            .unwrap()
+    };
+    for p in ["promotions.manage", "coupons.manage", "bundles.manage"] {
+        assert!(perms("role_owner").iter().any(|x| x == p), "{p}");
+        assert!(perms("role_manager").iter().any(|x| x == p), "{p}");
+        assert!(!perms("role_cashier").iter().any(|x| x == p), "{p}");
+    }
+}

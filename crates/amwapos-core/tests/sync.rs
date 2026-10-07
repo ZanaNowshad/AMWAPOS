@@ -598,3 +598,127 @@ fn scale_rules_plu_and_channel_prices_reach_tills_and_converge() {
     assert_eq!(count(&hub.core, q), 18_750);
     assert_eq!(count(&t1.core, q), 18_750);
 }
+
+#[test]
+fn offers_coupons_and_bundles_reach_tills_work_offline_and_keep_history() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let juice = hub.product("Juice", "6001", 1_000, 600, 50_000);
+    let rice = hub.product("Rice", "6002", 2_000, 1_500, 50_000);
+    let dates = hub.product("Dates", "6003", 1_000, 500, 50_000);
+    let hamper = hub.product("Hamper", "6009", 3_500, 0, 0);
+    let save = |p: serde_json::Value| -> serde_json::Value {
+        hub.core.promotions_save(&ht, serde_json::from_value(serde_json::json!({ "promotion": p, "operation_id": op() })).unwrap()).unwrap()
+    };
+    let on = |d: &serde_json::Value| {
+        hub.core
+            .promotions_set_status(
+                &ht,
+                serde_json::from_value(serde_json::json!({ "promotion_id": d["promotion"]["promotion_id"], "status": "active",
+                    "version": d["promotion"]["version"], "operation_id": op() }))
+                .unwrap(),
+            )
+            .unwrap()
+    };
+    let offer = on(&save(serde_json::json!({ "name": "Juice 10%", "kind": "percent", "target": "items", "percent_bp": 1_000,
+        "buy_products": [juice], "stackable": true })));
+    let cp = on(&save(serde_json::json!({ "name": "Coupon", "kind": "percent", "target": "items", "percent_bp": 500,
+        "buy_products": [juice], "requires_coupon": true, "stackable": true })));
+    let cpid = cp["promotion"]["promotion_id"].as_str().unwrap().to_string();
+    for (code, kind, max) in [("SYNC5", "reusable", None), ("ONE", "limited", Some(1))] {
+        hub.core
+            .coupons_save(
+                &ht,
+                serde_json::from_value(serde_json::json!({ "promotion_id": cpid, "code": code, "kind": kind, "max_redemptions": max,
+                    "operation_id": op() }))
+                .unwrap(),
+            )
+            .unwrap();
+    }
+    hub.core
+        .bundles_save(
+            &ht,
+            serde_json::from_value(serde_json::json!({ "bundle_product_id": hamper, "operation_id": op(),
+                "components": [{ "product_id": rice, "qty_milli": 1_000 }, { "product_id": dates, "qty_milli": 2_000 }] }))
+            .unwrap(),
+        )
+        .unwrap();
+    let t1 = pair(&hub, "Till 2", "T02");
+    sync_once(&hub.core, &t1.core, false);
+    for table in ["promotions", "promotion_targets", "coupons", "bundles", "bundle_components"] {
+        assert_eq!(
+            count(&t1.core, &format!("SELECT COUNT(*) FROM {table}")),
+            count(&hub.core, &format!("SELECT COUNT(*) FROM {table}")),
+            "{table} replicated"
+        );
+    }
+    // Definitions are the hub's: a till cannot change them.
+    let err = t1
+        .core
+        .promotions_save(
+            &t1.token,
+            serde_json::from_value(
+                serde_json::json!({ "promotion": { "name": "x", "kind": "percent", "target": "all", "percent_bp": 100 },
+                "operation_id": op() }),
+            )
+            .unwrap(),
+        )
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::Conflict);
+
+    // Offline: the hub pauses the offer, the till still uses what it last synced.
+    let v = hub.core.promotions_get(&ht, offer["promotion"]["promotion_id"].as_str().unwrap()).unwrap()["promotion"]["version"].clone();
+    hub.core
+        .promotions_set_status(
+            &ht,
+            serde_json::from_value(serde_json::json!({ "promotion_id": offer["promotion"]["promotion_id"], "status": "paused",
+                "version": v, "operation_id": op() }))
+            .unwrap(),
+        )
+        .unwrap();
+    t1.core.shift_open(&t1.token, 0, &op()).unwrap();
+    t1.core.pos_scan(&t1.token, "6001", Some(2_000)).unwrap();
+    // A limited code is never accepted away from the main computer; a reusable one is.
+    let cs = t1.core.pos_set_coupon(&t1.token, Some("one".into())).unwrap().promotions.coupon.unwrap();
+    assert_eq!(cs.status, "needs_main");
+    let cart = t1.core.pos_set_coupon(&t1.token, Some("sync5".into())).unwrap();
+    assert_eq!(cart.promotions.coupon.as_ref().unwrap().status, "applied");
+    // 2.000 − 10% = 1.800; 5% of 1.800 = 0.090.
+    assert_eq!(cart.totals.total_minor, 1_710);
+    let pay = |core: &AppCore, token: &str| {
+        let cart = core.pos_get_cart(token).unwrap();
+        core.pos_finalize(
+            token,
+            FinalizeRequest {
+                cart_id: cart.cart_id.unwrap(),
+                operation_id: op(),
+                tenders: vec![TenderInput { method: "cash".into(), amount_minor: cart.totals.total_minor, reference: None }],
+                approval_token: None,
+                expected_total_minor: Some(cart.totals.total_minor),
+                fulfilment: None,
+            },
+        )
+        .unwrap()
+        .sale_id
+    };
+    let sale = pay(&t1.core, &t1.token);
+    t1.core.pos_scan(&t1.token, "6009", Some(2_000)).unwrap();
+    pay(&t1.core, &t1.token);
+    // The push is committed but its response is lost; the retry must not duplicate.
+    sync_once(&hub.core, &t1.core, true);
+    sync_once(&hub.core, &t1.core, false);
+    sync_once(&hub.core, &t1.core, false);
+    for core in [&hub.core, &t1.core] {
+        assert_eq!(count(core, "SELECT COUNT(*) FROM coupon_redemptions"), 1);
+        assert_eq!(count(core, &format!("SELECT SUM(amount_minor) FROM sale_item_promotions WHERE sale_id='{sale}'")), 290);
+        // Bundle components left stock on every node; the hamper never moved.
+        assert_eq!(stock(core, "6002"), 48_000);
+        assert_eq!(stock(core, "6003"), 46_000);
+        assert_eq!(stock(core, "6009"), 0);
+    }
+    // The pause reached the till: new carts no longer get the offer; the sale keeps it.
+    t1.core.pos_scan(&t1.token, "6001", Some(1_000)).unwrap();
+    assert_eq!(t1.core.pos_get_cart(&t1.token).unwrap().totals.total_minor, 1_000);
+    assert_eq!(count(&hub.core, &format!("SELECT total_minor FROM sales WHERE sale_id='{sale}'")), 1_710);
+}

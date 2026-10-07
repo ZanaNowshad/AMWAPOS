@@ -294,4 +294,138 @@ fn perf_100k_products() {
     assert!(b < Duration::from_millis(150));
     assert!(c < Duration::from_millis(100));
     assert!(d < Duration::from_millis(500));
+
+    // ---------------------------------------------------------------- Wave 6: 1000 live offers
+    let (pids, cats): (Vec<String>, Vec<String>) = e
+        .core
+        .db
+        .read(|c| {
+            let mut st = c.prepare("SELECT product_id FROM products ORDER BY product_id")?;
+            let p = st.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+            let mut st = c.prepare("SELECT category_id FROM categories ORDER BY category_id")?;
+            let k = st.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+            Ok((p, k))
+        })
+        .unwrap();
+    let kinds = ["percent", "amount", "fixed_price", "quantity", "bxgy"];
+    e.core
+        .db
+        .write(|c| {
+            for i in 0..1000usize {
+                let id = format!("perfpromo{i:05}");
+                let (kind, target) = if i < 20 { ("basket", "all") } else { (kinds[i % kinds.len()], "items") };
+                c.execute(
+                    "INSERT INTO promotions(promotion_id, name, status, kind, target, priority, stackable, percent_bp, amount_minor, price_minor,
+                        buy_qty, get_qty, threshold_minor, created_by, created_at, updated_at)
+                     VALUES (?1,?2,'active',?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,'perf','2026-01-01','2026-01-01')",
+                    rusqlite::params![
+                        id, format!("Offer {i}"), kind, target, (i % 7) as i64, (i % 3 == 0) as i64,
+                        if kind == "amount" || (kind == "basket" && i % 2 == 0) { None } else { Some(500 + (i as i64 % 20) * 100) },
+                        if kind == "amount" || (kind == "basket" && i % 2 == 0) { Some(50 + i as i64 % 200) } else { None },
+                        if kind == "fixed_price" || kind == "quantity" { Some(500 + i as i64 % 3000) } else { None },
+                        if kind == "quantity" || kind == "bxgy" { Some(2 + i as i64 % 3) } else { None },
+                        if kind == "bxgy" { Some(1) } else { None },
+                        if kind == "basket" { Some(5_000 + i as i64 * 100) } else { None }
+                    ],
+                )?;
+                if target == "items" {
+                    for k in 0..3 {
+                        let pid = &pids[(i * 97 + k * 31_337) % pids.len()];
+                        c.execute("INSERT OR IGNORE INTO promotion_targets VALUES (?1,'buy','product',?2)", [&id, pid])?;
+                    }
+                    if i % 50 == 0 {
+                        c.execute("INSERT OR IGNORE INTO promotion_targets VALUES (?1,'buy','category',?2)", [&id, &cats[i % cats.len()]])?;
+                    }
+                }
+            }
+            // 200 bundles of 3 items each, on products 0..600.
+            for b in 0..200usize {
+                let parent = &pids[pids.len() - 1 - b];
+                c.execute("UPDATE products SET track_inventory=0 WHERE product_id=?1", [parent])?;
+                c.execute(
+                    "INSERT INTO bundles(bundle_product_id, version, active, created_by, created_at, updated_by, updated_at) VALUES (?1,1,1,'perf','x','perf','x')",
+                    [parent],
+                )?;
+                for k in 0..3 {
+                    c.execute(
+                        "INSERT INTO bundle_components VALUES (?1,1,?2,?3)",
+                        rusqlite::params![parent, pids[b * 3 + k], 1000 * (1 + k as i64)],
+                    )?;
+                }
+            }
+            Ok(())
+        })
+        .unwrap();
+    let _ = e.core.pos_cancel_sale(t, None);
+    // Offer-covered products are scanned too, so the engine has work to do.
+    let covered: Vec<String> = (0..1000usize).map(|i| pids[(i * 97) % pids.len()].clone()).collect();
+    let mut promo_scans = vec![];
+    for i in 0..1000 {
+        if i % 20 == 0 {
+            let _ = e.core.pos_cancel_sale(t, None);
+        }
+        let pid = &covered[rng.next(covered.len() as u64) as usize];
+        let s = Instant::now();
+        e.core.pos_add_product(t, pid, Some(1000 + (i as i64 % 3) * 1000)).unwrap();
+        promo_scans.push(s.elapsed());
+    }
+    let _ = e.core.pos_cancel_sale(t, None);
+    for k in 0..20 {
+        e.core.pos_add_product(t, &covered[k * 13], Some(3000)).unwrap();
+    }
+    let cart = e.core.pos_get_cart(t).unwrap();
+    assert_eq!(cart.lines.len(), 20);
+    let mut promo_muts = vec![];
+    for i in 0..300 {
+        let line = &cart.lines[i % 20];
+        let s = Instant::now();
+        e.core.pos_set_quantity(t, &line.line_id, 1000 + (i as i64 % 4) * 1000, None).unwrap();
+        promo_muts.push(s.elapsed());
+    }
+    let mut promo_commits = vec![];
+    for i in 0..100 {
+        let s0 = if i == 0 { None } else { Some(()) };
+        if s0.is_some() {
+            for k in 0..20 {
+                e.core.pos_add_product(t, &covered[(i * 20 + k) % covered.len()], Some(2000)).unwrap();
+            }
+        }
+        let c = e.core.pos_get_cart(t).unwrap();
+        let s = Instant::now();
+        e.core
+            .pos_finalize(
+                t,
+                FinalizeRequest {
+                    cart_id: c.cart_id.unwrap(),
+                    operation_id: op(),
+                    tenders: vec![TenderInput { method: "cash".into(), amount_minor: c.totals.total_minor, reference: None }],
+                    approval_token: None,
+                    expected_total_minor: Some(c.totals.total_minor),
+                    fulfilment: None,
+                },
+            )
+            .unwrap();
+        promo_commits.push(s.elapsed());
+    }
+    let sip: i64 = e.core.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sale_item_promotions", [], |r| r.get(0))?)).unwrap();
+    let s = Instant::now();
+    let bl = e.core.bundles_list(t).unwrap();
+    let bundles_t = s.elapsed();
+    assert_eq!(bl["rows"].as_array().unwrap().len(), 200);
+    let s = Instant::now();
+    e.core.promotions_attention(t).unwrap();
+    let att_t = s.elapsed();
+    let (ps, pm, pc) = (p95(promo_scans), p95(promo_muts), p95(promo_commits));
+    println!("with 1000 live offers ({sip} offer lines recorded):");
+    println!("P95 add covered item:          {:.2} ms (target 50)", ps.as_secs_f64() * 1e3);
+    println!("P95 20-line cart change:       {:.2} ms (target 100)", pm.as_secs_f64() * 1e3);
+    println!("P95 20-line sale commit:       {:.2} ms (target 500)", pc.as_secs_f64() * 1e3);
+    println!("bundle availability (200):     {:.1} ms", bundles_t.as_secs_f64() * 1e3);
+    println!("offer attention (dashboard):   {:.0} ms", att_t.as_secs_f64() * 1e3);
+    assert!(sip > 0, "offers applied during the benchmark");
+    assert!(ps < Duration::from_millis(50), "add {ps:?}");
+    assert!(pm < Duration::from_millis(100), "cart change {pm:?}");
+    assert!(pc < Duration::from_millis(500), "commit {pc:?}");
+    assert!(att_t < Duration::from_secs(5), "offer attention {att_t:?}");
+    assert!(bundles_t < Duration::from_secs(1), "bundle availability {bundles_t:?}");
 }

@@ -211,6 +211,31 @@ reads paper into drafts; every supplier invoice is reviewed, posted, voided and 
   later". Only the owner can merge, and a merge cannot be undone: finish or cancel open orders,
   counts and sales for the product first.
 
+## Offers, coupons and bundles (Wave 6)
+
+- **Offers** (Catalog → Promotions, owner or manager).
+  1. Create the offer: it starts as a draft.
+  2. Check the products covered, the offer price, the margin warnings and any overlaps.
+  3. Press **Switch on**.
+
+  Reaching the start date does not switch it on: the Dashboard reminds you when a draft is about
+  to start. Pause, End and Archive are on the same screen. Offers are never deleted.
+- **Coupons.** Tick "Needs a coupon code" on an offer, then add codes.
+  - Reusable codes work on every till, even when the main computer is off.
+  - Limited codes are counted on the main computer only. A till without it shows "Needs main
+    computer verification" and the sale goes on at the normal price.
+
+  A coupon is used only when the sale completes.
+- **Bundles** (Catalog → Bundles and hampers).
+  1. Create the bundle as a product (name and price).
+  2. Choose its items and quantities.
+
+  The screen shows how many the stock can make and which item limits it. Changing the items
+  saves a new version; sales keep the version they sold. A bundle is refunded whole.
+- **At the till.** Offers apply automatically and show by name on each line. "Add coupon" is in
+  the sale. Lines with a manual discount, a changed price, or a fixed-price scale label do not
+  take automatic offers.
+
 ## Restore
 
 Admin → Backups → Restore does the following:
@@ -250,6 +275,8 @@ Automated coverage exists for everything marked ✅. The ☐ items need a person
 - ✅ Arabic receipt lines are shaped and rasterized; no `?` reaches the printer; drawer pulses on cash sales only (printing tests).
 - ✅ A hub on another version is reported as "Update needed", not offline (hub tests).
 - ✅ 100k products: P95 scan 0.73 ms, search 23.6 ms, cart 0.78 ms, sale commit 9.9 ms (perf test, release build, Linux sandbox; targets 50 / 150 / 100 / 500 ms).
+- ✅ Offers, coupons and bundles: deterministic pricing in any scan order, coupons redeemed only at commit, limited coupons only on the main computer, bundle stock per component, whole-bundle refunds, offline till then sync (wave6 and sync tests; Playwright wave6 flow).
+- ☐ Offers and a bundle on the store's own catalogue: an offer and a coupon on a real receipt (printed savings lines, Arabic), and a hamper sold and refunded on the till.
 - ☐ Install, upgrade and uninstall on a clean Windows 10 and 11 VM. Data survives uninstall and firewall rules exist.
 - ☐ USB/HID barcode scanner at full speed (13-digit EAN, Code128).
 - ☐ 80 mm ESC/POS printer via network and via the Windows spooler. The cash drawer kicks on cash sales only. A paper-out failure keeps the sale.

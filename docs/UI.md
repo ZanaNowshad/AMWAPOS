@@ -259,3 +259,36 @@ overdue + hub "Update needed" with the admin banner and nav flyout.
 - **Dashboard.** Cards for prices below minimum margin, recommendations, cost changes and likely
   duplicates, each linking to its workflow and loaded after the dashboard.
 - All new strings are in Arabic. The English/Arabic sweep covers the four new pages.
+
+## Wave 6 surfaces
+
+- **Till.**
+  - Each line shows the offers that applied, as chips with the offer name. A fixed-price scale
+    label shows "Fixed-price label: no offers" when an offer would otherwise have matched.
+  - Under the lines, the offers row shows "Savings …" with the offer names, the coupon chip
+    ("CODE: Applied / Invalid / Expired / Not active yet / Already used / Needs main computer
+    verification / Not eligible for this basket"), and **Add coupon**.
+  - The coupon dialog has one field. It re-checks on Apply and explains, and never blocks the
+    sale.
+- **Catalog → Promotions.**
+  - Tabs: All, Running, Scheduled, Draft, Paused, Ended.
+  - The drawer editor has: name (English/Arabic), type, benefit fields for that type, products
+    and categories (and reward items for Buy X get Y), start and end in store time, channels,
+    priority, "Can combine with other offers" and "Needs a coupon code".
+  - A live panel shows products covered, offer price and margin per product (with cost
+    permission), below-cost and negative-margin warnings, and overlapping offers.
+  - Lifecycle buttons: Switch on, Pause, Resume, End, Archive.
+  - A coupon codes card lets you add reusable or limited codes and switch them off.
+- **Catalog → Bundles and hampers.** A list with "Can make now" and "Limited by". The editor shows
+  the items and quantities with stock, price, normal value, saving, margin and version.
+- **Dashboard.** "Offers and bundles to check": below cost, starting soon with no products,
+  drafts about to start, ending soon, coupons used up, bundles that cannot be made. Each opens its
+  screen.
+- **Receipts.**
+  - Offer names under their lines.
+  - Basket offers and "Coupon CODE" in the totals.
+  - "You saved".
+  - A bundle as one line with its items beneath.
+  - No internal ids.
+- All new strings are in Arabic. The English/Arabic sweep covers Promotions and Bundles and
+  hampers.

@@ -158,8 +158,14 @@ transitions are audited.
 - `product_prices.price_type` values `retail|delivery|whatsapp|web` (resolver falls back to `retail`).
 - `pricing_policies(policy_id, scope[global|category|supplier|branch|channel], scope_id, markup_bp?, target_margin_bp?, min_margin_bp?, rounding_step_minor, ending_minor?, priority)`.
 
-### Wave 6–8
-`promotions`, `promotion_rules`, `coupons`, `bundles`/`bundle_components`,
+### Wave 6 (as built; see PROMOTIONS_AND_BUNDLES.md)
+- `promotions` (no stored "active" flag; status + schedule + scope decide), `promotion_targets`
+  (buy/get × product/category); `coupons` (reusable | limited), `coupon_redemptions`
+  (append-only, at commit).
+- `sale_item_promotions` (frozen per sale line), `sale_items.promo_discount_minor`.
+- `bundles` + versioned `bundle_components`; `cart_lines.bundle_version`; `sale_items.bundle_*`.
+
+### Wave 7–8
 `alerts` (refactor of `ai_alerts` into `cases`-backed work items),
 `sync_dead_letters` + `state`, `reason_code`, `resolution`, `device_heartbeats` +
 fields, `devices.credential_version`, optional `jobs`, `documents` library.
@@ -424,3 +430,23 @@ checkpoints, each committed separately:
 
 The sales channel came before channel pricing, as recommended in section I. Promotions, coupons,
 bundles and kits stay in Wave 6.
+
+## Wave 6 delivered: promotions, coupons and bundles (2026-10-07)
+
+Design and rules: [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md). It was delivered in
+seven checkpoints:
+
+1. promotion schema and engine;
+2. quantity, Buy-X-Get-Y, basket, conflicts and stacking;
+3. coupons;
+4. bundles;
+5. till, API and screens;
+6. Arabic, reports, AI and dashboard;
+7. sync, invariants, performance and docs.
+
+Checkpoints 1–4 were pushed as one commit and 5–6 as another (each was verified before the
+push).
+
+The pipeline extends the one Wave 5 pricing path; no second calculator exists. Wave 7 items
+(alert centre, sync reconciliation, terminal health, credential rotation, durable jobs, document
+library, knowledge base) were not started.

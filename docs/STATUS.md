@@ -710,7 +710,9 @@ splitting them further would have left commits that do not build.
   failing; the once-a-minute re-check limit then holds "supported" longer than the test waits.
   It passed 6 of 6 locally and on Windows. Fixed in the test by asking for "check again" after
   switching (honoured at once), keeping every assertion, including the once-a-minute limit.
-- CI on the final head: pending at the time of writing.
+- CI on the final head `ede5f39`: run 37461511681 passed every job (Rust, Windows build + tests +
+  installer, frontend, end-to-end, dependency audit). `main` was fast-forwarded to `ede5f39` on
+  2026-10-07 (recorded here by Wave 6, without a separate commit).
 
 ## Merchant OS Wave 5: retail commercial foundation, 2026-10-06
 
@@ -760,4 +762,67 @@ Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
   failing; the once-a-minute re-check limit then holds "supported" longer than the test waits.
   It passed 6 of 6 locally and on Windows. Fixed in the test by asking for "check again" after
   switching (honoured at once), keeping every assertion, including the once-a-minute limit.
-- CI on the final head: pending at the time of writing.
+- CI on the final head `ede5f39`: run 37461511681 passed every job (Rust, Windows build + tests +
+  installer, frontend, end-to-end, dependency audit). `main` was fast-forwarded to `ede5f39` on
+  2026-10-07 (recorded here by Wave 6, without a separate commit).
+
+## Merchant OS Wave 6: promotions, coupons and bundles, 2026-10-07
+
+Design and rules: [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md).
+Branch `claude/amwapos-merchant-os-wave6`, based on `main` at `ede5f39` (Wave 5, fast-forwarded).
+Three commits: checkpoints 1–4, checkpoints 5–6, and checkpoint 7 with docs.
+
+Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
+- `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` are clean.
+- `cargo test --workspace`: 540 passed, 0 failed, 4 ignored (benchmark and live-network checks).
+  This includes:
+  - `wave6.rs` (24);
+  - the Wave 6 sync test;
+  - engine and pricing property tests (5,000 random baskets: bounds, exact sums, the same result
+    in reversed and rotated order);
+  - failure injection: a commit that fails at its last step redeems nothing, writes no offer
+    rows and moves no stock; the replay redeems once.
+- `tsc`, `eslint`, `prettier --check`, vitest (49) and `vite build` pass.
+- Playwright: 23 of 23, including the Wave 6 flow (draft offer switched on in the editor →
+  offer by name at the till → coupon applied → backend total). The English/Arabic sweep now
+  covers Promotions and Bundles and hampers.
+- 100k-product benchmark (release build), P95:
+  - existing paths: scan 1.55 ms, search 6.82 ms, cart change 0.95 ms, sale commit 11.10 ms
+    (Wave 5: 11.64 ms; a second run while compiling in parallel gave 12.64 ms), scale-label scan
+    1.82 ms, PLU scan 1.78 ms;
+  - with 1,000 live offers and 200 bundles: adding an offer-covered item 3.92 ms, change on a
+    20-line cart 4.80 ms, 20-line sale commit 21.70 ms, availability of 200 bundles 10.8 ms,
+    dashboard attention list 0.91 s.
+- Found by the benchmark and fixed: the dashboard attention list first took 33.5 s with 1,000
+  offers. It had computed full editor insight, including conflicts, for every offer; it now
+  checks below-cost on up to 50 covered products per offer.
+- Found by CI and fixed: on `985424d` (backend-only commit) the frontend check found new backend
+  messages without Arabic. On `0349fc6`, four Arabic keys were duplicated; prettier had written
+  the existing keys unquoted, so the de-duplication missed them.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| One pipeline, explicit order, React never decides money; zero offers = Wave 5 exactly | Complete | `wave6.rs`; pricing unit tests; full regression | — |
+| Lifecycle draft → active ⇄ paused → ended → archived; never deleted; start date does not switch on | Complete | `wave6.rs` | — |
+| Schedule in store-local time; scope by branch and channel; edits never change sales | Complete | `wave6.rs`; `sync.rs` | — |
+| Percent, amount, fixed price, quantity, Buy-X-Get-Y, basket; capped, never negative, integer/bp | Complete | `wave6.rs`; property tests | — |
+| Conflicts: priority → benefit → id; one item offer per line; stacking only both ways | Complete | `wave6.rs` (3) | — |
+| Explanations (not active yet, channel, quantity, threshold, outranked, coupon, scale label) | Complete | `wave6.rs` | — |
+| Manual discounts: no double discount; cart discount after offers; approvals unchanged | Complete | `wave6.rs` | — |
+| Margin preview and below-cost warnings; never rewritten | Complete | `wave6.rs` (reports/attention) | — |
+| Price-embedded scale labels take no ordinary offers; weight labels do | Complete | `wave6.rs` | — |
+| Coupons: normalization, reusable offline, limited only on the main computer, redemption at commit, held carts re-check, no block, replay-safe | Complete | `wave6.rs` (4); `sync.rs` | — |
+| Bundles: availability, component stock, COGS, mixed VAT split, versions, holds, whole-bundle refunds, negative-stock rule, unsafe set-ups refused | Complete | `wave6.rs` (4) | Real hampers on the till |
+| Receipts: offer names, coupon, bundle as one line, no ids, frozen snapshot | Complete | `wave6.rs` | Printed receipt on the store printer |
+| Offline/sync: definitions hub-owned, evidence append-only, convergence, lost response | Complete | `sync.rs` | Two tills + hub on store Wi-Fi |
+| Permissions, audit, idempotency, stale-version refusals | Complete | `wave6.rs` (3) | — |
+| Reports (promotions, coupons, bundles) and dashboard attention; no causal claims | Complete | `wave6.rs` | — |
+| AI reads and drafts checks only; every write forbidden | Complete | `ai_admin.rs` coverage test | — |
+| English and Arabic for every new string | Complete | vitest; e2e sweep | Visual check on real tills |
+| Migration fabricates nothing | Complete | `wave6.rs` upgrade test | — |
+| Performance with 1,000 offers | Complete | `perf.rs` | Re-measure on the till hardware |
+
+External acceptance is not claimed. Real catalogues, printed receipts, the store's tills and Wi-Fi
+remain part of the soak (OPERATIONS.md acceptance checklist).
+
+- CI on the final head: see the Wave 6 report.

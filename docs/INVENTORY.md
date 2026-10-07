@@ -323,3 +323,16 @@ and cost. Batch facts stay immutable. The kept product's average cost becomes th
 quantity-weighted average of the two. Weight labels from scales move stock by the weighed
 quantity; price labels move one labelled pack. See
 [PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md).
+
+## Bundles and stock (Wave 6)
+
+A bundle, kit or hamper is virtual: it is made when sold and has no stock of its own (stock
+tracking is switched off when it is set up, and a product with recorded stock cannot become one).
+- A sale takes each component from stock in the same commit, as ordinary `sale` movements with
+  each component's average cost. The bundle never moves.
+- The negative-stock rule applies to the components and names them.
+- Availability is the smallest whole number of bundles the components' stock can make, with the
+  limiting item.
+- Refunds are of whole bundles and return each component to stock.
+- Replenishment and stock cover work on the components. Nothing is manufactured in advance.
+- Details: [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md) section 4.

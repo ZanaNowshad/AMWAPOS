@@ -421,9 +421,10 @@ impl AppCore {
                     let link = format!("/admin/promotions?open={id}");
                     let st = state(&p, &now);
                     if p.status == "active" && (st == "running" || st == "scheduled") && show_cost {
-                        let ins = insight(c, &p, &s.branch_id, true)?;
-                        if ins["below_cost"].as_i64().unwrap_or(0) > 0 {
-                            items.push(json!({ "kind": "below_cost", "name": p.name, "count": ins["below_cost"], "link": link }));
+                        // Up to 50 covered products (named ones first): enough to flag it.
+                        let (_, below, _) = margins(c, &p, &s.branch_id, true, 50)?;
+                        if below > 0 {
+                            items.push(json!({ "kind": "below_cost", "name": p.name, "count": below, "link": link }));
                         }
                     }
                     let starts_soon = p.starts_at.as_deref().is_some_and(|x| x > now.as_str() && x <= soon.as_str());
@@ -568,24 +569,32 @@ impl AppCore {
 /// Coverage, the margin preview and conflicts for the editor.
 fn insight(c: &Connection, p: &Promotion, branch_id: &str, show_cost: bool) -> AppResult<Value> {
     let coverage = promotions::coverage(c, p)?;
-    // Margin on up to 200 covered products (named ones first).
+    let (margins, below_cost, negative) = margins(c, p, branch_id, show_cost, 200)?;
+    let conflicts = conflicts(c, p)?;
+    Ok(json!({ "coverage": coverage, "margins": margins, "below_cost": below_cost, "negative_margin": negative,
+        "show_cost": show_cost, "conflicts": conflicts }))
+}
+
+/// The offer price and margin of up to `limit` covered products (named
+/// ones first), with how many sell below cost or at a negative margin.
+fn margins(c: &Connection, p: &Promotion, branch_id: &str, show_cost: bool, limit: usize) -> AppResult<(Vec<Value>, i64, i64)> {
     let mut ids: Vec<String> = p.buy_products.clone();
-    if ids.len() < 200 {
+    if ids.len() < limit {
         for cat in &p.buy_categories {
-            let mut st = c.prepare_cached("SELECT product_id FROM products WHERE active=1 AND category_id=?1 ORDER BY name LIMIT 200")?;
-            for r in st.query_map([cat], |r| r.get::<_, String>(0))? {
+            let mut st = c.prepare_cached("SELECT product_id FROM products WHERE active=1 AND category_id=?1 ORDER BY name LIMIT ?2")?;
+            for r in st.query_map(params![cat, limit as i64], |r| r.get::<_, String>(0))? {
                 ids.push(r?);
             }
         }
         if p.target == "all" {
-            let mut st = c.prepare_cached("SELECT product_id FROM products WHERE active=1 ORDER BY name LIMIT 200")?;
-            for r in st.query_map([], |r| r.get::<_, String>(0))? {
+            let mut st = c.prepare_cached("SELECT product_id FROM products WHERE active=1 ORDER BY name LIMIT ?1")?;
+            for r in st.query_map([limit as i64], |r| r.get::<_, String>(0))? {
                 ids.push(r?);
             }
         }
     }
     ids.dedup();
-    ids.truncate(200);
+    ids.truncate(limit);
     let mut margins = vec![];
     let (mut below_cost, mut negative) = (0, 0);
     for pid in &ids {
@@ -616,8 +625,12 @@ fn insight(c: &Connection, p: &Promotion, branch_id: &str, show_cost: bool) -> A
         }
         margins.push(m);
     }
-    // Conflicts: other live or draft offers in the same layer over the same
-    // products or categories (or whole-basket), whose schedules overlap.
+    Ok((margins, below_cost, negative))
+}
+
+/// Other live or draft offers in the same layer over the same products or
+/// categories (or the whole basket), whose schedules overlap.
+fn conflicts(c: &Connection, p: &Promotion) -> AppResult<Vec<Value>> {
     let mut conflicts = vec![];
     let mut st =
         c.prepare_cached("SELECT promotion_id FROM promotions WHERE status IN ('draft','active','paused') AND promotion_id<>?1")?;
@@ -644,6 +657,5 @@ fn insight(c: &Connection, p: &Promotion, branch_id: &str, show_cost: bool) -> A
             );
         }
     }
-    Ok(json!({ "coverage": coverage, "margins": margins, "below_cost": below_cost, "negative_margin": negative,
-        "show_cost": show_cost, "conflicts": conflicts }))
+    Ok(conflicts)
 }

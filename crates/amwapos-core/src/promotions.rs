@@ -1054,4 +1054,84 @@ mod tests {
         b.amount_minor = Some(100);
         assert!(validate(&b).is_err(), "either a percentage or an amount");
     }
+
+    /// A small deterministic generator (no extra dependency).
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn upto(&mut self, n: u64) -> i64 {
+            (self.next() % n) as i64
+        }
+    }
+
+    #[test]
+    fn invariants_hold_for_random_baskets_in_any_order() {
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        for case in 0..3_000 {
+            let n = 1 + rng.upto(8) as usize;
+            let lines: Vec<PLine> = (0..n)
+                .map(|i| {
+                    let mut l = line(&format!("l{i}"), &format!("p{}", rng.upto(4)), 1 + rng.upto(5_000), 1_000 * (1 + rng.upto(6)));
+                    l.category_id = Some(format!("c{}", rng.upto(2)));
+                    l
+                })
+                .collect();
+            let mut p = promo(KINDS[case % KINDS.len()]);
+            p.target = if rng.upto(2) == 0 { "all".into() } else { "items".into() };
+            p.buy_products = vec!["p0".into(), "p1".into()];
+            p.buy_categories = if rng.upto(2) == 0 { vec!["c1".into()] } else { vec![] };
+            if p.kind == "bxgy" && rng.upto(2) == 0 {
+                p.get_products = vec!["p2".into(), "p3".into()];
+            }
+            p.percent_bp = Some(1 + rng.upto(10_000));
+            p.amount_minor = Some(1 + rng.upto(9_000));
+            p.price_minor = Some(rng.upto(9_000));
+            p.buy_qty = Some(1 + rng.upto(4));
+            p.get_qty = Some(1 + rng.upto(3));
+            p.threshold_minor = Some(1 + rng.upto(20_000));
+            if p.kind == "basket" && rng.upto(2) == 0 {
+                p.percent_bp = None;
+            }
+            p.max_uses = if rng.upto(2) == 0 { Some(1 + rng.upto(3)) } else { None };
+            let value: Vec<i64> = lines.iter().map(|l| l.unit_price_minor * l.qty_milli / 1000).collect();
+            let a = evaluate(&p, &lines, &value, &vec![true; n]).0;
+            for (i, d) in a.iter().enumerate() {
+                assert!(*d >= 0 && *d <= value[i], "case {case}: line {i} took {d} of {}", value[i]);
+            }
+            assert!(a.iter().sum::<i64>() <= value.iter().sum::<i64>());
+            // Reversed and rotated insertion order: the same amount on the same line.
+            let by_id = |ls: &[PLine], amts: &[i64]| {
+                let mut v: Vec<(String, i64)> = ls.iter().zip(amts).map(|(l, x)| (l.line_id.clone(), *x)).collect();
+                v.sort();
+                v
+            };
+            let mut rev = lines.clone();
+            rev.reverse();
+            let rv: Vec<i64> = rev.iter().map(|l| l.unit_price_minor * l.qty_milli / 1000).collect();
+            let b = evaluate(&p, &rev, &rv, &vec![true; n]).0;
+            assert_eq!(by_id(&lines, &a), by_id(&rev, &b), "case {case}: order changed the result");
+            let mut rot = lines.clone();
+            rot.rotate_left(n / 2);
+            let rtv: Vec<i64> = rot.iter().map(|l| l.unit_price_minor * l.qty_milli / 1000).collect();
+            let c = evaluate(&p, &rot, &rtv, &vec![true; n]).0;
+            assert_eq!(by_id(&lines, &a), by_id(&rot, &c), "case {case}: rotation changed the result");
+        }
+    }
+
+    #[test]
+    fn a_huge_quantity_stays_bounded() {
+        let mut p = promo("bxgy");
+        p.buy_qty = Some(1);
+        p.get_qty = Some(1);
+        let lines = [line("a", "x", 100, 5_000_000_000)];
+        let t = std::time::Instant::now();
+        let d = run_one(&p, &lines);
+        assert!(t.elapsed().as_millis() < 2_000);
+        assert!(d[0] > 0 && d[0] <= 100 * 5_000_000);
+    }
 }

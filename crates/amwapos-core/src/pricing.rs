@@ -435,4 +435,48 @@ mod tests {
         assert_eq!(a + b + c, 1000);
         assert!(prorate(1000, 3000, a + b + c, 3000, 1).is_err());
     }
+
+    #[test]
+    fn offers_and_bundle_parts_always_sum_exactly() {
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed % n) as i64
+        };
+        for _ in 0..2_000 {
+            let k = 1 + next(5) as usize;
+            let lines: Vec<LineInput> = (0..k)
+                .map(|_| {
+                    let mut l = line(1 + next(9_000), 1_000 * (1 + next(4)));
+                    l.tax_rate_bp = [0, 500, 1000][next(3) as usize];
+                    l.tax_inclusive = next(2) == 0;
+                    let gross = l.unit_price_minor * l.qty_milli / 1000;
+                    l.promo_discount_minor = next(gross as u64 + 1);
+                    if next(2) == 0 {
+                        l.parts = (0..1 + next(4))
+                            .map(|_| TaxPart { weight: next(5_000), tax_rate_bp: [0, 1000][next(2) as usize], tax_inclusive: next(2) == 0 })
+                            .collect();
+                    }
+                    l
+                })
+                .collect();
+            let (res, totals) = price_cart(&lines, 0, next(3_000)).unwrap();
+            let mut total = 0;
+            for (r, l) in res.iter().zip(&lines) {
+                assert!(r.net_minor >= 0 && r.discount_minor <= r.gross_minor);
+                assert_eq!(r.discount_minor, r.promo_discount_minor + r.line_discount_minor + r.cart_discount_minor);
+                if !l.parts.is_empty() {
+                    assert_eq!(r.parts.iter().map(|p| p.net_minor).sum::<i64>(), r.net_minor);
+                    assert_eq!(r.parts.iter().map(|p| p.discount_minor).sum::<i64>(), r.discount_minor);
+                    assert_eq!(r.parts.iter().map(|p| p.tax_minor).sum::<i64>(), r.tax_minor);
+                    assert_eq!(r.parts.iter().map(|p| p.line_total_minor).sum::<i64>(), r.line_total_minor);
+                    assert!(r.parts.iter().all(|p| p.net_minor >= 0 && p.tax_minor >= 0));
+                }
+                total += r.line_total_minor;
+            }
+            assert_eq!(total, totals.total_minor);
+        }
+    }
 }

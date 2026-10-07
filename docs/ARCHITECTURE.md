@@ -260,3 +260,21 @@ See [PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md).
   fail closed.
 - **Sync.** `scale_barcode_rules` is hub-owned and replicated. Policies, review decisions,
   price-change batches, duplicate decisions and merge records stay on the hub.
+
+## Wave 6: promotions, coupons and bundles
+
+See [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md).
+
+- **One pipeline.** The order is fixed: resolved price → item offers → one basket offer → one
+  coupon offer → manual line discount → manual cart discount → loyalty → VAT per line.
+  `promotions::run` computes the offers and `pricing::price_cart` does the rest of the
+  arithmetic. `pos::cart_promotions` is the only caller, used by the cart view, the held list,
+  cancel, the cart-discount check and the sale commit. React only displays the result.
+- **Modules.** `promotions.rs` is the engine (canonical line order, indexed candidates, bounded
+  unit pools). `promo_admin.rs` covers lifecycle, coupons, editor insight and the dashboard list.
+  `bundles.rs` covers versions, availability and the per-component split.
+- **Bundles.** A bundle line in the cart carries its version. `LineInput.parts` splits net and VAT
+  per component. The commit writes one sale line per component and moves stock per component;
+  the parent never moves.
+- **Sync.** Definitions are hub-owned and replicated. Offer rows and coupon redemptions are
+  append-only sale evidence. A limited coupon is accepted only by the main computer.
