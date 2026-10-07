@@ -27,7 +27,8 @@ import {
 import { formatShort } from "../../lib/time";
 import { Banner, Button, Chip, Keypad, Modal, TextInput } from "../../components/ui";
 import { methodLabel } from "./labels";
-import { t } from "../../i18n";
+import { t, tb } from "../../i18n";
+import { couponLabel } from "./CartPanel";
 import { codeLabel } from "../../i18n/codes";
 
 function useErr() {
@@ -1053,6 +1054,82 @@ export function LoyaltyRedeemDialog({
             formatMoney(n * l.redeem_minor_per_point),
           )}
         />
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+      </div>
+    </Modal>
+  );
+}
+
+/** Type or remove the sale's coupon. The backend checks it; it never blocks the sale. */
+export function CouponDialog({
+  cart,
+  onClose,
+  onDone,
+}: {
+  cart: Cart;
+  onClose: () => void;
+  /** `close`: the coupon applied or was removed (keep the dialog open to show why otherwise). */
+  onDone: (c: Cart, close: boolean) => void;
+}) {
+  const [code, setCode] = useState(cart.coupon_code ?? "");
+  const [busy, setBusy] = useState(false);
+  const { error, handle } = useErr();
+  const [state, setState] = useState(cart.promotions?.coupon ?? null);
+  const apply = async (c: string | null) => {
+    setBusy(true);
+    try {
+      const next = await api.pos.setCoupon(c);
+      setState(next.promotions?.coupon ?? null);
+      onDone(next, !c || next.promotions?.coupon?.status === "applied");
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={t("Coupon")}
+      size="sm"
+      onClose={onClose}
+      footer={
+        <>
+          {cart.coupon_code ? (
+            <Button onClick={() => void apply(null)} disabled={busy}>
+              {t("Remove coupon")}
+            </Button>
+          ) : (
+            <Button onClick={onClose}>{t("Cancel")}</Button>
+          )}
+          <Button
+            variant="primary"
+            className="right"
+            loading={busy}
+            disabled={!code.trim()}
+            onClick={() => void apply(code)}
+            data-testid="coupon-apply"
+          >
+            {t("Apply")}
+          </Button>
+        </>
+      }
+    >
+      <div className="col gap-16">
+        <TextInput
+          label={t("Coupon code")}
+          value={code}
+          autoFocus
+          autoCapitalize="characters"
+          data-testid="coupon-code"
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && code.trim() && void apply(code)}
+          hint={t("The coupon is checked again when the sale is paid. It is used only when the sale completes.")}
+        />
+        {state ? (
+          <Banner tone={state.status === "applied" ? "success" : "warning"}>
+            {couponLabel(state.status)} — {tb(state.message)}
+          </Banner>
+        ) : null}
         {error ? <Banner tone="danger">{error}</Banner> : null}
       </div>
     </Modal>

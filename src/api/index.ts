@@ -66,6 +66,7 @@ export const api = {
     cancel: (approval_token?: string | null) => call<T.Cart>("pos.cancel", { approval_token }),
     loyaltyRedeem: (points: number) => call<T.Cart>("pos.loyalty_redeem", { points }),
     setChannel: (channel: T.SaleChannel) => call<T.Cart>("pos.set_channel", { channel }),
+    setCoupon: (code: string | null) => call<T.Cart>("pos.set_coupon", { code }),
     finalize: (
       a: {
         cart_id: string;
@@ -75,6 +76,39 @@ export const api = {
         fulfilment?: T.Fulfilment | null;
       } & Approval,
     ) => call<T.SaleResult>("pos.finalize", a),
+  },
+  promotions: {
+    list: (status?: string | null) =>
+      call<{ rows: T.PromotionRow[]; local_now: string }>("promotions.list", { status }),
+    get: (promotion_id: string) => call<T.PromotionDetail>("promotions.get", { promotion_id }),
+    attention: () => call<{ items: T.OfferAttention[] }>("promotions.attention"),
+    preview: (promotion: Partial<T.Promotion>) =>
+      call<{ problem: string | null; insight: T.PromotionInsight }>("promotions.preview", { promotion }),
+    save: (promotion: Partial<T.Promotion>, operation_id: string) =>
+      call<T.PromotionDetail>("promotions.save", { promotion, operation_id }),
+    setStatus: (promotion_id: string, status: T.PromotionStatus, version: number, operation_id: string) =>
+      call<T.PromotionDetail>("promotions.set_status", { promotion_id, status, version, operation_id }),
+    saveCoupon: (a: {
+      coupon_id?: string;
+      promotion_id: string;
+      code: string;
+      kind: "reusable" | "limited";
+      max_redemptions?: number | null;
+      active?: boolean;
+      version?: number;
+      operation_id: string;
+    }) => call<T.PromotionDetail>("coupons.save", a),
+  },
+  bundles: {
+    list: () => call<{ rows: T.BundleRow[] }>("bundles.list"),
+    get: (bundle_product_id: string) => call<T.BundleDetail>("bundles.get", { bundle_product_id }),
+    save: (a: {
+      bundle_product_id: string;
+      components: { product_id: string; qty_milli: number }[];
+      active: boolean;
+      version: number;
+      operation_id: string;
+    }) => call<T.BundleDetail>("bundles.save", a),
   },
   sales: {
     list: (q: Record<string, unknown>) => call<T.Page<T.SaleRow>>("sales.list", q),

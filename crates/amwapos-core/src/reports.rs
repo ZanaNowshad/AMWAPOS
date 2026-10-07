@@ -89,6 +89,14 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
     ("refunds", "Refunds", "Sales", "Refunds with reasons and approvals"),
     ("channels", "Sales by channel", "Sales", "Sales, basket, refunds and gross margin per sales channel (till, WhatsApp, phone, web)"),
     ("price_changes", "Price changes", "Financial", "Every applied price change with its list, reason, policy and who made it"),
+    (
+        "promotions",
+        "Promotions",
+        "Sales",
+        "Per offer: sales it was used in, discount given, revenue and gross margin of the lines it touched",
+    ),
+    ("coupons", "Coupon redemptions", "Sales", "Per coupon code: completed sales that used it and the discount it gave"),
+    ("bundles", "Bundles", "Sales", "Per bundle: units sold, revenue, cost of the items used, gross margin and the items taken from stock"),
     ("cash", "Cash & shifts", "Financial", "Shift reconciliation and cash variances"),
     ("inventory", "Stock valuation", "Inventory", "On-hand quantity and value at average cost"),
     ("dead_stock", "Dead stock", "Inventory", "Stocked items with no sales in the period"),
@@ -101,7 +109,7 @@ pub const REPORTS: &[(&str, &str, &str, &str)] = &[
 
 fn permission_for(key: &str) -> &'static str {
     match key {
-        "margin" | "cash" | "payments" | "price_changes" => "reports.financial",
+        "margin" | "cash" | "payments" | "price_changes" | "promotions" | "bundles" => "reports.financial",
         "operating_profit" => "reports.profit",
         "expenses" => "expenses.view",
         "receivables" => "reports.financial",
@@ -213,6 +221,9 @@ impl AppCore {
             "refunds" => self.rep_refunds(c, p),
             "channels" => self.rep_channels(c, s, p),
             "price_changes" => self.rep_price_changes(c, p),
+            "promotions" => self.rep_promotions(c, p),
+            "coupons" => self.rep_coupons(c, p),
+            "bundles" => self.rep_bundles(c, p),
             "operating_profit" => self.rep_operating_profit(c, p),
             "expenses" => self.rep_expenses(c, p),
             "receivables" => self.rep_receivables(c, p),
@@ -858,6 +869,165 @@ impl AppCore {
             rows,
             series: None,
             notes: vec!["Only applied changes are listed; recommendations that were not applied leave no history.".into()],
+        })
+    }
+
+    fn rep_promotions(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let mut st = c.prepare(
+            "WITH lines AS (
+                SELECT sp.promotion_id, MAX(sp.promotion_name) AS name, sp.sale_id, sp.sale_item_id, SUM(sp.amount_minor) AS disc
+                FROM sale_item_promotions sp JOIN sales s ON s.sale_id=sp.sale_id
+                WHERE s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch())
+                GROUP BY sp.promotion_id, sp.sale_item_id)
+             SELECT l.promotion_id, MAX(l.name), COUNT(DISTINCT l.sale_id), SUM(l.disc), SUM(si.line_total_minor), SUM(si.tax_minor),
+                    SUM(si.cost_snapshot_minor)
+             FROM lines l JOIN sale_items si ON si.sale_item_id=l.sale_item_id
+             GROUP BY l.promotion_id ORDER BY SUM(l.disc) DESC, l.promotion_id",
+        )?;
+        let mut tot = [0i64; 4];
+        let rows: Vec<Value> = st
+            .query_map(params![r.a, r.b], |x| {
+                let (sales, disc, rev, tax, cost): (i64, i64, i64, i64, i64) = (x.get(2)?, x.get(3)?, x.get(4)?, x.get(5)?, x.get(6)?);
+                Ok((
+                    sales,
+                    disc,
+                    rev - tax,
+                    cost,
+                    json!({ "name": x.get::<_, String>(1)?, "sales": sales, "discount": disc,
+                    "revenue": rev - tax, "cost": cost, "gross_margin": rev - tax - cost }),
+                ))
+            })?
+            .map(|r| {
+                r.map(|(n, d, rv, c, v)| {
+                    tot[0] += n;
+                    tot[1] += d;
+                    tot[2] += rv;
+                    tot[3] += c;
+                    v
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Report {
+            key: "promotions".into(),
+            title: "Promotions".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![kpi("Discount given", tot[1], "money", None), kpi("Revenue of offer lines", tot[2], "money", None)],
+            columns: vec![
+                col("name", "Offer", "text"),
+                col("sales", "Sales", "int"),
+                col("discount", "Discount given", "money"),
+                col("revenue", "Revenue (ex VAT)", "money"),
+                col("cost", "Cost", "money"),
+                col("gross_margin", "Gross margin", "money"),
+            ],
+            totals: Some(json!({ "name": "Total", "discount": tot[1], "revenue": tot[2], "cost": tot[3], "gross_margin": tot[2] - tot[3] })),
+            rows,
+            series: None,
+            notes: vec![
+                "Figures are what the sales recorded for the lines each offer touched; they do not say what would have sold without the offer.".into(),
+                "Refunds are not deducted here.".into(),
+            ],
+        })
+    }
+
+    fn rep_coupons(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let mut st = c.prepare(
+            "SELECT cr.code, COALESCE(pr.name,''), cp.kind, cp.max_redemptions, COUNT(*), SUM(cr.amount_minor),
+                    (SELECT COUNT(*) FROM coupon_redemptions a WHERE a.coupon_id=cr.coupon_id)
+             FROM coupon_redemptions cr LEFT JOIN coupons cp ON cp.coupon_id=cr.coupon_id LEFT JOIN promotions pr ON pr.promotion_id=cr.promotion_id
+             WHERE cr.created_at>=?1 AND cr.created_at<?2 AND (amw_rbranch() IS NULL OR cr.branch_id=amw_rbranch())
+             GROUP BY cr.coupon_id ORDER BY COUNT(*) DESC, cr.code",
+        )?;
+        let rows: Vec<Value> = st
+            .query_map(params![r.a, r.b], |x| {
+                let max: Option<i64> = x.get(3)?;
+                let all: i64 = x.get(6)?;
+                Ok(json!({ "code": x.get::<_, String>(0)?, "offer": x.get::<_, String>(1)?, "kind": x.get::<_, Option<String>>(2)?,
+                    "redemptions": x.get::<_, i64>(4)?, "discount": x.get::<_, i64>(5)?, "left": max.map(|m| (m - all).max(0)) }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let n: i64 = rows.iter().map(|x| x["redemptions"].as_i64().unwrap_or(0)).sum();
+        let d: i64 = rows.iter().map(|x| x["discount"].as_i64().unwrap_or(0)).sum();
+        Ok(Report {
+            key: "coupons".into(),
+            title: "Coupon redemptions".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![kpi("Redemptions", n, "int", None), kpi("Discount given", d, "money", None)],
+            columns: vec![
+                col("code", "Code", "text"),
+                col("offer", "Offer", "text"),
+                col("redemptions", "Redemptions", "int"),
+                col("discount", "Discount given", "money"),
+                col("left", "Uses left", "int"),
+            ],
+            totals: None,
+            rows,
+            series: None,
+            notes: vec!["Only completed sales redeem a coupon; previews and held sales are not counted.".into()],
+        })
+    }
+
+    fn rep_bundles(&self, c: &Connection, p: &ReportParams) -> AppResult<Report> {
+        let r = range(c, self, p)?;
+        let mut st = c.prepare(
+            "WITH b AS (
+                SELECT si.bundle_product_id AS pid, MAX(si.bundle_name) AS name, si.sale_id, si.bundle_line_no,
+                       MAX(si.bundle_qty_milli) AS qty, SUM(si.line_total_minor) AS total, SUM(si.tax_minor) AS tax, SUM(si.cost_snapshot_minor) AS cost
+                FROM sale_items si JOIN sales s ON s.sale_id=si.sale_id
+                WHERE si.bundle_product_id IS NOT NULL AND s.completed_at>=?1 AND s.completed_at<?2
+                  AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch())
+                GROUP BY si.bundle_product_id, si.sale_id, si.bundle_line_no)
+             SELECT pid, MAX(name), SUM(qty), SUM(total), SUM(tax), SUM(cost) FROM b GROUP BY pid ORDER BY SUM(total) DESC, pid",
+        )?;
+        let rows: Vec<(String, Value)> = st
+            .query_map(params![r.a, r.b], |x| {
+                let (qty, total, tax, cost): (i64, i64, i64, i64) = (x.get(2)?, x.get(3)?, x.get(4)?, x.get(5)?);
+                Ok((
+                    x.get::<_, String>(0)?,
+                    json!({ "name": x.get::<_, String>(1)?, "units": qty, "revenue": total - tax, "cost": cost,
+                    "gross_margin": total - tax - cost }),
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut out = vec![];
+        let mut comp_st = c.prepare(
+            "SELECT si.product_name_snapshot, SUM(si.qty_milli) FROM sale_items si JOIN sales s ON s.sale_id=si.sale_id
+             WHERE si.bundle_product_id=?3 AND s.completed_at>=?1 AND s.completed_at<?2 AND (amw_rbranch() IS NULL OR s.branch_id=amw_rbranch())
+             GROUP BY si.product_id ORDER BY si.product_name_snapshot",
+        )?;
+        for (pid, mut v) in rows {
+            let used: Vec<String> = comp_st
+                .query_map(params![r.a, r.b, pid], |x| {
+                    Ok(format!("{} × {}", x.get::<_, String>(0)?, crate::money::format_qty(x.get::<_, i64>(1)?)))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            v["items_used"] = json!(used.join(", "));
+            out.push(v);
+        }
+        let units: i64 = out.iter().map(|x| x["units"].as_i64().unwrap_or(0)).sum();
+        let rev: i64 = out.iter().map(|x| x["revenue"].as_i64().unwrap_or(0)).sum();
+        Ok(Report {
+            key: "bundles".into(),
+            title: "Bundles".into(),
+            from: r.from,
+            to: r.to,
+            kpis: vec![kpi("Bundles sold", units, "qty", None), kpi("Revenue (ex VAT)", rev, "money", None)],
+            columns: vec![
+                col("name", "Bundle", "text"),
+                col("units", "Sold", "qty"),
+                col("revenue", "Revenue (ex VAT)", "money"),
+                col("cost", "Cost of items", "money"),
+                col("gross_margin", "Gross margin", "money"),
+                col("items_used", "Items taken from stock", "text"),
+            ],
+            totals: None,
+            rows: out,
+            series: None,
+            notes: vec!["Refunds are not deducted here.".into()],
         })
     }
 

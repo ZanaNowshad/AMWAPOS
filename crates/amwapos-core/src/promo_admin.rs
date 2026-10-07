@@ -394,6 +394,76 @@ impl AppCore {
         self.promotions_get(token, &id)
     }
 
+    /// What needs a person's attention, each with the screen to fix it:
+    /// offers that sell below cost, offers starting soon that cover nothing,
+    /// offers ending soon, limited coupons used up, bundles that stock cannot
+    /// make. Nothing else (no "insight" without an action).
+    pub fn promotions_attention(&self, token: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        if !s.has("promotions.manage") && !s.has("bundles.manage") {
+            return Ok(json!({ "items": [] }));
+        }
+        let show_cost = s.has("products.view_cost");
+        self.db.read(|c| {
+            let now = self.local_minute(c)?;
+            let soon = chrono::NaiveDateTime::parse_from_str(&now, "%Y-%m-%dT%H:%M")
+                .map(|t| (t + chrono::Duration::days(3)).format("%Y-%m-%dT%H:%M").to_string())
+                .unwrap_or_else(|_| now.clone());
+            let mut items = vec![];
+            if s.has("promotions.manage") {
+                let ids: Vec<String> = {
+                    let mut st = c.prepare("SELECT promotion_id FROM promotions WHERE status IN ('active','draft') ORDER BY name, promotion_id")?;
+                    let v = st.query_map([], |r| r.get::<_, String>(0))?.collect::<Result<Vec<_>, _>>()?;
+                    v
+                };
+                for id in ids {
+                    let Some(p) = promotions::load(c, &id)? else { continue };
+                    let link = format!("/admin/promotions?open={id}");
+                    let st = state(&p, &now);
+                    if p.status == "active" && (st == "running" || st == "scheduled") && show_cost {
+                        let ins = insight(c, &p, &s.branch_id, true)?;
+                        if ins["below_cost"].as_i64().unwrap_or(0) > 0 {
+                            items.push(json!({ "kind": "below_cost", "name": p.name, "count": ins["below_cost"], "link": link }));
+                        }
+                    }
+                    let starts_soon = p.starts_at.as_deref().is_some_and(|x| x > now.as_str() && x <= soon.as_str());
+                    if starts_soon && promotions::coverage(c, &p)? == 0 {
+                        items.push(json!({ "kind": "no_products", "name": p.name, "link": link }));
+                    }
+                    if p.status == "active" && p.ends_at.as_deref().is_some_and(|x| x > now.as_str() && x <= soon.as_str()) {
+                        items.push(json!({ "kind": "ending_soon", "name": p.name, "at": p.ends_at, "link": link }));
+                    }
+                    if p.status == "draft" && starts_soon {
+                        items.push(json!({ "kind": "not_switched_on", "name": p.name, "at": p.starts_at, "link": link }));
+                    }
+                }
+                let mut st = c.prepare(
+                    "SELECT c.code, c.promotion_id FROM coupons c WHERE c.active=1 AND c.kind='limited'
+                       AND (SELECT COUNT(*) FROM coupon_redemptions r WHERE r.coupon_id=c.coupon_id) >= c.max_redemptions ORDER BY c.code_norm",
+                )?;
+                for row in st.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+                    let (code, pid) = row?;
+                    items.push(json!({ "kind": "coupon_used_up", "name": code, "link": format!("/admin/promotions?open={pid}") }));
+                }
+            }
+            if s.has("bundles.manage") {
+                let mut st = c.prepare(
+                    "SELECT b.bundle_product_id, p.name, b.version FROM bundles b JOIN products p ON p.product_id=b.bundle_product_id
+                     WHERE b.active=1 ORDER BY p.name",
+                )?;
+                let rows: Vec<(String, String, i64)> =
+                    st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<Result<Vec<_>, _>>()?;
+                for (pid, name, v) in rows {
+                    if let Some((0, limit)) = crate::bundles::availability(c, &pid, v, &s.branch_id)? {
+                        items.push(json!({ "kind": "bundle_unavailable", "name": name, "limited_by": limit,
+                            "link": format!("/admin/bundles?open={pid}") }));
+                    }
+                }
+            }
+            Ok(json!({ "items": items }))
+        })
+    }
+
     /// 'YYYY-MM-DDTHH:MM' now, in the store's timezone.
     pub(crate) fn local_minute(&self, c: &Connection) -> AppResult<String> {
         Ok(promotions::local_minute(time::now(), &self.store_timezone(c)?))

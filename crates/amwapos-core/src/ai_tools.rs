@@ -258,6 +258,8 @@ pub const TOOLS: &[ToolSpec] = &[
         "Counts of catalogue and pricing work waiting: likely duplicates, prices below minimum margin, recommendations, cost changes, channel prices missing."),
     read("promotions", "promotions.list", PROMOS, "status:s",
         "Promotions (offers) with their state (running, scheduled, paused, draft, ended), schedule, scope, sales and discount given so far."),
+    read("promotions_attention", "promotions.attention", &["promotions.manage", "bundles.manage"], "",
+        "Offers, coupons and bundles that need attention now: selling below cost, starting soon with no products, ending soon, limited coupons used up, bundles stock cannot make."),
     read("promotion_get", "promotions.get", PROMOS, "promotion_id:s!",
         "One promotion: rules, schedule, branch/channel scope, products covered, the offer price and margin per covered product, conflicts with other offers, and its coupons."),
     read("promotion_check", "promotions.preview", &["promotions.manage"], "promotion:o!",

@@ -181,6 +181,11 @@ export interface CartLine {
   using_retail?: boolean;
   /** What a scale label said. */
   scale?: { rule_id: string; kind: "weight" | "price"; value: number } | null;
+  /** What offers took off this line, and their names. */
+  promo_discount_minor?: number;
+  offers?: string[];
+  /** Why the line takes no automatic offer, if so. */
+  offer_excluded?: "custom" | "price_override" | "manual_discount" | "scale_price" | null;
 }
 
 /** Bahrain address parts; `address` is composed from them when given. */
@@ -230,6 +235,157 @@ export interface Cart {
   } | null;
   /** Where the sale comes from: pos | whatsapp | phone | web | other. */
   channel?: SaleChannel | null;
+  /** The promotional step, computed by the backend. */
+  promotions?: CartPromotions;
+  /** The coupon typed on this sale (a preview until the sale completes). */
+  coupon_code?: string | null;
+}
+
+export interface AppliedOffer {
+  promotion_id: string;
+  name: string;
+  name_ar: string | null;
+  layer: "item" | "basket" | "coupon";
+  coupon_code: string | null;
+  amount_minor: number;
+}
+
+export type CouponStatus =
+  | "applied"
+  | "invalid"
+  | "expired"
+  | "not_started"
+  | "already_used"
+  | "needs_main"
+  | "wrong_channel"
+  | "wrong_branch"
+  | "not_eligible"
+  | "inactive";
+
+export interface CartPromotions {
+  applied: AppliedOffer[];
+  coupon: { code: string; status: CouponStatus; message: string; saved_minor: number } | null;
+  explain: { promotion_id: string; name: string; reason: string; message: string }[];
+}
+
+export type PromotionKind = "percent" | "amount" | "fixed_price" | "quantity" | "bxgy" | "basket";
+export type PromotionStatus = "draft" | "active" | "paused" | "ended" | "archived";
+
+export interface Promotion {
+  promotion_id: string;
+  name: string;
+  name_ar: string | null;
+  description: string | null;
+  status: PromotionStatus;
+  kind: PromotionKind;
+  target: "items" | "all";
+  starts_at: string | null;
+  ends_at: string | null;
+  branches: string[] | null;
+  channels: string[] | null;
+  priority: number;
+  stackable: boolean;
+  requires_coupon: boolean;
+  percent_bp: number | null;
+  amount_minor: number | null;
+  price_minor: number | null;
+  buy_qty: number | null;
+  get_qty: number | null;
+  max_uses: number | null;
+  threshold_minor: number | null;
+  buy_products: string[];
+  buy_categories: string[];
+  get_products: string[];
+  get_categories: string[];
+  version: number;
+}
+
+export interface PromotionInsight {
+  coverage: number;
+  margins: {
+    product_id: string;
+    name: string;
+    normal_minor: number;
+    offer_minor: number;
+    cost_minor?: number;
+    margin_bp?: number | null;
+    below_cost?: boolean;
+  }[];
+  below_cost: number;
+  negative_margin: number;
+  show_cost: boolean;
+  conflicts: {
+    promotion_id: string;
+    name: string;
+    status: string;
+    priority: number;
+    relation: "higher" | "lower" | "same";
+  }[];
+}
+
+export interface PromotionRow {
+  promotion: Promotion;
+  state: "running" | "scheduled" | "finished" | "paused" | "draft" | "ended" | "archived";
+  sales: number;
+  discount_minor: number;
+  coupons: number;
+}
+
+export interface CouponRow {
+  coupon_id: string;
+  code: string;
+  kind: "reusable" | "limited";
+  max_redemptions: number | null;
+  active: boolean;
+  redemptions: number;
+  version: number;
+}
+
+export interface PromotionDetail {
+  promotion: Promotion;
+  state: PromotionRow["state"];
+  local_now: string;
+  used: boolean;
+  coupons: CouponRow[];
+  insight: PromotionInsight;
+}
+
+export interface OfferAttention {
+  kind: "below_cost" | "no_products" | "ending_soon" | "not_switched_on" | "coupon_used_up" | "bundle_unavailable";
+  name: string;
+  link: string;
+  count?: number;
+  at?: string | null;
+  limited_by?: string | null;
+}
+
+export interface BundleRow {
+  bundle_product_id: string;
+  name: string;
+  version: number;
+  active: boolean;
+  available: number | null;
+  limited_by: string | null;
+  price_minor: number | null;
+}
+
+export interface BundleDetail extends BundleRow {
+  components: {
+    product_id: string;
+    name: string;
+    qty_milli: number;
+    unit_price_minor: number;
+    normal_minor: number;
+    tax_rate_bp: number;
+    track_inventory: boolean;
+    stock_milli: number | null;
+    cost_minor?: number;
+  }[];
+  normal_minor: number;
+  saving_minor: number | null;
+  cost_minor?: number;
+  margin_minor?: number;
+  margin_bp?: number | null;
 }
 
 export type SaleChannel = "pos" | "whatsapp" | "phone" | "web" | "other";

@@ -930,3 +930,55 @@ fn receipts_show_savings_by_name_and_bundles_as_one_line() {
     let issued = e.core.db.read(|c| amwapos_core::receipt::issued(c, "sale", &sale.sale_id)).unwrap();
     assert!(issued.exact && issued.doc.to_text().contains("Coupon SAVE10"));
 }
+
+// ------------------------------------------------------------------ reports, dashboard
+
+#[test]
+fn reports_and_attention_are_truthful() {
+    let e = env();
+    let t = &e.owner_token;
+    ready(&e);
+    let (parent, _, dates) = hamper(&e);
+    let milk = e.product("Milk", "600400", 1_000, 1_200, 50_000); // cost above price
+    let below = activate(&e, json!({ "name": "Milk 10%", "kind": "percent", "percent_bp": 1_000, "buy_products": [milk] }));
+    let cp = activate(
+        &e,
+        json!({ "name": "Once", "kind": "percent", "percent_bp": 500, "buy_products": [milk], "requires_coupon": true,
+        "stackable": true }),
+    );
+    let mut p = e.core.promotions_get(t, &below).unwrap()["promotion"].clone();
+    set_status(&e, &below, "paused");
+    p["stackable"] = json!(true);
+    p["version"] = json!(version(&e, &below));
+    e.core.promotions_save(t, serde_json::from_value(json!({ "promotion": p, "operation_id": op() })).unwrap()).unwrap();
+    set_status(&e, &below, "active");
+    coupon(&e, &cp, "ONCE", "limited", Some(1)).unwrap();
+    e.core.pos_add_product(t, &milk, Some(2_000)).unwrap();
+    e.core.pos_add_product(t, &parent, Some(3_000)).unwrap();
+    e.core.pos_set_coupon(t, Some("ONCE".into())).unwrap();
+    pay(&e, t);
+    let run = |k: &str| e.core.report_run(t, k, Default::default()).unwrap();
+    let promos = run("promotions");
+    let milk_row = promos.rows.iter().find(|r| r["name"] == "Milk 10%").unwrap();
+    assert_eq!(milk_row["discount"], 200);
+    assert_eq!(milk_row["sales"], 1);
+    assert!(promos.notes.iter().any(|n| n.contains("do not say what would have sold")));
+    let coupons = run("coupons");
+    assert_eq!(coupons.rows[0]["code"], "ONCE");
+    assert_eq!(coupons.rows[0]["left"], 0);
+    let bundles = run("bundles");
+    assert_eq!(bundles.rows[0]["units"], 3_000);
+    assert_eq!(bundles.rows[0]["cost"], 3 * (2 * 2_000 + 3 * 600));
+    assert!(bundles.rows[0]["items_used"].as_str().unwrap().contains("Dates 1kg × 9"));
+    // The dashboard: below cost, coupon used up, bundle that stock cannot make (dates: 9 − 9 = 0).
+    assert_eq!(stock(&e, &dates), 0);
+    let att = e.core.promotions_attention(t).unwrap();
+    let kinds: Vec<&str> = att["items"].as_array().unwrap().iter().map(|x| x["kind"].as_str().unwrap()).collect();
+    assert!(kinds.contains(&"below_cost"), "{kinds:?}");
+    assert!(kinds.contains(&"coupon_used_up"), "{kinds:?}");
+    assert!(kinds.contains(&"bundle_unavailable"), "{kinds:?}");
+    assert!(att["items"].as_array().unwrap().iter().all(|x| x["link"].as_str().unwrap().starts_with("/admin/")));
+    // A cashier sees none of it.
+    let (_, cashier) = e.user("Sara", "role_cashier", "1357");
+    assert_eq!(e.core.promotions_attention(&cashier).unwrap()["items"].as_array().unwrap().len(), 0);
+}

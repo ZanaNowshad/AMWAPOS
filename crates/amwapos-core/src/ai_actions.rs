@@ -306,6 +306,7 @@ fn is_read_command(c: &str) -> bool {
         "scale_rules.list",
         "pricing.policies",
         "promotions.list",
+        "promotions.attention",
         "bundles.list",
         "bundles.get",
         "promotions.get",

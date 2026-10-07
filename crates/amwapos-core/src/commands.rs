@@ -112,6 +112,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "bundles.save" => out(core.bundles_save(tk()?, all(&args)?)),
         "coupons.save" => out(core.coupons_save(tk()?, all(&args)?)),
         "pos.set_coupon" => out(core.pos_set_coupon(tk()?, opt(&args, "code")?)),
+        "promotions.attention" => out(core.promotions_attention(tk()?)),
         "promotions.list" => out(core.promotions_list(tk()?, opt(&args, "status")?)),
         "promotions.get" => out(core.promotions_get(tk()?, &req::<String>(&args, "promotion_id")?)),
         "promotions.preview" => out(core.promotions_preview(tk()?, req(&args, "promotion")?)),

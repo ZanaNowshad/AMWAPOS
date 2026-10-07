@@ -60,6 +60,8 @@ import {
   Percent,
   Copy,
   ScanLine,
+  BadgePercent,
+  Gift,
 } from "lucide-react";
 import type { FeatureName } from "../../api/types";
 import { BranchesPage, BranchSwitcher, OrdersPage, PhoneViewPage, TransfersPage } from "./pillars";
@@ -68,6 +70,7 @@ import { RegistersPage } from "./registers";
 import { CasesPage } from "./cases";
 import { ExpiryPage, StockCoverPage, WastePage } from "./stockTruth";
 import { DuplicatesPage, PricingPoliciesPage, PricingReviewPage, ScaleRulesPage } from "./commercial";
+import { BundlesPage, PromotionsPage } from "./promotions";
 import { useSession } from "../../state/session";
 import { initials } from "../login/Login";
 import { Logo } from "../../components/Logo";
@@ -195,6 +198,20 @@ const NAV: { group: string; items: NavItem[] }[] = [
         icon: Percent,
         perm: ["pricing.policy", "prices.manage"],
         element: PricingPoliciesPage,
+      },
+      {
+        path: "promotions",
+        label: t("Promotions"),
+        icon: BadgePercent,
+        perm: ["promotions.manage", "reports.sales"],
+        element: PromotionsPage,
+      },
+      {
+        path: "bundles",
+        label: t("Bundles and hampers"),
+        icon: Gift,
+        perm: ["bundles.manage", "products.view"],
+        element: BundlesPage,
       },
       {
         path: "duplicates",

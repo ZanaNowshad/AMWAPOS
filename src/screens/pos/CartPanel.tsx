@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Minus, Percent, Plus, ScanBarcode, Tag, Trash2, Hash, Star, UserRound } from "lucide-react";
-import type { Cart, SaleChannel } from "../../api/types";
+import { Minus, Percent, Plus, ScanBarcode, Tag, Ticket, Trash2, Hash, Star, UserRound } from "lucide-react";
+import type { Cart, CouponStatus, SaleChannel } from "../../api/types";
 import { formatMoney, formatQty, formatPercent } from "../../lib/money";
 import { Button } from "../../components/ui";
 import { ProductImage } from "../../components/ProductImage";
-import { t } from "../../i18n";
+import { t, tb } from "../../i18n";
 
 export function CartPanel({
   cart,
@@ -20,6 +20,7 @@ export function CartPanel({
   onRedeem,
   onCustomer,
   onChannel,
+  onCoupon,
 }: {
   cart: Cart;
   selectedLine: string | null;
@@ -36,7 +37,11 @@ export function CartPanel({
   onCustomer?: () => void;
   /** Where the sale comes from (decides which prices apply). */
   onChannel?: (c: SaleChannel) => void;
+  /** Open the coupon dialog. */
+  onCoupon?: () => void;
 }) {
+  const promos = cart.promotions;
+  const saved = (promos?.applied ?? []).reduce((s, a) => s + a.amount_minor, 0);
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!flashLine) return;
@@ -126,6 +131,17 @@ export function CartPanel({
                         {l.scale.kind === "weight" ? t("Scale label: weight") : t("Scale label: price")}
                       </span>
                     ) : null}
+                    {(l.offers ?? []).map((o) => (
+                      <span key={o} className="chip success" data-testid="line-offer" dir="auto">
+                        {o}
+                      </span>
+                    ))}
+                    {l.offer_excluded === "scale_price" &&
+                    (promos?.explain ?? []).some((x) => x.reason === "excluded_scale_price") ? (
+                      <span className="chip" data-testid="line-no-offer">
+                        {t("Fixed-price label: no offers")}
+                      </span>
+                    ) : null}
                     {l.discount_minor > 0 ? (
                       <span className="chip brand money">
                         −{formatMoney(l.discount_minor)}
@@ -183,6 +199,39 @@ export function CartPanel({
           );
         })}
       </div>
+      {cart.lines.length > 0 && (saved > 0 || onCoupon || cart.coupon_code) ? (
+        <div className="cart-head offers" data-testid="offers-row">
+          <Ticket size={18} aria-hidden />
+          <span className="grow small">
+            {saved > 0 ? (
+              <span data-testid="savings">
+                {t("Savings {0}", formatMoney(saved))}
+                {" · "}
+                <span dir="auto">{(promos?.applied ?? []).map((a) => a.name).join(", ")}</span>
+              </span>
+            ) : (
+              <span className="muted">{t("No offers on this sale")}</span>
+            )}
+            {promos?.coupon ? (
+              <>
+                {" · "}
+                <span
+                  className={`chip ${promos.coupon.status === "applied" ? "success" : "warning"}`}
+                  data-testid="coupon-state"
+                  title={tb(promos.coupon.message)}
+                >
+                  {promos.coupon.code}: {couponLabel(promos.coupon.status)}
+                </span>
+              </>
+            ) : null}
+          </span>
+          {onCoupon ? (
+            <Button onClick={onCoupon} data-testid="coupon-button">
+              {cart.coupon_code ? t("Coupon") : t("Add coupon")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       {cart.loyalty ? (
         <div className="cart-head loyalty" data-testid="loyalty-row">
           <Star size={18} aria-hidden />
@@ -206,4 +255,30 @@ function lowStock(l: Cart["lines"][number]): number | null {
   if (l.reorder_point_milli <= 0) return null;
   const left = l.stock_milli - l.qty_milli;
   return left <= l.reorder_point_milli ? left : null;
+}
+
+/** What the cashier sees for a coupon's state. */
+export function couponLabel(s: CouponStatus): string {
+  switch (s) {
+    case "applied":
+      return t("Applied");
+    case "invalid":
+      return t("Invalid");
+    case "expired":
+      return t("Expired");
+    case "not_started":
+      return t("Not active yet");
+    case "already_used":
+      return t("Already used");
+    case "needs_main":
+      return t("Needs main computer verification");
+    case "not_eligible":
+      return t("Not eligible for this basket");
+    case "wrong_channel":
+      return t("Not for this channel");
+    case "wrong_branch":
+      return t("Not for this branch");
+    default:
+      return t("Switched off");
+  }
 }

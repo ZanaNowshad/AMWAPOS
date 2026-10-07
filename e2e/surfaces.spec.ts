@@ -66,6 +66,8 @@ const ROUTES = [
   "scale-barcodes",
   "pricing-review",
   "pricing-policies",
+  "promotions",
+  "bundles",
   "requisitions",
   "suppliers",
   "purchase-orders",

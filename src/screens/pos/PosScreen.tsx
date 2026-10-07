@@ -62,6 +62,7 @@ import {
   UnknownBarcodeDialog,
   PrintQueueDialog,
   LoyaltyRedeemDialog,
+  CouponDialog,
 } from "./dialogs";
 import { OrdersList } from "../orders";
 import { useFeature } from "../../components/FeatureGate";
@@ -90,6 +91,7 @@ type ModalState =
   | { kind: "print_queue" }
   | { kind: "price_changes"; notices: string[] }
   | { kind: "redeem" }
+  | { kind: "coupon" }
   | { kind: "orders" };
 
 const EMPTY_CART: Cart = {
@@ -815,6 +817,7 @@ export function PosScreen({
               canPriceOverride
               onRedeem={cart.loyalty ? () => setModal({ kind: "redeem" }) : undefined}
               onCustomer={() => setModal({ kind: "customer" })}
+              onCoupon={() => setModal({ kind: "coupon" })}
               onChannel={(ch) =>
                 void api.pos
                   .setChannel(ch)
@@ -1074,6 +1077,16 @@ export function PosScreen({
             </div>
           </div>
         </Modal>
+      ) : null}
+      {modal.kind === "coupon" ? (
+        <CouponDialog
+          cart={cart}
+          onClose={closeModal}
+          onDone={(c, close) => {
+            applyCart(c);
+            if (close) closeModal();
+          }}
+        />
       ) : null}
       {modal.kind === "redeem" && cart.loyalty ? (
         <LoyaltyRedeemDialog
