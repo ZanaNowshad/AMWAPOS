@@ -51,6 +51,12 @@ pub struct CartLineView {
     pub using_retail: bool,
     /// What a scale label said: { rule_id, kind, value }.
     pub scale: Option<serde_json::Value>,
+    /// What offers took off this line, and their names (in pipeline order).
+    pub promo_discount_minor: i64,
+    pub offers: Vec<String>,
+    /// Why the line takes no automatic offer (custom, price_override,
+    /// manual_discount, scale_price), if so.
+    pub offer_excluded: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,6 +93,11 @@ pub struct CartView {
     pub order: Option<serde_json::Value>,
     /// Where the sale comes from: pos | whatsapp | phone | web | other.
     pub channel: Option<String>,
+    /// The promotional step: offers applied (with savings), the coupon's
+    /// state, and why other relevant offers did not apply.
+    pub promotions: crate::promotions::Outcome,
+    /// The coupon typed on this sale (a preview until the sale completes).
+    pub coupon_code: Option<String>,
 }
 
 impl CartView {
@@ -106,6 +117,8 @@ impl CartView {
             loyalty: None,
             order: None,
             channel: Some("pos".into()),
+            promotions: Default::default(),
+            coupon_code: None,
         }
     }
 }
@@ -280,6 +293,10 @@ pub(crate) struct LineRecord {
     pub scale_value_kind: Option<String>,
     pub scale_value: Option<i64>,
     pub price_type: Option<String>,
+    /// A bundle line: the bundle version it was priced with, and its
+    /// components (frozen with that version).
+    pub bundle_version: Option<i64>,
+    pub bundle: Vec<crate::bundles::Component>,
 }
 
 pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRecord>> {
@@ -288,7 +305,7 @@ pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRec
                 l.unit_price_minor, l.price_override_by, l.line_discount_minor, l.line_discount_bp, l.discount_approved_by,
                 l.tax_rule_id, l.tax_rate_bp, l.tax_inclusive, l.is_custom,
                 COALESCE(p.allow_decimal_quantity, 0), COALESCE(p.track_inventory, 0), p.category_id, p.image_hash,
-                l.scale_rule_id, l.scale_value_kind, l.scale_value, l.price_type
+                l.scale_rule_id, l.scale_value_kind, l.scale_value, l.price_type, l.bundle_version
          FROM cart_lines l LEFT JOIN products p ON p.product_id = l.product_id
          WHERE l.cart_id=?1 ORDER BY l.line_no",
     )?;
@@ -321,24 +338,96 @@ pub(crate) fn load_lines(c: &Connection, cart_id: &str) -> AppResult<Vec<LineRec
                 scale_value_kind: r.get(23)?,
                 scale_value: r.get(24)?,
                 price_type: r.get(25)?,
+                bundle_version: r.get(26)?,
+                bundle: vec![],
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    let mut rows = rows;
+    for l in rows.iter_mut() {
+        if let (Some(pid), Some(v)) = (&l.product_id, l.bundle_version) {
+            l.bundle = crate::bundles::components(c, pid, v)?;
+        }
+    }
     Ok(rows)
 }
 
-pub(crate) fn line_inputs(lines: &[LineRecord]) -> Vec<LineInput> {
+/// Pricing inputs for the cart's lines; `promo` is the promotional discount
+/// per line from `cart_promotions` (empty: none).
+pub(crate) fn line_inputs(lines: &[LineRecord], promo: &[i64]) -> Vec<LineInput> {
     lines
         .iter()
-        .map(|l| LineInput {
+        .enumerate()
+        .map(|(i, l)| LineInput {
             unit_price_minor: l.unit_price_minor,
             qty_milli: l.qty_milli,
             line_discount_minor: l.line_discount_minor,
             line_discount_bp: l.line_discount_bp,
             tax_rate_bp: l.tax_rate_bp,
             tax_inclusive: l.tax_inclusive,
+            promo_discount_minor: promo.get(i).copied().unwrap_or(0),
+            parts: l
+                .bundle
+                .iter()
+                .map(|b| crate::pricing::TaxPart {
+                    weight: b.weight(l.qty_milli),
+                    tax_rate_bp: b.tax_rate_bp,
+                    tax_inclusive: b.tax_inclusive,
+                })
+                .collect(),
         })
         .collect()
+}
+
+/// Why a cart line never takes an automatic offer (None: it can).
+pub(crate) fn promo_exclusion(l: &LineRecord) -> Option<&'static str> {
+    if l.is_custom || l.product_id.is_none() {
+        Some("custom")
+    } else if l.price_override_by.is_some() {
+        Some("price_override")
+    } else if l.line_discount_minor > 0 || l.line_discount_bp > 0 {
+        Some("manual_discount")
+    } else if l.scale_value_kind.as_deref() == Some("price") {
+        Some("scale_price")
+    } else {
+        None
+    }
+}
+
+/// The promotional step of the pipeline for a cart, at `now` (the sale's
+/// time) in the store's timezone, on the cart's branch and channel, with the
+/// cart's coupon. Recomputed from scratch on every read; nothing incremental
+/// is stored.
+pub(crate) fn cart_promotions(c: &Connection, cart_id: &str, lines: &[LineRecord]) -> AppResult<crate::promotions::Outcome> {
+    let (branch_id, channel, coupon): (String, Option<String>, Option<String>) =
+        c.query_row("SELECT branch_id, channel, coupon_code FROM carts WHERE cart_id=?1", [cart_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+    if lines.is_empty() && coupon.is_none() {
+        return Ok(Default::default());
+    }
+    let tz: String =
+        c.query_row("SELECT timezone FROM business LIMIT 1", [], |r| r.get(0)).optional()?.unwrap_or_else(|| "Asia/Bahrain".into());
+    let ctx = crate::promotions::Ctx {
+        branch_id,
+        channel: channel.unwrap_or_else(|| "pos".into()),
+        local_now: crate::promotions::local_minute(crate::time::now(), &tz),
+        coupon,
+        is_main: crate::service::load_device(c)?.is_none_or(|d| d.mode != "terminal"),
+    };
+    let plines: Vec<crate::promotions::PLine> = lines
+        .iter()
+        .map(|l| crate::promotions::PLine {
+            line_id: l.line_id.clone(),
+            product_id: l.product_id.clone(),
+            category_id: l.category_id.clone(),
+            unit_price_minor: l.unit_price_minor,
+            qty_milli: l.qty_milli,
+            allow_decimal: l.allow_decimal,
+            excluded: promo_exclusion(l),
+        })
+        .collect();
+    crate::promotions::run(c, &ctx, &plines)
 }
 
 pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec<String>) -> AppResult<CartView> {
@@ -353,7 +442,8 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
         .optional()?
         .ok_or_else(|| AppError::not_found("Sale"))?;
     let lines = load_lines(c, cart_id)?;
-    let lp = crate::loyalty::price(c, &lines, cd_minor, cd_bp, customer_id.as_deref(), points)?;
+    let promo = cart_promotions(c, cart_id, &lines)?;
+    let lp = crate::loyalty::price(c, &lines, cd_minor, cd_bp, customer_id.as_deref(), points, &promo.per_line)?;
     let loyalty = match &customer_id {
         Some(cid) if crate::loyalty::enabled(c)? => {
             let cfg: crate::settings::LoyaltySettings = crate::settings::get(c, crate::settings::KEY_LOYALTY)?;
@@ -393,8 +483,16 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
         None => None,
     };
     let channel_pt = catalog::price_type_for_channel(channel.as_deref());
+    let mut offer_names: Vec<Vec<String>> = vec![vec![]; lines.len()];
+    for a in &promo.applied {
+        for &(i, _) in &a.lines {
+            if let Some(v) = offer_names.get_mut(i) {
+                v.push(a.name.clone());
+            }
+        }
+    }
     let mut views = Vec::with_capacity(lines.len());
-    for (l, p) in lines.iter().zip(priced) {
+    for ((l, p), offers) in lines.iter().zip(priced).zip(offer_names) {
         let stock = match (&l.product_id, l.track_inventory) {
             (Some(pid), true) => Some(crate::inventory::current_qty(c, pid, &s.branch_id)?),
             _ => None,
@@ -435,6 +533,9 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
                 .scale_rule_id
                 .as_ref()
                 .map(|r| serde_json::json!({ "rule_id": r, "kind": l.scale_value_kind, "value": l.scale_value })),
+            promo_discount_minor: p.promo_discount_minor,
+            offers,
+            offer_excluded: promo_exclusion(l),
         });
     }
     Ok(CartView {
@@ -463,6 +564,8 @@ pub(crate) fn cart_view(c: &Connection, s: &Session, cart_id: &str, notices: Vec
             )
             .optional()?,
         channel,
+        coupon_code: c.query_row("SELECT coupon_code FROM carts WHERE cart_id=?1", [cart_id], |r| r.get(0))?,
+        promotions: promo,
     })
 }
 
@@ -538,6 +641,11 @@ fn add_product_line(
             .ok_or_else(|| AppError::new(ErrorCode::Validation, format!("{} has no selling price. Ask a manager to set one.", p.name)))?,
     };
     validate::qty_positive(qty, p.allow_decimal || embedded.is_some(), "Quantity")?;
+    // A bundle sells at its active version (frozen on the line).
+    let bundle_version = crate::bundles::active_version(c, &p.product_id)?;
+    if bundle_version.is_none() && crate::bundles::is_bundle(c, &p.product_id)? {
+        return Err(AppError::conflict(format!("{} is a bundle that is switched off.", p.name)));
+    }
     if scale.is_none() {
         type Last = (String, String, i64, Option<String>, i64, i64, Option<String>);
         let last: Option<Last> = c
@@ -595,6 +703,9 @@ fn add_product_line(
             if embedded.is_some() { None } else { p.price_type.clone() },
         ],
     )?;
+    if bundle_version.is_some() {
+        c.execute("UPDATE cart_lines SET bundle_version=?2 WHERE line_id=?1", params![lid, bundle_version])?;
+    }
     touch(c, cart_id)?;
     Ok(lid)
 }
@@ -712,6 +823,41 @@ impl AppCore {
     /// prices the sale, so changing it reprices the lines that follow the
     /// catalogue (not overrides, discounts or scale-label prices). A sale
     /// rung up from a customer order keeps the order's channel.
+    /// Type or clear the sale's coupon (one per sale). This is a preview:
+    /// nothing is redeemed until the sale completes, and the coupon is checked
+    /// again on every change and at commit. A coupon that does not apply never
+    /// blocks the sale; the cart says why.
+    pub fn pos_set_coupon(&self, token: &str, code: Option<String>) -> AppResult<CartView> {
+        let s = self.session(token)?;
+        require_sell(&s)?;
+        let norm = code.map(|c| crate::promotions::normalize_code(&c)).filter(|c| !c.is_empty());
+        if norm.as_ref().is_some_and(|c| c.chars().count() > 32) {
+            return Err(AppError::validation("This coupon code is not recognised."));
+        }
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            let cart_id = ensure_cart(tx, &s)?;
+            let old: Option<String> = tx.query_row("SELECT coupon_code FROM carts WHERE cart_id=?1", [&cart_id], |r| r.get(0))?;
+            if old == norm {
+                return cart_view(tx, &s, &cart_id, vec![]);
+            }
+            tx.execute(
+                "UPDATE carts SET coupon_code=?2, updated_at=?3, version=version+1 WHERE cart_id=?1",
+                params![cart_id, norm, time::now_str()],
+            )?;
+            audit::record(
+                tx,
+                &actor,
+                "pos.coupon_set",
+                "cart",
+                Some(&cart_id),
+                Some(&json!({ "coupon": old })),
+                Some(&json!({ "coupon": norm })),
+            )?;
+            cart_view(tx, &s, &cart_id, vec![])
+        })
+    }
+
     pub fn pos_set_channel(&self, token: &str, channel: &str) -> AppResult<CartView> {
         let s = self.session(token)?;
         require_sell(&s)?;
@@ -1073,7 +1219,8 @@ impl AppCore {
         let (cart_id, base) = self.db.read(|c| {
             let cid = active_cart_id(c, &s)?.ok_or_else(|| AppError::conflict("There is no sale in progress."))?;
             let lines = load_lines(c, &cid)?;
-            let (_, t) = pricing::price_cart(&line_inputs(&lines), 0, 0)?;
+            let promo = cart_promotions(c, &cid, &lines)?;
+            let (_, t) = pricing::price_cart(&line_inputs(&lines, &promo.per_line), 0, 0)?;
             Ok((cid, t.subtotal_minor - t.discount_minor))
         })?;
         if discount_minor < 0 || !(0..=10000).contains(&discount_bp) || (discount_minor > 0 && discount_bp > 0) {
@@ -1268,7 +1415,8 @@ impl AppCore {
             let mut out = vec![];
             for (cid, hn, ha, uid, uname, cust, note, dm, dbp) in rows {
                 let lines = load_lines(c, &cid)?;
-                let (_, t) = pricing::price_cart(&line_inputs(&lines), dm, dbp)?;
+                let promo = cart_promotions(c, &cid, &lines)?;
+                let (_, t) = pricing::price_cart(&line_inputs(&lines, &promo.per_line), dm, dbp)?;
                 out.push(HeldCartRow {
                     locked: uid != s.user_id && !others,
                     cart_id: cid,
@@ -1327,6 +1475,20 @@ impl AppCore {
                     notices.push(format!("{} was removed: it is no longer sold.", l.name));
                     continue;
                 }
+                if let Some(v) = l.bundle_version {
+                    match crate::bundles::active_version(tx, pid)? {
+                        Some(now) if now != v => {
+                            tx.execute("UPDATE cart_lines SET bundle_version=?2 WHERE line_id=?1", params![l.line_id, now])?;
+                            notices.push(format!("{}: the bundle's contents changed; the current contents apply.", l.name));
+                        }
+                        None => {
+                            tx.execute("DELETE FROM cart_lines WHERE line_id=?1", [&l.line_id])?;
+                            notices.push(format!("{} was removed: the bundle is switched off.", l.name));
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
                 let Some(now_price) = p.price else { continue };
                 // A price-embedded scale label keeps the price printed on it.
                 if l.scale_value_kind.as_deref() == Some("price") {
@@ -1369,7 +1531,13 @@ impl AppCore {
                 params![cid, s.user_id, shift, time::now_str()],
             )?;
             audit::record(tx, &actor, "pos.restored", "cart", Some(&cid), None, Some(&json!({ "notices": notices })))?;
-            cart_view(tx, &s, &cid, notices)
+            let mut view = cart_view(tx, &s, &cid, notices)?;
+            // The held coupon is checked again now: say so when it no longer applies.
+            if let Some(cs) = view.promotions.coupon.as_ref().filter(|c| c.status != "applied") {
+                let note = format!("Coupon {}: {}", cs.code, cs.message);
+                view.notices.push(note);
+            }
+            Ok(view)
         })
     }
 
@@ -1407,7 +1575,8 @@ impl AppCore {
         let (cid, n, total) = self.db.read(|c| {
             let cid = active_cart_id(c, &s)?.ok_or_else(|| AppError::conflict("There is no sale in progress."))?;
             let lines = load_lines(c, &cid)?;
-            let (_, t) = pricing::price_cart(&line_inputs(&lines), 0, 0)?;
+            let promo = cart_promotions(c, &cid, &lines)?;
+            let (_, t) = pricing::price_cart(&line_inputs(&lines, &promo.per_line), 0, 0)?;
             Ok((cid, lines.len(), t.total_minor))
         })?;
         let approved =

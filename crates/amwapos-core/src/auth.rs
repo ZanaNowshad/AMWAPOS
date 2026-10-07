@@ -114,6 +114,9 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("catalog.merge", "Catalogue", "Merge duplicate products into one (cannot be undone)"),
     ("pricing.policy", "Catalogue", "Set pricing policies and apply recommended prices"),
     ("barcode_rules.manage", "Catalogue", "Set up scale barcode rules"),
+    ("promotions.manage", "Catalogue", "Create, schedule, switch on and end promotions"),
+    ("coupons.manage", "Catalogue", "Create and switch off coupon codes"),
+    ("bundles.manage", "Catalogue", "Set up bundles, kits and hampers"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -211,6 +214,9 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// Permissions added to the catalogue after the first release. Built-in
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "promotions.manage",
+    "coupons.manage",
+    "bundles.manage",
     "catalog.merge",
     "pricing.policy",
     "barcode_rules.manage",

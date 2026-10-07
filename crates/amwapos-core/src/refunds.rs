@@ -177,8 +177,43 @@ fn compute(c: &rusqlite::Connection, sale_id: &str, lines: &[RefundLineInput]) -
             track == 1,
         ));
     }
+    whole_bundles(c, sale_id, lines)?;
     out.subtotal = out.total - out.tax;
     Ok(out)
+}
+
+/// A bundle is refunded whole: every item of the bundle line, each for the
+/// same number of whole bundles. Amounts come from the frozen split of the
+/// sale (proration of each component line), never from today's prices.
+fn whole_bundles(c: &rusqlite::Connection, sale_id: &str, lines: &[RefundLineInput]) -> AppResult<()> {
+    use std::collections::BTreeMap;
+    // bundle line -> bundles asked per component
+    let mut asked: BTreeMap<i64, Vec<(String, i64, i64)>> = BTreeMap::new();
+    for l in lines {
+        let row: Option<(Option<i64>, Option<i64>, Option<String>)> = c
+            .query_row(
+                "SELECT bundle_line_no, bundle_component_qty_milli, bundle_name FROM sale_items WHERE sale_item_id=?1 AND sale_id=?2",
+                rusqlite::params![l.sale_item_id, sale_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        if let Some((Some(bl), Some(per), name)) = row {
+            asked.entry(bl).or_default().push((name.unwrap_or_default(), l.qty_milli, per));
+        }
+    }
+    for (bl, got) in asked {
+        let name = got[0].0.clone();
+        let parts: i64 =
+            c.query_row("SELECT COUNT(*) FROM sale_items WHERE sale_id=?1 AND bundle_line_no=?2", rusqlite::params![sale_id, bl], |r| {
+                r.get(0)
+            })?;
+        let whole = |q: i64, per: i64| per > 0 && (q as i128 * 1000) % per as i128 == 0 && ((q as i128 * 1000 / per as i128) % 1000 == 0);
+        let bundles: Vec<i64> = got.iter().map(|(_, q, per)| if whole(*q, *per) { q * 1000 / per } else { -1 }).collect();
+        if got.len() as i64 != parts || bundles.iter().any(|b| *b <= 0 || *b != bundles[0]) {
+            return Err(AppError::validation(format!("{name} is a bundle: refund all its items together, for whole bundles.")));
+        }
+    }
+    Ok(())
 }
 
 impl AppCore {

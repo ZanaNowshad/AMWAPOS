@@ -67,6 +67,11 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("products", &["product_id"], Policy::Hub),
     ("product_barcodes", &["barcode_id"], Policy::Hub),
     ("scale_barcode_rules", &["rule_id"], Policy::Hub),
+    ("promotions", &["promotion_id"], Policy::Hub),
+    ("promotion_targets", &["promotion_id", "role", "ref_kind", "ref_id"], Policy::Hub),
+    ("coupons", &["coupon_id"], Policy::Hub),
+    ("bundles", &["bundle_product_id"], Policy::Hub),
+    ("bundle_components", &["bundle_product_id", "version", "component_product_id"], Policy::Hub),
     ("product_prices", &["price_id"], Policy::Hub),
     ("product_cost_history", &["cost_id"], Policy::Hub),
     ("product_costs", &["product_id", "branch_id"], Policy::Hub),
@@ -102,6 +107,8 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
     ("rider_handover_items", &["collection_id"], Policy::Append),
     ("receipt_snapshots", &["ref_kind", "ref_id"], Policy::Append),
     ("sale_voids", &["void_id"], Policy::Append),
+    ("sale_item_promotions", &["sale_item_id", "promotion_id"], Policy::Append),
+    ("coupon_redemptions", &["redemption_id"], Policy::Append),
 ];
 
 /// Columns never shipped to other devices.

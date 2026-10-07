@@ -53,8 +53,9 @@ pub(crate) fn price(
     cd_bp: i64,
     customer: Option<&str>,
     points: i64,
+    promo: &[i64],
 ) -> AppResult<Priced> {
-    let inputs = line_inputs(lines);
+    let inputs = line_inputs(lines, promo);
     let (first, first_totals) = pricing::price_cart(&inputs, cd_minor, cd_bp)?;
     let plain =
         |l: Vec<LineResult>, t: Totals| Priced { loyalty_alloc: vec![0; l.len()], lines: l, totals: t, loyalty_minor: 0, points: 0 };
@@ -80,7 +81,10 @@ pub fn earned(cfg: &LoyaltySettings, p: &Priced) -> i64 {
         .lines
         .iter()
         .zip(&p.loyalty_alloc)
-        .filter(|(l, loy)| !cfg.exclude_discounted_lines || (l.line_discount_minor == 0 && l.cart_discount_minor - **loy == 0))
+        .filter(|(l, loy)| {
+            !cfg.exclude_discounted_lines
+                || (l.promo_discount_minor == 0 && l.line_discount_minor == 0 && l.cart_discount_minor - **loy == 0)
+        })
         .map(|(l, _)| l.net_minor)
         .sum();
     (eligible / cfg.earn_minor_per_point.max(1)).max(0)

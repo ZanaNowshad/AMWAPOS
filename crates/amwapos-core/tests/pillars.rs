@@ -141,6 +141,8 @@ fn loyalty_earns_on_commit_redeems_as_discount_and_reverses_on_refund() {
             line_discount_bp: 0,
             tax_rate_bp: 1000,
             tax_inclusive: true,
+            promo_discount_minor: 0,
+            parts: vec![],
         }],
         200,
         0,

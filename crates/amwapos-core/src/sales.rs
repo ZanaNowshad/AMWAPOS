@@ -135,6 +135,13 @@ pub struct SaleItemView {
     pub is_custom: bool,
     /// Arabic product name at the time of sale (if the product had one).
     pub name_ar: Option<String>,
+    /// The promotional part of `discount_minor` (0 on older sales).
+    pub promo_discount_minor: i64,
+    /// Offers frozen on this line: { name, layer, coupon_code, amount_minor }.
+    pub offers: Vec<serde_json::Value>,
+    /// A bundle component: { name, version, line_no, qty_milli } of the
+    /// bundle line it was sold in.
+    pub bundle: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -196,6 +203,69 @@ pub struct SalesQuery {
     pub limit: Option<i64>,
     #[serde(default)]
     pub offset: Option<i64>,
+}
+
+/// A bundle line becomes one sale line per component, grouped by the bundle
+/// line: quantity, money (net, discount, offer, loyalty), VAT at the
+/// component's rate and cost per component, each split exactly. Stock leaves
+/// per component; the bundle itself never moves. Returns (sale line, weight)
+/// per component, for splitting the line's offers.
+#[allow(clippy::too_many_arguments)]
+fn write_bundle_lines(
+    tx: &Connection,
+    s: &Session,
+    sale_id: &str,
+    l: &crate::pos::LineRecord,
+    p: &pricing::LineResult,
+    loyalty_share: i64,
+    pcosts: &[i64],
+) -> AppResult<Vec<(String, i64)>> {
+    let weights: Vec<i64> = l.bundle.iter().map(|b| b.weight(l.qty_milli)).collect();
+    let weights = if weights.iter().all(|w| *w == 0) { vec![1; weights.len()] } else { weights };
+    let promos = money::allocate(p.promo_discount_minor, &weights);
+    let loyalty = money::allocate(loyalty_share, &weights);
+    let mut ids = vec![];
+    for (k, b) in l.bundle.iter().enumerate() {
+        let part = p.parts.get(k).cloned().unwrap_or_default();
+        let qty = b.total_qty(l.qty_milli);
+        let item_id = new_id();
+        let gross = part.net_minor + part.discount_minor;
+        tx.execute(
+            "INSERT INTO sale_items(sale_item_id, sale_id, line_no, product_id, product_name_snapshot, sku_snapshot, barcode_snapshot,
+                category_id_snapshot, unit, qty_milli, original_unit_price_minor, effective_unit_price_minor, gross_minor, discount_minor,
+                tax_rule_id, tax_rate_bp, tax_inclusive, tax_minor, line_total_minor, cost_snapshot_minor, is_custom,
+                price_override_by, discount_approved_by, product_name_ar_snapshot, loyalty_discount_minor, price_type, promo_discount_minor,
+                bundle_product_id, bundle_name, bundle_version, bundle_line_no, bundle_qty_milli, bundle_component_qty_milli)
+             VALUES (?1,?2,?3,?4,?5,?6,NULL,?7,?8,?9,?10,?10,?11,?12,?13,?14,?15,?16,?17,?18,0,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)",
+            params![
+                item_id, sale_id, l.line_no, b.product_id, b.name, b.sku, b.category_id, b.unit, qty, b.unit_price_minor,
+                gross, part.discount_minor, b.tax_rule_id, b.tax_rate_bp, b.tax_inclusive as i64, part.tax_minor, part.line_total_minor,
+                pcosts.get(k).copied().unwrap_or(0), l.price_override_by, l.discount_approved_by, b.name_ar, loyalty[k], l.price_type,
+                promos[k], l.product_id, l.name, l.bundle_version, l.line_no, l.qty_milli, b.qty_milli
+            ],
+        )?;
+        if b.track_inventory {
+            let cost = pcosts.get(k).copied().unwrap_or(0);
+            let unit_cost = if qty > 0 { money::div_round(cost as i128 * 1000, qty as i128) as i64 } else { 0 };
+            inventory::apply_movement(
+                tx,
+                &Movement {
+                    product_id: &b.product_id,
+                    branch_id: &s.branch_id,
+                    kind: "sale",
+                    qty_delta_milli: -qty,
+                    unit_cost_minor: Some(unit_cost),
+                    source_type: "sale",
+                    source_id: Some(sale_id),
+                    reason: None,
+                    user_id: Some(&s.user_id),
+                    device_id: Some(&s.device_id),
+                },
+            )?;
+        }
+        ids.push((item_id, weights[k]));
+    }
+    Ok(ids)
 }
 
 pub(crate) fn open_shift_for(c: &Connection, s: &Session) -> AppResult<Option<String>> {
@@ -274,8 +344,9 @@ pub(crate) fn load_sale_detail(c: &Connection, sale_id: &str, show_cost: bool) -
                 i.original_unit_price_minor, i.effective_unit_price_minor, i.gross_minor, i.discount_minor, i.tax_rate_bp, i.tax_inclusive,
                 i.tax_minor, i.line_total_minor, i.cost_snapshot_minor,
                 COALESCE((SELECT SUM(ri.qty_milli) FROM refund_items ri WHERE ri.original_sale_item_id=i.sale_item_id),0), i.is_custom,
-                i.product_name_ar_snapshot
-         FROM sale_items i WHERE i.sale_id=?1 ORDER BY i.line_no",
+                i.product_name_ar_snapshot, COALESCE(i.promo_discount_minor,0), i.bundle_name, i.bundle_version, i.bundle_line_no,
+                i.bundle_qty_milli
+         FROM sale_items i WHERE i.sale_id=?1 ORDER BY i.line_no, i.product_id",
     )?;
     d.items = st
         .query_map([sale_id], |r| {
@@ -300,9 +371,37 @@ pub(crate) fn load_sale_detail(c: &Connection, sale_id: &str, show_cost: bool) -
                 refunded_qty_milli: r.get(17)?,
                 is_custom: r.get::<_, i64>(18)? == 1,
                 name_ar: r.get(19)?,
+                promo_discount_minor: r.get(20)?,
+                offers: vec![],
+                bundle: r.get::<_, Option<String>>(21)?.map(|n| {
+                    serde_json::json!({ "name": n, "version": r.get::<_, Option<i64>>(22).ok().flatten(),
+                        "line_no": r.get::<_, Option<i64>>(23).ok().flatten(), "qty_milli": r.get::<_, Option<i64>>(24).ok().flatten() })
+                }),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    {
+        let mut st = c.prepare_cached(
+            "SELECT sale_item_id, promotion_name, layer, coupon_code, amount_minor FROM sale_item_promotions WHERE sale_id=?1
+             ORDER BY CASE layer WHEN 'item' THEN 0 WHEN 'basket' THEN 1 ELSE 2 END, promotion_name, promotion_id",
+        )?;
+        let rows = st
+            .query_map([sale_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, i64>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (iid, name, layer, code, amount) in rows {
+            if let Some(it) = d.items.iter_mut().find(|i| i.sale_item_id == iid) {
+                it.offers.push(serde_json::json!({ "name": name, "layer": layer, "coupon_code": code, "amount_minor": amount }));
+            }
+        }
+    }
     d.payments = load_payments(c, sale_id)?;
     let mut st = c.prepare_cached(
         "SELECT refund_id, refund_receipt_number, total_minor, created_at FROM refunds WHERE original_sale_id=?1 ORDER BY created_at",
@@ -376,10 +475,19 @@ impl AppCore {
         let shortfalls: Vec<String> = self.db.read(|c| {
             let lines = load_lines(c, &cart_id)?;
             let mut need: std::collections::BTreeMap<String, (String, i64)> = Default::default();
-            for l in lines.iter().filter(|l| l.track_inventory) {
-                if let Some(pid) = &l.product_id {
-                    let e = need.entry(pid.clone()).or_insert((l.name.clone(), 0));
-                    e.1 += l.qty_milli;
+            for l in &lines {
+                // A bundle takes its components from stock, never itself.
+                for b in &l.bundle {
+                    if b.track_inventory {
+                        let e = need.entry(b.product_id.clone()).or_insert((b.name.clone(), 0));
+                        e.1 += b.total_qty(l.qty_milli);
+                    }
+                }
+                if l.track_inventory && l.bundle.is_empty() {
+                    if let Some(pid) = &l.product_id {
+                        let e = need.entry(pid.clone()).or_insert((l.name.clone(), 0));
+                        e.1 += l.qty_milli;
+                    }
                 }
             }
             let mut out = vec![];
@@ -476,7 +584,11 @@ impl AppCore {
             if lines.is_empty() {
                 return Err(AppError::validation("The sale is empty."));
             }
-            let lp = crate::loyalty::price(tx, &lines, cd_minor, cd_bp, customer_id.as_deref(), loyalty_points)?;
+            // The promotional step, recomputed inside the commit (the same
+            // engine the cart showed; a limited coupon is counted here, under
+            // the write lock, so two tills cannot both take its last use).
+            let promo = crate::pos::cart_promotions(tx, &cart_id, &lines)?;
+            let lp = crate::loyalty::price(tx, &lines, cd_minor, cd_bp, customer_id.as_deref(), loyalty_points, &promo.per_line)?;
             let (priced, totals) = (lp.lines.clone(), lp.totals.clone());
             if let Some(exp) = req.expected_total_minor {
                 if exp != totals.total_minor {
@@ -493,7 +605,21 @@ impl AppCore {
             let sale_id = new_id();
             let mut cost_total = 0i64;
             let mut costs = Vec::with_capacity(lines.len());
+            // Cost per line; a bundle's cost is its components' (per component).
+            let mut part_costs: Vec<Vec<i64>> = Vec::with_capacity(lines.len());
             for l in &lines {
+                if !l.bundle.is_empty() {
+                    let mut pc = vec![];
+                    for b in &l.bundle {
+                        let unit_cost = inventory::avg_cost(tx, &b.product_id, &s.branch_id)?;
+                        pc.push(money::extend(unit_cost, b.total_qty(l.qty_milli))?);
+                    }
+                    let c: i64 = pc.iter().sum();
+                    cost_total += c;
+                    costs.push(c);
+                    part_costs.push(pc);
+                    continue;
+                }
                 let unit_cost = match &l.product_id {
                     Some(pid) => inventory::avg_cost(tx, pid, &s.branch_id)?,
                     None => 0,
@@ -501,6 +627,7 @@ impl AppCore {
                 let c = money::extend(unit_cost, l.qty_milli)?;
                 cost_total += c;
                 costs.push(c);
+                part_costs.push(vec![]);
             }
             let paid: i64 = applied.iter().map(|a| a.amount_minor).sum::<i64>() + change;
             tx.execute(
@@ -515,22 +642,29 @@ impl AppCore {
                     cost_total, totals.item_count_milli, cart_id, req.operation_id, business_date, now_s, lp.loyalty_minor
                 ],
             )?;
-            for (((l, p), cost), loyalty_share) in lines.iter().zip(&priced).zip(&costs).zip(&lp.loyalty_alloc) {
+            let mut item_ids: Vec<Vec<(String, i64)>> = Vec::with_capacity(lines.len());
+            for ((((l, p), cost), loyalty_share), pcosts) in lines.iter().zip(&priced).zip(&costs).zip(&lp.loyalty_alloc).zip(&part_costs) {
+                if !l.bundle.is_empty() {
+                    let ids = write_bundle_lines(tx, &s, &sale_id, l, p, *loyalty_share, pcosts)?;
+                    item_ids.push(ids);
+                    continue;
+                }
                 let item_id = new_id();
+                item_ids.push(vec![(item_id.clone(), 1)]);
                 let approver = l.discount_approved_by.clone();
                 tx.execute(
                     "INSERT INTO sale_items(sale_item_id, sale_id, line_no, product_id, product_name_snapshot, sku_snapshot, barcode_snapshot,
                         category_id_snapshot, unit, qty_milli, original_unit_price_minor, effective_unit_price_minor, gross_minor, discount_minor,
                         tax_rule_id, tax_rate_bp, tax_inclusive, tax_minor, line_total_minor, cost_snapshot_minor, is_custom,
                         price_override_by, discount_approved_by, product_name_ar_snapshot, loyalty_discount_minor,
-                        scale_rule_id, scale_value_kind, scale_value, price_type)
+                        scale_rule_id, scale_value_kind, scale_value, price_type, promo_discount_minor)
                      VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,
-                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4),?24,?25,?26,?27,?28)",
+                        (SELECT NULLIF(TRIM(name_ar),'') FROM products WHERE product_id=?4),?24,?25,?26,?27,?28,?29)",
                     params![
                         item_id, sale_id, l.line_no, l.product_id, l.name, l.sku, l.barcode, l.category_id, l.unit, l.qty_milli,
                         l.catalog_unit_price_minor, l.unit_price_minor, p.gross_minor, p.discount_minor, l.tax_rule_id, l.tax_rate_bp,
                         l.tax_inclusive as i64, p.tax_minor, p.line_total_minor, cost, l.is_custom as i64, l.price_override_by, approver,
-                        loyalty_share, l.scale_rule_id, l.scale_value_kind, l.scale_value, l.price_type
+                        loyalty_share, l.scale_rule_id, l.scale_value_kind, l.scale_value, l.price_type, p.promo_discount_minor
                     ],
                 )?;
                 if l.track_inventory {
@@ -554,6 +688,7 @@ impl AppCore {
                     }
                 }
             }
+            crate::promotions::record_sale(tx, &s, &sale_id, &req.operation_id, customer_id.as_deref(), &item_ids, &promo, &now_s)?;
             for a in &applied {
                 tx.execute(
                     "INSERT INTO payments(payment_id, sale_id, method, amount_minor, tendered_minor, change_minor, reference, metadata_json, created_at)

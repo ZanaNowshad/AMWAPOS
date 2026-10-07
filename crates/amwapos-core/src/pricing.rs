@@ -4,12 +4,16 @@
 //! estimates, but every persisted figure comes from here.
 //!
 //! Line algorithm:
-//! 1. `gross = round(unit_price × qty)`
-//! 2. `line_discount` = fixed amount or `round(gross × bp)`; must be ≤ gross
+//! 1. `gross = round(unit_price × qty)`; `promo` = the promotional discount
+//!    the promotion engine (`promotions::run`) computed for the line;
+//!    ≤ gross; 0 without offers
+//! 2. `line_discount` = fixed amount or `round((gross − promo) × bp)`; must
+//!    be ≤ gross − promo (a line with a manual discount never takes an
+//!    automatic offer, so in practice one of the two is zero)
 //! 3. cart discount (fixed or bp of the post-line-discount sum) is allocated
 //!    across lines proportionally with the largest-remainder method, so line
 //!    discounts always sum exactly to the header discount
-//! 4. `net = gross − line_discount − allocated_cart_discount`
+//! 4. `net = gross − promo − line_discount − allocated_cart_discount`
 //! 5. inclusive tax: `tax = round(net × r/(1+r))`, `total = net`;
 //!    exclusive tax: `tax = round(net × r)`, `total = net + tax`
 //!
@@ -29,17 +33,46 @@ pub struct LineInput {
     pub line_discount_bp: i64,
     pub tax_rate_bp: i64,
     pub tax_inclusive: bool,
+    /// Promotional discount (from the promotion engine); 0 without offers.
+    #[serde(default)]
+    pub promo_discount_minor: i64,
+    /// A bundle line: its components, each with its weight (normal value)
+    /// and VAT. The line's net is split over them with `money::allocate`
+    /// and VAT is computed per component; empty for an ordinary line.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<TaxPart>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TaxPart {
+    pub weight: i64,
+    pub tax_rate_bp: i64,
+    pub tax_inclusive: bool,
+}
+
+/// One component's share of a bundle line.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct PartResult {
+    pub net_minor: i64,
+    pub discount_minor: i64,
+    pub tax_minor: i64,
+    pub line_total_minor: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct LineResult {
     pub gross_minor: i64,
+    #[serde(default)]
+    pub promo_discount_minor: i64,
     pub line_discount_minor: i64,
     pub cart_discount_minor: i64,
     pub discount_minor: i64,
     pub net_minor: i64,
     pub tax_minor: i64,
     pub line_total_minor: i64,
+    /// Per component for a bundle line (sums exactly to the line).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parts: Vec<PartResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -74,12 +107,21 @@ pub fn price_cart(lines: &[LineInput], cart_discount_minor: i64, cart_discount_b
             return Err(AppError::validation("Invalid tax rate."));
         }
         let gross = extend(l.unit_price_minor, l.qty_milli)?;
-        let ld = if l.line_discount_bp > 0 { percent_of(gross, l.line_discount_bp)? } else { l.line_discount_minor };
-        if ld > gross {
+        if l.promo_discount_minor < 0 || l.promo_discount_minor > gross {
+            return Err(AppError::validation("An offer cannot exceed the line amount."));
+        }
+        let after_promo = gross - l.promo_discount_minor;
+        let ld = if l.line_discount_bp > 0 { percent_of(after_promo, l.line_discount_bp)? } else { l.line_discount_minor };
+        if ld > after_promo {
             return Err(AppError::validation("A line discount cannot exceed the line amount."));
         }
-        after_line.push(gross - ld);
-        results.push(LineResult { gross_minor: gross, line_discount_minor: ld, ..Default::default() });
+        after_line.push(after_promo - ld);
+        results.push(LineResult {
+            gross_minor: gross,
+            promo_discount_minor: l.promo_discount_minor,
+            line_discount_minor: ld,
+            ..Default::default()
+        });
     }
     let base: i64 = after_line.iter().sum();
     let cart_disc = if cart_discount_bp > 0 { percent_of(base, cart_discount_bp)? } else { cart_discount_minor };
@@ -90,9 +132,27 @@ pub fn price_cart(lines: &[LineInput], cart_discount_minor: i64, cart_discount_b
     let mut totals = Totals::default();
     for (i, (r, l)) in results.iter_mut().zip(lines).enumerate() {
         r.cart_discount_minor = alloc.get(i).copied().unwrap_or(0);
-        r.discount_minor = r.line_discount_minor + r.cart_discount_minor;
+        r.discount_minor = r.promo_discount_minor + r.line_discount_minor + r.cart_discount_minor;
         r.net_minor = r.gross_minor - r.discount_minor;
-        if l.tax_inclusive {
+        if !l.parts.is_empty() {
+            let weights: Vec<i64> = l.parts.iter().map(|p| p.weight.max(0)).collect();
+            let weights = if weights.iter().all(|w| *w == 0) { vec![1; weights.len()] } else { weights };
+            let nets = allocate(r.net_minor, &weights);
+            let discs = allocate(r.discount_minor, &weights);
+            r.tax_minor = 0;
+            r.line_total_minor = 0;
+            for ((part, net), disc) in l.parts.iter().zip(nets).zip(discs) {
+                let (tax, total) = if part.tax_inclusive {
+                    (tax_from_inclusive(net, part.tax_rate_bp)?, net)
+                } else {
+                    let t = tax_on_exclusive(net, part.tax_rate_bp)?;
+                    (t, net + t)
+                };
+                r.tax_minor += tax;
+                r.line_total_minor += total;
+                r.parts.push(PartResult { net_minor: net, discount_minor: disc, tax_minor: tax, line_total_minor: total });
+            }
+        } else if l.tax_inclusive {
             r.tax_minor = tax_from_inclusive(r.net_minor, l.tax_rate_bp)?;
             r.line_total_minor = r.net_minor;
         } else {
@@ -226,6 +286,8 @@ mod tests {
             line_discount_bp: 0,
             tax_rate_bp: 1000,
             tax_inclusive: true,
+            promo_discount_minor: 0,
+            parts: vec![],
         }
     }
 

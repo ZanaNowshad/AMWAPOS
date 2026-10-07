@@ -114,6 +114,7 @@ const SALES: &[&str] = &["sales.view", "reports.sales"];
 const CATALOG: &[&str] = &["products.view"];
 const PRODUCTS: &[&str] = &["products.manage"];
 const PRICES: &[&str] = &["prices.manage"];
+const PROMOS: &[&str] = &["promotions.manage", "reports.sales"];
 const INV: &[&str] = &["inventory.view"];
 const PURCH: &[&str] = &["purchasing.manage", "suppliers.manage", "inventory.receive"];
 const CUST: &[&str] = &["customers.view"];
@@ -255,6 +256,16 @@ pub const TOOLS: &[ToolSpec] = &[
         "A product's price per sales channel (WhatsApp, phone, web) and which channels use the retail price because none is set."),
     read("commercial_summary", "commercial.summary", &["products.manage", "prices.manage"], "",
         "Counts of catalogue and pricing work waiting: likely duplicates, prices below minimum margin, recommendations, cost changes, channel prices missing."),
+    read("promotions", "promotions.list", PROMOS, "status:s",
+        "Promotions (offers) with their state (running, scheduled, paused, draft, ended), schedule, scope, sales and discount given so far."),
+    read("promotion_get", "promotions.get", PROMOS, "promotion_id:s!",
+        "One promotion: rules, schedule, branch/channel scope, products covered, the offer price and margin per covered product, conflicts with other offers, and its coupons."),
+    read("promotion_check", "promotions.preview", &["promotions.manage"], "promotion:o!",
+        "Check a promotion that is not saved yet: problems, products covered, margins and conflicts. Saves and switches on nothing."),
+    read("bundles", "bundles.list", &["bundles.manage", "products.view"], "",
+        "Bundles, kits and hampers: version, on/off, price, and how many the branch's stock can make now (with the limiting item)."),
+    read("bundle_get", "bundles.get", &["bundles.manage", "products.view"], "bundle_product_id:s!",
+        "One bundle: its items and quantities, stock of each, how many can be made, price, the items' normal value, the saving and the margin."),
     read("pricing_policies", "pricing.policies", PRICES, "", "Pricing policies: scope, markup or target margin, minimum margin, rounding, preferred ending, priority, cost basis."),
     read("pricing_review", "pricing.review", PRICES, "group:s,limit:i,offset:i",
         "Products needing price attention: below minimum margin, cost changed, no policy, channel price missing, recommendation available. Recommendations only; nothing changes until a person applies them."),
@@ -684,6 +695,11 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("pos.set_channel", "forbidden: the cashier sets where a sale comes from"),
     ("products.channel_price_set", "forbidden: only a person sets channel prices"),
     ("pricing.policy_save", "forbidden: only a person sets pricing policies"),
+    ("promotions.save", "forbidden: only a person creates or changes a promotion"),
+    ("bundles.save", "forbidden: only a person sets up or changes a bundle"),
+    ("coupons.save", "forbidden: only a person creates or switches off coupon codes"),
+    ("pos.set_coupon", "the cashier types the customer's coupon at the till"),
+    ("promotions.set_status", "forbidden: only a person switches a promotion on, pauses, ends or archives it"),
     ("pricing.apply", "forbidden: only a person applies recommended prices"),
     ("pricing.decide", "forbidden: only a person dismisses or postpones recommendations"),
     ("duplicates.decide", "forbidden: only a person decides about suggested duplicates"),

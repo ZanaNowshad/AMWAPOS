@@ -298,6 +298,8 @@ fn arabic(en: &str) -> Option<&'static str> {
         "Receipt" => "الإيصال",
         "Cashier" => "الكاشير",
         "Customer" => "العميل",
+        "Coupon" => "قسيمة",
+        "You saved" => "وفّرت",
         "Discount" => "خصم",
         "Subtotal" => "المجموع",
         "VAT" => "الضريبة",
@@ -468,7 +470,37 @@ fn build_sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -
         doc.left(format!("{}: {cn}{}", l.t("Customer"), d.customer_phone.as_ref().map(|p| format!(" ({p})")).unwrap_or_default()));
     }
     doc.rule();
-    for it in &d.items {
+    let offer_amount = |o: &serde_json::Value| o["amount_minor"].as_i64().unwrap_or(0);
+    let mut i = 0;
+    while i < d.items.len() {
+        // A bundle prints as one line (its price) with its items beneath.
+        if let Some(b) = d.items[i].bundle.clone() {
+            let group: Vec<&crate::sales::SaleItemView> =
+                d.items[i..].iter().take_while(|x| x.bundle.as_ref().is_some_and(|y| y["line_no"] == b["line_no"])).collect();
+            i += group.len();
+            let qty = b["qty_milli"].as_i64().unwrap_or(1000);
+            let gross: i64 = group.iter().map(|x| x.gross_minor).sum();
+            doc.left(b["name"].as_str().unwrap_or_default().to_string());
+            let unit = if qty > 0 { crate::money::div_round(gross as i128 * 1000, qty as i128) as i64 } else { gross };
+            doc.pair(format!("  {} x {}", format_qty(qty), m(unit)), m(gross));
+            for x in &group {
+                doc.left(format!("  - {} x {}", x.name, format_qty(x.qty_milli)));
+            }
+            let mut offers: std::collections::BTreeMap<String, i64> = Default::default();
+            for o in group.iter().flat_map(|x| x.offers.iter()).filter(|o| o["layer"] == "item") {
+                *offers.entry(o["name"].as_str().unwrap_or_default().to_string()).or_insert(0) += offer_amount(o);
+            }
+            for (name, amt) in offers {
+                doc.pair(format!("  {name}"), format!("-{}", m(amt)));
+            }
+            let other: i64 = group.iter().map(|x| x.discount_minor - x.promo_discount_minor).sum();
+            if other > 0 {
+                doc.pair(format!("  {}", l.t("Discount")), format!("-{}", m(other)));
+            }
+            continue;
+        }
+        let it = &d.items[i];
+        i += 1;
         doc.left(it.name.clone());
         if let Some(ar) = it.name_ar.as_ref().filter(|a| *a != &it.name) {
             doc.left(ar.clone());
@@ -478,8 +510,11 @@ fn build_sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -
         if it.unit_price_minor != it.original_unit_price_minor {
             doc.left(format!("  ({} {})", l.t("was"), m(it.original_unit_price_minor)));
         }
-        if it.discount_minor > 0 {
-            doc.pair(format!("  {}", l.t("Discount")), format!("-{}", m(it.discount_minor)));
+        for o in it.offers.iter().filter(|o| o["layer"] == "item") {
+            doc.pair(format!("  {}", o["name"].as_str().unwrap_or_default()), format!("-{}", m(offer_amount(o))));
+        }
+        if it.discount_minor - it.promo_discount_minor > 0 {
+            doc.pair(format!("  {}", l.t("Discount")), format!("-{}", m(it.discount_minor - it.promo_discount_minor)));
         }
         if cfg.show_barcode {
             if let Some(b) = &it.barcode {
@@ -489,8 +524,24 @@ fn build_sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -
     }
     doc.rule();
     doc.pair(l.t("Subtotal"), m(d.subtotal_minor));
-    if d.discount_minor > 0 {
-        doc.pair(l.t("Discount"), format!("-{}", m(d.discount_minor)));
+    // Basket offers and the coupon, by name (item offers are on their lines).
+    let mut basket: Vec<(String, i64)> = vec![];
+    for o in d.items.iter().flat_map(|x| x.offers.iter()).filter(|o| o["layer"] != "item") {
+        let label = match o["coupon_code"].as_str() {
+            Some(code) => format!("{} {code}", l.t("Coupon")),
+            None => o["name"].as_str().unwrap_or_default().to_string(),
+        };
+        match basket.iter_mut().find(|b| b.0 == label) {
+            Some(b) => b.1 += offer_amount(o),
+            None => basket.push((label, offer_amount(o))),
+        }
+    }
+    for (label, amt) in &basket {
+        doc.pair(label.clone(), format!("-{}", m(*amt)));
+    }
+    let promo_total: i64 = d.items.iter().map(|x| x.promo_discount_minor).sum();
+    if d.discount_minor - promo_total > 0 {
+        doc.pair(l.t("Discount"), format!("-{}", m(d.discount_minor - promo_total)));
     }
     // VAT summary by rate.
     let mut rates: std::collections::BTreeMap<(i64, bool), i64> = Default::default();
@@ -520,8 +571,22 @@ fn build_sale_receipt(c: &Connection, sale_id: &str, copy_label: Option<&str>) -
     if d.change_minor > 0 {
         doc.pair_b(l.t("Change"), m(d.change_minor), false);
     }
+    if promo_total > 0 {
+        doc.pair(l.t("You saved"), m(d.discount_minor));
+    }
     doc.rule();
-    doc.pair(l.t("Items"), format_qty(d.items.iter().map(|i| i.qty_milli).sum()));
+    // A bundle counts as its own quantity, not its items'.
+    let mut bundles_seen = std::collections::BTreeSet::new();
+    let count: i64 = d
+        .items
+        .iter()
+        .map(|i| match &i.bundle {
+            Some(b) if bundles_seen.insert(b["line_no"].as_i64()) => b["qty_milli"].as_i64().unwrap_or(0),
+            Some(_) => 0,
+            None => i.qty_milli,
+        })
+        .sum();
+    doc.pair(l.t("Items"), format_qty(count));
     for f in &cfg.footer_lines {
         doc.center(f.clone(), false, false);
     }
