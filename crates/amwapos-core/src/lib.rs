@@ -72,6 +72,7 @@ pub mod supplier_returns;
 pub mod sync;
 pub mod sync_recon;
 pub mod system;
+pub mod terminal_health;
 pub mod tickets;
 pub mod time;
 pub mod transfers;

@@ -758,6 +758,7 @@ export const api = {
       call<T.SetupStatus>("sync.join", a),
     runNow: () => call<Record<string, number>>("sync.run_now"),
     resetHubCredentials: () => call<Record<string, unknown>>("sync.reset_hub_credentials"),
+    terminalsHealth: () => call<T.TerminalHealth>("terminals.health"),
     deadLetters: (q: T.DeadLetterQuery = {}) => call<T.DeadLetterPage>("sync.dead_letters", { ...q }),
     retryDeadLetter: (dead_id: string, operation_id: string) =>
       call<T.RetryOutcome>("sync.retry_dead_letter", { dead_id, operation_id }),

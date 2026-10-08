@@ -484,3 +484,103 @@ fn the_assistant_reads_sync_problems_but_cannot_act_on_them() {
         assert!(reason.starts_with("forbidden"), "{cmd}: {reason}");
     }
 }
+
+// ------------------------------------------------------------------ terminal health
+
+fn health_of(hub: &Env, dev: &str) -> Value {
+    let h = hub.core.terminals_health(&hub.owner_token).unwrap();
+    h["terminals"].as_array().unwrap().iter().find(|t| t["device_id"] == dev).unwrap().clone()
+}
+
+#[test]
+fn terminal_health_shows_only_what_was_observed() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    hub.product("Bread", "7301", 300, 150, 20_000);
+    let t1 = pair(&hub, "Till 2", "T02");
+    let dev = t1.core.device().unwrap().device_id;
+
+    // Paired, never reported: unknown, nothing filled in.
+    let h = health_of(&hub, &dev);
+    assert_eq!((h["health"].as_str(), h["connection"].as_str()), (Some("unknown"), Some("never_reported")));
+    assert!(h["versions"]["app"]["reported"].is_null() && h["versions"]["protocol"]["reported"].is_null());
+    assert!(h["versions"]["schema"]["matches"].is_null());
+    assert!(h["sending"]["pending"].is_null());
+
+    // A shift is opened and a sale made; the till sends, then reports.
+    pull_all(&hub.core, &t1.core);
+    t1.core.shift_open(&t1.token, 0, &op()).unwrap();
+    sell(&t1.core, &t1.token, "7301");
+    let (resp, _) = push_some(&hub.core, &t1.core, |_| true);
+    assert!(resp.rejected.is_empty());
+    hub.core.hub_heartbeat(&dev, t1.core.terminal_heartbeat().unwrap()).unwrap();
+    let h = health_of(&hub, &dev);
+    assert_eq!((h["health"].as_str(), h["connection"].as_str()), (Some("healthy"), Some("online")), "{h}");
+    assert_eq!(h["versions"]["protocol"]["reported"], amwapos_core::sync::PROTOCOL_VERSION);
+    assert_eq!(h["versions"]["protocol"]["matches"], true);
+    assert_eq!(h["versions"]["schema"]["matches"], true);
+    assert_eq!(h["versions"]["app"]["reported"], amwapos_core::audit::APP_VERSION);
+    assert_eq!(h["sending"]["pending"], 0);
+    assert_eq!(h["refused"]["reported_by_till"], 0);
+    assert!(h["unknown"].as_array().unwrap().is_empty(), "{h}");
+    // The shift comes from the shifts the till sent.
+    let shift_no = text(&t1.core, "SELECT shift_number FROM shifts WHERE status='open'");
+    assert_eq!(h["shift"]["shift_number"], shift_no);
+
+    // Silent for 20 minutes during that shift: attention, and a case.
+    hub.core
+        .db
+        .write(|c| Ok(c.execute("UPDATE device_heartbeats SET last_seen_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','-20 minutes')", [])?))
+        .unwrap();
+    let h = health_of(&hub, &dev);
+    assert_eq!(h["connection"], "not_seen_recently");
+    assert_eq!(h["reasons"], json!(["not_seen_during_shift"]));
+    hub.core.ops_evaluate().unwrap();
+    assert_eq!(count(&hub.core, &format!("SELECT COUNT(*) FROM cases WHERE kind='terminal_not_seen' AND device_id='{dev}'")), 1);
+    assert_eq!(health_of(&hub, &dev)["open_cases"], 1);
+
+    // An old terminal reporting a different database version.
+    hub.core
+        .db
+        .write(|c| {
+            Ok(c.execute("UPDATE device_heartbeats SET schema_version=schema_version-1, last_seen_at=?1", [amwapos_core::time::now_str()])?)
+        })
+        .unwrap();
+    let h = health_of(&hub, &dev);
+    assert_eq!(h["versions"]["schema"]["matches"], false);
+    assert!(h["reasons"].as_array().unwrap().contains(&json!("schema_mismatch")));
+
+    // Store facts sit beside the terminals; a cashier sees none of it.
+    let all = hub.core.terminals_health(&ht).unwrap();
+    assert!(all["store"]["printing_here"]["failed_24h"].is_number());
+    assert_eq!(all["thresholds"]["not_seen_minutes"], 5);
+    let (_, cashier) = hub.user("Cashier", "role_cashier", "5937");
+    assert_eq!(hub.core.terminals_health(&cashier).unwrap_err().code, ErrorCode::Forbidden);
+
+    // Revoked is shown as revoked, whatever it reported before.
+    hub.core.device_set_active(&ht, &dev, false).unwrap();
+    assert_eq!(health_of(&hub, &dev)["health"], "revoked");
+}
+
+#[test]
+fn new_heartbeat_fields_stay_empty_after_the_upgrade_until_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("amwapos.db");
+    let c = rusqlite::Connection::open(&path).unwrap();
+    amwapos_core::db::migrate_until(&c, &path, 34).unwrap();
+    c.execute(
+        "INSERT INTO device_heartbeats(device_id, last_seen_at, app_version, schema_version, pending_count) VALUES ('d1','2026-01-01T00:00:00Z','1.0',34,7)",
+        [],
+    )
+    .unwrap();
+    amwapos_core::db::migrate_until(&c, &path, amwapos_core::db::latest_schema_version()).unwrap();
+    let row: (Option<i64>, Option<String>, Option<String>, Option<i64>, Option<String>, i64) = c
+        .query_row(
+            "SELECT protocol_version, oldest_pending_at, last_sync_ok_at, problem_count, last_heartbeat_at, pending_count FROM device_heartbeats",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+        )
+        .unwrap();
+    assert_eq!(row, (None, None, None, None, None, 7));
+}

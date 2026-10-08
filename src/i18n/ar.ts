@@ -5807,4 +5807,6 @@ export const AR: Record<string, string> = {
   "A record was closed without applying it: {0}": "أُغلق سجل دون تطبيقه: {0}",
   "Closed on the hub without applying.": "أُغلق على الخادم الرئيسي دون تطبيق.",
   "Saved on the hub.": "حُفظ على الخادم الرئيسي.",
+  "{0} speaks a different sync protocol ({1}; the hub speaks {2})":
+    "يستخدم {0} بروتوكول مزامنة مختلفًا ({1}؛ يستخدم الخادم الرئيسي {2})",
 };

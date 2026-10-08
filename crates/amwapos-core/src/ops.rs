@@ -330,6 +330,22 @@ pub(crate) fn note_on_open_case(c: &Connection, key: &str, user_id: &str, note: 
     Ok(true)
 }
 
+/// A terminal is behind with sending when what it reported says so: its
+/// oldest waiting change is older than [`BACKLOG_STALE_MIN`] minutes, or (for
+/// terminals that do not report that) at least [`BACKLOG_COUNT`] changes wait
+/// and it has sent nothing for [`BACKLOG_STALE_MIN`] minutes. Nothing
+/// reported, nothing concluded.
+pub fn is_backlog(pending: i64, oldest_pending: Option<&str>, last_push: Option<&str>, now: DateTime<Utc>) -> bool {
+    if pending <= 0 {
+        return false;
+    }
+    let stale = |t: Option<&str>| t.map(|t| minutes_between(t, now) >= BACKLOG_STALE_MIN);
+    match stale(oldest_pending) {
+        Some(old) => old,
+        None => pending >= BACKLOG_COUNT && stale(last_push).unwrap_or(true),
+    }
+}
+
 /// A sync problem's reason in plain words (the screens translate it).
 pub fn reason_phrase(code: &str) -> &'static str {
     match code {
@@ -459,7 +475,8 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
         let hub_schema = crate::db::latest_schema_version();
         let mut st = c.prepare(
             "SELECT d.device_id, d.name, d.branch_id, h.last_seen_at, h.pending_count, h.last_push_at, h.schema_version, h.app_version,
-                    (SELECT x.shift_number FROM shifts x WHERE x.device_id=d.device_id AND x.status='open' ORDER BY x.opened_at DESC LIMIT 1)
+                    (SELECT x.shift_number FROM shifts x WHERE x.device_id=d.device_id AND x.status='open' ORDER BY x.opened_at DESC LIMIT 1),
+                    h.protocol_version, h.oldest_pending_at
              FROM devices d JOIN device_heartbeats h ON h.device_id=d.device_id
              WHERE d.active=1 AND d.operating_mode='terminal'",
         )?;
@@ -474,9 +491,11 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
                 r.get::<_, Option<i64>>(6)?,
                 r.get::<_, Option<String>>(7)?,
                 r.get::<_, Option<String>>(8)?,
+                r.get::<_, Option<i64>>(9)?,
+                r.get::<_, Option<String>>(10)?,
             ))
         })? {
-            let (id, name, br, seen, pending, last_push, schema, app, shift) = row?;
+            let (id, name, br, seen, pending, last_push, schema, app, shift, protocol, oldest_pending) = row?;
             let since = minutes_between(&seen, now);
             if since >= NOT_SEEN_CASE_MIN {
                 if let Some(shift) = shift {
@@ -494,8 +513,7 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
                 }
             }
             let pending = pending.unwrap_or(0);
-            let push_stale = last_push.as_deref().map(|p| p < ago(BACKLOG_STALE_MIN).as_str()).unwrap_or(true);
-            if pending >= BACKLOG_COUNT && push_stale && since < NOT_SEEN_CASE_MIN {
+            if since < NOT_SEEN_CASE_MIN && is_backlog(pending, oldest_pending.as_deref(), last_push.as_deref(), now) {
                 out.push(Condition {
                     key: format!("terminal_backlog:{id}"),
                     kind: "terminal_backlog",
@@ -505,10 +523,22 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
                     entity_type: "device",
                     entity_id: id.clone(),
                     device_id: Some(id.clone()),
-                    facts: json!({ "pending": pending, "last_push_at": last_push, "last_seen_at": seen }),
+                    facts: json!({ "pending": pending, "oldest_pending_at": oldest_pending, "last_push_at": last_push, "last_seen_at": seen }),
                 });
             }
-            if let Some(v) = schema.filter(|v| *v != hub_schema) {
+            if let Some(p) = protocol.filter(|p| *p != crate::sync::PROTOCOL_VERSION) {
+                out.push(Condition {
+                    key: format!("terminal_incompatible:{id}"),
+                    kind: "terminal_incompatible",
+                    severity: "high",
+                    title: format!("{name} speaks a different sync protocol ({p}; the hub speaks {})", crate::sync::PROTOCOL_VERSION),
+                    branch_id: br.clone(),
+                    entity_type: "device",
+                    entity_id: id.clone(),
+                    device_id: Some(id.clone()),
+                    facts: json!({ "protocol_version": p, "hub_protocol_version": crate::sync::PROTOCOL_VERSION, "app_version": app }),
+                });
+            } else if let Some(v) = schema.filter(|v| *v != hub_schema) {
                 out.push(Condition {
                     key: format!("terminal_incompatible:{id}"),
                     kind: "terminal_incompatible",

@@ -354,6 +354,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "audit.list" => out(core.audit_list(tk()?, all(&args)?)),
         "audit.verify" => out(core.audit_verify(tk()?)),
         "devices.list" => out(core.devices_list(tk()?)),
+        "terminals.health" => out(core.terminals_health(tk()?)),
         "devices.rename" => out(core.device_rename(tk()?, &req::<String>(&args, "device_id")?, &req::<String>(&args, "name")?)),
         "devices.set_active" => out(core.device_set_active(tk()?, &req::<String>(&args, "device_id")?, req(&args, "active")?)),
         "diagnostics.get" => out(core.diagnostics(tk()?, opt(&args, "full")?.unwrap_or(false))),

@@ -410,6 +410,16 @@ pub struct Heartbeat {
     /// [`HEARTBEAT_LETTERS`]).
     #[serde(default)]
     pub open_letters: Vec<LetterKey>,
+    /// Wave 7 telemetry. Each is left out by older terminals; the hub then
+    /// keeps it unknown (NULL), never guessed.
+    #[serde(default)]
+    pub protocol_version: Option<i64>,
+    #[serde(default)]
+    pub oldest_pending_at: Option<String>,
+    #[serde(default)]
+    pub last_success_at: Option<String>,
+    #[serde(default)]
+    pub problem_count: Option<i64>,
 }
 
 /// At most this many refused records are listed in one heartbeat.
@@ -1326,10 +1336,24 @@ impl AppCore {
         self.require_hub()?;
         let settled = self.db.write(|tx| {
             tx.execute(
-                "INSERT INTO device_heartbeats(device_id, last_seen_at, app_version, schema_version, pending_count, last_error, current_user_id)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7)
-                 ON CONFLICT(device_id) DO UPDATE SET last_seen_at=?2, app_version=?3, schema_version=?4, pending_count=?5, last_error=?6, current_user_id=?7",
-                params![device_id, time::now_str(), hb.app_version, hb.schema_version, hb.pending_count, hb.last_error, hb.current_user_id],
+                "INSERT INTO device_heartbeats(device_id, last_seen_at, app_version, schema_version, pending_count, last_error, current_user_id,
+                    protocol_version, oldest_pending_at, last_sync_ok_at, problem_count, last_heartbeat_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?2)
+                 ON CONFLICT(device_id) DO UPDATE SET last_seen_at=?2, app_version=?3, schema_version=?4, pending_count=?5, last_error=?6,
+                    current_user_id=?7, protocol_version=?8, oldest_pending_at=?9, last_sync_ok_at=?10, problem_count=?11, last_heartbeat_at=?2",
+                params![
+                    device_id,
+                    time::now_str(),
+                    hb.app_version,
+                    hb.schema_version,
+                    hb.pending_count,
+                    hb.last_error,
+                    hb.current_user_id,
+                    hb.protocol_version,
+                    hb.oldest_pending_at,
+                    hb.last_success_at,
+                    hb.problem_count
+                ],
             )?;
             // Which of the till's refused records the hub has since settled:
             // its own record for the same row is no longer open.
@@ -1656,6 +1680,19 @@ impl AppCore {
             pending_count: self.terminal_pending_count()?,
             current_user_id: self.sessions.active_users().first().map(|u| u.0.clone()),
             last_error: ss.last_error,
+            protocol_version: Some(PROTOCOL_VERSION),
+            oldest_pending_at: self.db.read(|c| {
+                let tables: Vec<String> = TABLES.iter().filter(|t| t.2 != Policy::Hub).map(|t| format!("'{}'", t.0)).collect();
+                Ok(c.query_row(
+                    &format!("SELECT MIN(created_at) FROM sync_outbox WHERE seq > ?1 AND table_name IN ({})", tables.join(",")),
+                    [ss.push_cursor],
+                    |r| r.get::<_, Option<String>>(0),
+                )?)
+            })?,
+            last_success_at: ss.last_success_at.clone(),
+            problem_count: Some(self.db.read(|c| {
+                Ok(c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get::<_, i64>(0))?)
+            })?),
             open_letters: self.db.read(|c| {
                 let mut st = c.prepare(
                     "SELECT table_name, row_pk FROM sync_dead_letters WHERE status='open' AND direction='push' ORDER BY created_at LIMIT ?1",

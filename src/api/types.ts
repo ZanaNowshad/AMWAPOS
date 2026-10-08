@@ -3768,3 +3768,59 @@ export interface BulkRetryOutcome {
   failed: number;
   superseded: number;
 }
+
+// ---- Wave 7: Terminal Health -------------------------------------------------
+
+export type TerminalHealthState = "healthy" | "attention" | "offline" | "unknown" | "revoked";
+
+export interface TerminalHealthRow {
+  device_id: string;
+  name: string;
+  code: string;
+  active: boolean;
+  paired_at: string;
+  revoked_at: string | null;
+  branch: string | null;
+  reported: boolean;
+  health: TerminalHealthState;
+  connection: "online" | "not_seen_recently" | "never_reported" | "revoked";
+  reasons: string[];
+  unknown: string[];
+  last_seen_at: string | null;
+  minutes_since_seen: number | null;
+  last_heartbeat_at: string | null;
+  versions: {
+    app: { reported: string | null; hub: string };
+    schema: { reported: number | null; hub: number; matches: boolean | null };
+    protocol: { reported: number | null; hub: number; matches: boolean | null };
+  };
+  sending: {
+    pending: number | null;
+    oldest_pending_at: string | null;
+    last_push_at: string | null;
+    last_pull_at: string | null;
+    last_sync_ok_at: string | null;
+    last_error: string | null;
+  };
+  refused: { on_hub: number; reported_by_till: number | null };
+  signed_in: string | null;
+  open_cases: number;
+  shift: { shift_id: string; shift_number: string | null; opened_at: string | null; user: string | null } | null;
+}
+
+export interface TerminalHealth {
+  mode: string;
+  thresholds: {
+    not_seen_minutes: number;
+    not_seen_case_minutes: number;
+    backlog_count: number;
+    backlog_minutes: number;
+  };
+  hub: { app_version: string; schema_version: number; protocol_version: number };
+  store: {
+    backup: { state: string; summary: string } | null;
+    printing_here: { failed_24h: number; last_failed_at: string | null; last_printed_at: string | null };
+  };
+  counts: Partial<Record<TerminalHealthState, number>>;
+  terminals: TerminalHealthRow[];
+}
