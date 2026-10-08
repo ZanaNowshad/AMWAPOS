@@ -123,7 +123,34 @@ impl AppCore {
     pub fn session(&self, token: &str) -> AppResult<Session> {
         let idle =
             self.db.read(|c| settings::get::<settings::PosSettings>(c, settings::KEY_POS)).map(|p| p.idle_lock_minutes).unwrap_or(10);
-        self.sessions.get_active(token, idle)
+        let mut s = self.sessions.get_active(token, idle)?;
+        // The user's current role and its current permissions, not those of
+        // the moment they signed in: a permission removed from a role, a
+        // role change or a deactivation takes effect on the next request
+        // (and so before any AI proposal is confirmed).
+        let current: Option<(String, bool, std::collections::HashSet<String>)> = self.db.read(|c| {
+            let row: Option<(String, i64)> = c
+                .query_row("SELECT role_id, active FROM users WHERE user_id=?1", [&s.user_id], |r| Ok((r.get(0)?, r.get(1)?)))
+                .optional()?;
+            Ok(match row {
+                Some((role, active)) => {
+                    let perms = crate::auth::role_permissions(c, &role)?;
+                    Some((role, active == 1, perms))
+                }
+                None => None,
+            })
+        })?;
+        match current {
+            Some((role, true, perms)) => {
+                s.role_id = role;
+                s.permissions = perms;
+                Ok(s)
+            }
+            _ => {
+                self.sessions.remove(token);
+                Err(AppError::new(ErrorCode::Unauthenticated, "Your account is no longer active. Please log in again."))
+            }
+        }
     }
 
     /// Authorize `perm` for the session, or via a manager approval token.

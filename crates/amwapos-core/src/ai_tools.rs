@@ -377,6 +377,10 @@ pub const TOOLS: &[ToolSpec] = &[
         "Edit a product's details (same fields as create; read product_details first for expected_version)."),
     write("propose_product_active", "products.set_active", "medium", PRODUCTS, "product_id:s!,active:b!", "Archive (active=false) or restore a product."),
     write("propose_products_bulk_active", "products.bulk_set_active", "high", PRODUCTS, "product_ids:a!,active:b!", "Archive or restore many products."),
+    // Wave 8: a draft only. Submitting, approving and paying stay a person's
+    // own steps on the Expenses page (expenses.submit / decide / pay).
+    write("propose_expense_draft", "expenses.save", "low", &["expenses.create"], "expense:o!",
+        "Draft a new expense: expense {category_id, business_date YYYY-MM-DD, payee, supplier_id, description, total_minor (VAT included, fils), vat_minor, reference, notes}. It stays a draft until a person submits it."),
     write("propose_bulk_price", "products.bulk_price", "high", PRICES, "changes:a!,reason:s!", "Change many selling prices at once. changes: [{product_id, amount_minor}] in fils.").op(),
     write("propose_cost_update", "products.cost_update", "medium", &["products.manage"], "product_id:s!,cost_minor:i!,reason:s", "Set a product's standard cost (fils)."),
     write("propose_product_import", "products.import_apply", "high", &["import.run"], "csv:s!,mapping:o,update_existing:b,skip_errors:b",
@@ -693,7 +697,6 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("sales.void", "forbidden: only a person at the till voids a sale, with a manager when needed"),
     ("customers.statement_pdf", "a person downloads or sends statements from the customer page"),
     ("customers.terms_set", "forbidden: only a person sets a customer's payment terms"),
-    ("expenses.save", "a person enters expenses on the Expenses page"),
     ("expenses.delete_draft", "a person deletes draft expenses"),
     ("expenses.submit", "a person submits expenses for approval"),
     ("expenses.decide", "forbidden: only a person approves or rejects expenses"),

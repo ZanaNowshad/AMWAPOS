@@ -6009,4 +6009,7 @@ export const AR: Record<string, string> = {
   Derived: "محسوب",
   "Sources used": "المصادر المستخدمة",
   "{0} more": "{0} أخرى",
+  "Your account is no longer active. Please log in again.": "حسابك لم يعد نشطًا. يرجى تسجيل الدخول مرة أخرى.",
+  "This exact change is already proposed and waiting for a person. Nothing has changed.":
+    "هذا التغيير نفسه مقترح بالفعل وينتظر قرار شخص. لم يتغير شيء.",
 };
