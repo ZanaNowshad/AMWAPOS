@@ -425,17 +425,17 @@ async fn refund_spike_raises_one_inbox_alert_and_writes_no_stock() {
     let stock = |e: &Env| count(e, "SELECT COALESCE(SUM(qty_milli),0) FROM stock_levels");
     let moves = |e: &Env| count(e, "SELECT COUNT(*) FROM stock_movements");
     let (s0, m0) = (stock(&e), moves(&e));
-    assert!(e.core.ai_anomaly_scan().unwrap() >= 1);
-    assert_eq!(e.core.ai_anomaly_scan().unwrap(), 0, "one alert per check per day");
+    // Wave 7: operational alerts are cases made by the Alert Centre checks.
+    // The old B3 inbox writer is retired and the inbox table is read-only;
+    // today's refunds are a figure on the Dashboard, not an alert.
+    assert_eq!(e.core.ai_anomaly_scan().unwrap(), 0, "the retired scan writes nothing");
     assert_eq!((stock(&e), moves(&e)), (s0, m0), "the scan writes no stock");
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM ai_alerts"), 0);
+    assert_eq!(count(&e, "SELECT COUNT(*) FROM cases WHERE kind='legacy_alert'"), 0, "no case is invented");
     let alerts = call(&e.rt, "ai.alerts", Some(&e.t), json!({})).await;
-    let spike = alerts.as_array().unwrap().iter().find(|a| a["kind"] == "refund_spike").expect("refund alert").clone();
-    assert_eq!(spike["detail"]["count"], 1, "{spike}");
-    let left = call(&e.rt, "ai.alert_dismiss", Some(&e.t), json!({ "alert_id": spike["alert_id"] })).await;
-    assert!(left.as_array().unwrap().iter().all(|a| a["kind"] != "refund_spike"));
-    // Off switch: no scan when the assistant is off.
-    flags(&e, json!({ "ai.enabled": false })).await;
-    assert_eq!(e.core.ai_anomaly_scan().unwrap(), 0);
+    assert!(alerts.as_array().unwrap().is_empty());
+    let dash = call(&e.rt, "dashboard.get", Some(&e.t), json!({})).await;
+    assert_eq!(dash["kpis"]["refund_count"], 1, "{dash}");
 }
 
 // ---- C6 redaction before provider HTTP ------------------------------------

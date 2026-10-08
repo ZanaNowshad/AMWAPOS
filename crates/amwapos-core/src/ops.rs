@@ -314,6 +314,286 @@ pub fn note_closed_by_person(c: &Connection, case_id: &str) -> AppResult<()> {
     Ok(())
 }
 
+// ------------------------------------------------------------------ the checks
+
+/// Thresholds (documented in OPERATIONAL_CONTROL.md). Terminals sync every
+/// few seconds and send a heartbeat each cycle; a till is "not seen
+/// recently" after 5 minutes on the health view, and becomes a case only
+/// after 15 minutes while it has an open shift (a till switched off at
+/// closing time is not an incident).
+pub const NOT_SEEN_HEALTH_MIN: i64 = 5;
+pub const NOT_SEEN_CASE_MIN: i64 = 15;
+pub const NOT_SEEN_HIGH_MIN: i64 = 120;
+/// A backlog is many records waiting while the till is alive but has not
+/// pushed for a while.
+pub const BACKLOG_COUNT: i64 = 50;
+pub const BACKLOG_STALE_MIN: i64 = 15;
+pub const PAYMENT_REVIEW_WAIT_MIN: i64 = 60;
+pub const RIDER_CASH_HOURS: i64 = 24;
+
+/// Tables whose failure to save touches money, stock or sale evidence.
+pub const FINANCIAL_TABLES: &[&str] = &[
+    "sales",
+    "sale_items",
+    "payments",
+    "refunds",
+    "refund_items",
+    "refund_tenders",
+    "cash_events",
+    "stock_movements",
+    "shifts",
+    "customer_ledger",
+    "loyalty_ledger",
+    "sale_collections",
+    "rider_handovers",
+    "rider_handover_items",
+    "sale_voids",
+    "sale_item_promotions",
+    "coupon_redemptions",
+    "receipt_snapshots",
+];
+
+/// The kinds the checks below measure.
+pub const CHECKED: &[&str] = &[
+    "sync_failures",
+    "terminal_not_seen",
+    "terminal_backlog",
+    "terminal_incompatible",
+    "backup_overdue",
+    "print_failures",
+    "payment_review_backlog",
+    "rider_cash_held",
+    "credential_rotation_stale",
+];
+
+/// Measure every condition now. Reads only; bounded queries (grouped, never
+/// one query per row).
+pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_state: Option<(&str, &str)>) -> AppResult<Vec<Condition>> {
+    let mut out = vec![];
+    let branch: String =
+        c.query_row("SELECT branch_id FROM devices WHERE device_id=?1", [this_device], |r| r.get(0)).optional()?.unwrap_or_default();
+    let ago = |min: i64| time::fmt(now - chrono::Duration::minutes(min));
+    // Records that could not be saved, one incident per sending computer.
+    {
+        let fin = FINANCIAL_TABLES.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(",");
+        let mut st = c.prepare(&format!(
+            "SELECT COALESCE(l.origin,''), COALESCE(d.name,''), COALESCE(d.branch_id,''), COUNT(*), SUM(l.table_name IN ({fin})),
+                    MIN(l.created_at), GROUP_CONCAT(DISTINCT l.table_name)
+             FROM sync_dead_letters l LEFT JOIN devices d ON d.device_id=l.origin
+             WHERE l.status='open' GROUP BY COALESCE(l.origin,'')"
+        ))?;
+        for row in st.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, String>(5)?,
+                r.get::<_, Option<String>>(6)?,
+            ))
+        })? {
+            let (origin, name, br, n, fin_n, oldest, tables) = row?;
+            let who = if origin.is_empty() {
+                "this computer".to_string()
+            } else if name.is_empty() {
+                "another computer".into()
+            } else {
+                name
+            };
+            out.push(Condition {
+                key: format!("sync_failures:{}", if origin.is_empty() { "local" } else { &origin }),
+                kind: "sync_failures",
+                severity: if fin_n > 0 { "high" } else { "medium" },
+                title: format!("{n} records from {who} could not be saved"),
+                branch_id: if br.is_empty() { branch.clone() } else { br },
+                entity_type: "device",
+                entity_id: if origin.is_empty() { this_device.to_string() } else { origin.clone() },
+                device_id: (!origin.is_empty()).then_some(origin),
+                facts: json!({ "count": n, "money_or_stock": fin_n, "oldest": oldest, "tables": tables.unwrap_or_default().split(',').collect::<Vec<_>>() }),
+            });
+        }
+    }
+    // Terminals, from what the hub observed (heartbeats); never guessed.
+    {
+        let hub_schema = crate::db::latest_schema_version();
+        let mut st = c.prepare(
+            "SELECT d.device_id, d.name, d.branch_id, h.last_seen_at, h.pending_count, h.last_push_at, h.schema_version, h.app_version,
+                    (SELECT x.shift_number FROM shifts x WHERE x.device_id=d.device_id AND x.status='open' ORDER BY x.opened_at DESC LIMIT 1)
+             FROM devices d JOIN device_heartbeats h ON h.device_id=d.device_id
+             WHERE d.active=1 AND d.operating_mode='terminal'",
+        )?;
+        for row in st.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<i64>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<i64>>(6)?,
+                r.get::<_, Option<String>>(7)?,
+                r.get::<_, Option<String>>(8)?,
+            ))
+        })? {
+            let (id, name, br, seen, pending, last_push, schema, app, shift) = row?;
+            let since = minutes_between(&seen, now);
+            if since >= NOT_SEEN_CASE_MIN {
+                if let Some(shift) = shift {
+                    out.push(Condition {
+                        key: format!("terminal_not_seen:{id}"),
+                        kind: "terminal_not_seen",
+                        severity: if since >= NOT_SEEN_HIGH_MIN { "high" } else { "medium" },
+                        title: format!("{name} has not been seen for {since} minutes during an open shift"),
+                        branch_id: br.clone(),
+                        entity_type: "device",
+                        entity_id: id.clone(),
+                        device_id: Some(id.clone()),
+                        facts: json!({ "last_seen_at": seen, "minutes": since, "open_shift": shift }),
+                    });
+                }
+            }
+            let pending = pending.unwrap_or(0);
+            let push_stale = last_push.as_deref().map(|p| p < ago(BACKLOG_STALE_MIN).as_str()).unwrap_or(true);
+            if pending >= BACKLOG_COUNT && push_stale && since < NOT_SEEN_CASE_MIN {
+                out.push(Condition {
+                    key: format!("terminal_backlog:{id}"),
+                    kind: "terminal_backlog",
+                    severity: "medium",
+                    title: format!("{name} has {pending} records waiting to send"),
+                    branch_id: br.clone(),
+                    entity_type: "device",
+                    entity_id: id.clone(),
+                    device_id: Some(id.clone()),
+                    facts: json!({ "pending": pending, "last_push_at": last_push, "last_seen_at": seen }),
+                });
+            }
+            if let Some(v) = schema.filter(|v| *v != hub_schema) {
+                out.push(Condition {
+                    key: format!("terminal_incompatible:{id}"),
+                    kind: "terminal_incompatible",
+                    severity: "high",
+                    title: format!("{name} runs a different database version ({v}; the hub has {hub_schema})"),
+                    branch_id: br.clone(),
+                    entity_type: "device",
+                    entity_id: id.clone(),
+                    device_id: Some(id.clone()),
+                    facts: json!({ "schema_version": v, "hub_schema_version": hub_schema, "app_version": app }),
+                });
+            }
+        }
+    }
+    // Backups (a store-wide fact, kept by the backup subsystem).
+    if let Some((state, summary)) = backup_state.filter(|b| b.0 == "warning" || b.0 == "error") {
+        out.push(Condition {
+            key: "backup_overdue".into(),
+            kind: "backup_overdue",
+            severity: if state == "error" { "high" } else { "medium" },
+            title: summary.to_string(),
+            branch_id: branch.clone(),
+            entity_type: "store",
+            entity_id: "backup".into(),
+            device_id: None,
+            facts: json!({ "state": state, "summary": summary }),
+        });
+    }
+    // Print jobs that failed on this computer (observed, not a printer state).
+    {
+        let (n, last_fail, last_ok): (i64, Option<String>, Option<String>) = c.query_row(
+            "SELECT COUNT(*) FILTER (WHERE status='failed'), MAX(CASE WHEN status='failed' THEN updated_at END),
+                    MAX(CASE WHEN status='printed' THEN updated_at END)
+             FROM print_jobs WHERE kind<>'drawer' AND updated_at>=?1",
+            [ago(24 * 60)],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )?;
+        let still = match (&last_fail, &last_ok) {
+            (Some(f), Some(o)) => f > o,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if n > 0 && still {
+            out.push(Condition {
+                key: format!("print_failures:{this_device}"),
+                kind: "print_failures",
+                severity: "low",
+                title: format!("{n} print jobs failed in the last 24 hours"),
+                branch_id: branch.clone(),
+                entity_type: "device",
+                entity_id: this_device.to_string(),
+                device_id: Some(this_device.to_string()),
+                facts: json!({ "failed_24h": n, "last_failed_at": last_fail }),
+            });
+        }
+    }
+    // Payment screenshots waiting for a person.
+    {
+        let (n, oldest): (i64, Option<String>) = c.query_row(
+            "SELECT COUNT(*), MIN(created_at) FROM payment_reviews
+             WHERE status IN ('pending','ocr_match','likely_match','mismatch','needs_review') AND created_at < ?1",
+            [ago(PAYMENT_REVIEW_WAIT_MIN)],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        if n > 0 {
+            out.push(Condition {
+                key: "payment_review_backlog".into(),
+                kind: "payment_review_backlog",
+                severity: "medium",
+                title: format!("{n} payment screenshots have waited over an hour to be checked"),
+                branch_id: branch.clone(),
+                entity_type: "store",
+                entity_id: "payment_reviews".into(),
+                device_id: None,
+                facts: json!({ "waiting": n, "oldest": oldest }),
+            });
+        }
+    }
+    // Delivery cash a rider still holds after a day.
+    {
+        let mut st = c.prepare(
+            "SELECT k.held_by, COALESCE(u.display_name,''), COUNT(*), SUM(k.amount_minor), MIN(k.created_at)
+             FROM sale_collections k LEFT JOIN users u ON u.user_id=k.held_by
+             WHERE k.held_by IS NOT NULL AND k.created_at < ?1
+               AND NOT EXISTS (SELECT 1 FROM rider_handover_items i WHERE i.collection_id=k.collection_id)
+             GROUP BY k.held_by",
+        )?;
+        for row in st.query_map([ago(RIDER_CASH_HOURS * 60)], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?, r.get::<_, String>(4)?))
+        })? {
+            let (rider, name, n, amount, oldest) = row?;
+            out.push(Condition {
+                key: format!("rider_cash_held:{rider}"),
+                kind: "rider_cash_held",
+                severity: "medium",
+                title: format!("{name} has held delivery cash from {n} orders for over a day"),
+                branch_id: branch.clone(),
+                entity_type: "user",
+                entity_id: rider,
+                device_id: None,
+                facts: json!({ "collections": n, "amount_minor": amount, "oldest": oldest }),
+            });
+        }
+    }
+    Ok(out)
+}
+
+impl crate::service::AppCore {
+    /// Run the checks and update the Alert Centre (hub or single computer;
+    /// a terminal never writes cases). Idempotent; never on the sale path.
+    pub fn ops_evaluate(&self) -> AppResult<Reconciled> {
+        let d = match self.device() {
+            Some(d) if d.mode != "terminal" => d,
+            _ => return Ok(Reconciled::default()),
+        };
+        let backup = self.backup_diagnostic().ok();
+        let backup_state = backup.as_ref().map(|b| (b.state.as_str(), b.summary.as_str()));
+        let now = time::now();
+        self.db.write(|tx| {
+            let conds = measure(tx, now, &d.device_id, backup_state)?;
+            reconcile(tx, now, CHECKED, &conds)
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

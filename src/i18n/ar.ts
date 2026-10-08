@@ -5767,4 +5767,20 @@ export const AR: Record<string, string> = {
     "هذا التنبيه أصبح حالة في مركز التنبيهات. تعامل معه هناك.",
   "Operational alerts are cases in the Alert Centre.": "التنبيهات التشغيلية هي حالات في مركز التنبيهات.",
   "Open the Alert Centre": "افتح مركز التنبيهات",
+  "{0} records from other computers could not be saved. See Sync problems.":
+    "تعذّر حفظ {0} سجلات من أجهزة أخرى. راجع مشاكل المزامنة.",
+  "{0} cases in the Alert Centre still need attention.": "{0} حالات في مركز التنبيهات ما زالت تحتاج إلى متابعة.",
+  "{0} more open case(s) in the Alert Centre": "{0} حالات مفتوحة أخرى في مركز التنبيهات",
+  "{0} records from {1} could not be saved": "تعذّر حفظ {0} سجلات من {1}",
+  "this computer": "هذا الجهاز",
+  "another computer": "جهاز آخر",
+  "{0} has not been seen for {1} minutes during an open shift": "لم يظهر {0} منذ {1} دقيقة خلال وردية مفتوحة",
+  "{0} has {1} records waiting to send": "لدى {0} عدد {1} من السجلات بانتظار الإرسال",
+  "{0} runs a different database version ({1}; the hub has {2})":
+    "يعمل {0} بإصدار قاعدة بيانات مختلف ({1}؛ لدى الخادم {2})",
+  "{0} print jobs failed in the last 24 hours": "فشلت {0} مهام طباعة خلال آخر 24 ساعة",
+  "{0} payment screenshots have waited over an hour to be checked": "تنتظر {0} لقطات دفع التحقق منذ أكثر من ساعة",
+  "{0} has held delivery cash from {1} orders for over a day": "يحتفظ {0} بنقود التوصيل من {1} طلبات منذ أكثر من يوم",
+  "Opened by the system: {0}": "فتحه النظام: {0}",
+  "Recovered: the system no longer sees this condition.": "تعافى: لم يعد النظام يرى هذه الحالة.",
 };

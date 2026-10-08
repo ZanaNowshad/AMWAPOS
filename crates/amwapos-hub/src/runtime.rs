@@ -305,14 +305,15 @@ impl Runtime {
                             }
                         }
                     }
-                    // B3: fixed-threshold checks → inbox alerts (reads only).
-                    if minutes.is_multiple_of(5) {
-                        let c = core.clone();
-                        if let Ok(Ok(n)) = tokio::task::spawn_blocking(move || c.ai_anomaly_scan()).await {
-                            if n > 0 {
-                                tracing::info!(n, "AI inbox alerts added");
-                            }
+                    // Wave 7: the Alert Centre checks (deterministic, idempotent;
+                    // never on the sale path). Cases open, update and recover here.
+                    let c = core.clone();
+                    match tokio::task::spawn_blocking(move || c.ops_evaluate()).await {
+                        Ok(Ok(r)) if r.opened + r.resolved > 0 => {
+                            tracing::info!(opened = r.opened, resolved = r.resolved, "alert centre");
                         }
+                        Ok(Err(e)) => tracing::warn!(error = %e.message, "alert centre checks failed"),
+                        _ => {}
                     }
                     let c = core.clone();
                     if let Ok(Ok((ok, _))) = tokio::task::spawn_blocking(move || c.receipt_pdf_retry_due()).await {

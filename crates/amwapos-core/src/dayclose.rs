@@ -688,7 +688,7 @@ fn checks(c: &Connection, b: &Bounds, ctx: &Context) -> AppResult<Vec<DayCheck>>
     }
     let dead: i64 = c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?;
     if dead > 0 {
-        out.push(check("sync_failures", "warning", format!("{dead} records from other computers could not be saved. See System → Sync.")));
+        out.push(check("sync_failures", "warning", format!("{dead} records from other computers could not be saved. See Sync problems.")));
     }
     let cfg: settings::ShiftSettings = settings::get(c, settings::KEY_SHIFT)?;
     for id in shift_ids(c, b, false)? {
@@ -1090,7 +1090,7 @@ impl AppCore {
                     |r| r.get(0),
                 )?;
                 if high > 0 {
-                    out.push(check("open_cases", "warning", format!("{high} cash differences are still being looked into.")));
+                    out.push(check("open_cases", "warning", format!("{high} cases in the Alert Centre still need attention.")));
                 }
             }
             out.push(if ctx.backup_overdue {
@@ -1100,7 +1100,7 @@ impl AppCore {
             });
             let dead: i64 = c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?;
             if dead > 0 {
-                out.push(check("sync", "warning", format!("{dead} records from other computers could not be saved. See System → Sync.")));
+                out.push(check("sync", "warning", format!("{dead} records from other computers could not be saved. See Sync problems.")));
             }
             if terminal {
                 let ss: crate::sync::SyncSettings = settings::get(c, crate::sync::KEY_SYNC)?;

@@ -1601,16 +1601,36 @@ impl AppCore {
             if unknown > 0 {
                 attention.push(json!({ "kind": "unknown_barcodes", "severity": "warning", "count": unknown, "text": format!("{unknown} unknown barcode(s) scanned"), "link": "/admin/unknown-barcodes" }));
             }
-            if discrepancies > 0 {
-                attention.push(json!({ "kind": "cash", "severity": "warning", "count": discrepancies, "text": format!("{discrepancies} shift(s) closed with a cash variance today"), "link": "/admin/shifts" }));
-            }
-            if failed_prints > 0 {
-                attention.push(json!({ "kind": "printing", "severity": "warning", "count": failed_prints, "text": format!("{failed_prints} receipt(s) failed to print"), "link": "/admin/diagnostics" }));
+            let _ = failed_prints;
+            // Operational problems are cases (the Alert Centre): cash
+            // differences, records that could not be saved, tills not seen,
+            // backups, print failures. The Dashboard shows the most urgent
+            // open ones (bounded, indexed) and never recomputes them.
+            if s.has("cases.view") {
+                let open_total: i64 = c.query_row(
+                    "SELECT COUNT(*) FROM cases WHERE status NOT IN ('resolved','dismissed') AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch())",
+                    [],
+                    |r| r.get(0),
+                )?;
+                let mut st = c.prepare(
+                    "SELECT case_id, kind, severity, title FROM cases WHERE status NOT IN ('resolved','dismissed')
+                       AND (amw_rbranch() IS NULL OR branch_id=amw_rbranch())
+                     ORDER BY CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, created_at DESC LIMIT 5",
+                )?;
+                let top = st
+                    .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (id, kind, sev, title) in &top {
+                    let severity = match sev.as_str() { "high" => "error", "medium" => "warning", _ => "info" };
+                    attention.push(json!({ "kind": "case", "case_kind": kind, "severity": severity, "text": title, "link": format!("/admin/cases?case={id}") }));
+                }
+                if open_total > top.len() as i64 {
+                    let more = open_total - top.len() as i64;
+                    attention.push(json!({ "kind": "cases_more", "severity": "info", "count": more, "text": format!("{more} more open case(s) in the Alert Centre"), "link": "/admin/cases" }));
+                }
             }
             let backup = self.backup_diagnostic()?;
-            if backup.state != "ok" {
-                attention.push(json!({ "kind": "backup", "severity": "warning", "text": backup.summary, "link": "/admin/backups" }));
-            }
+            let _ = discrepancies;
             // Work waiting for a person in the order and supplier flows, shown
             // only to people who may act on it (and only with the module on).
             let flags = self.features()?;
@@ -1686,10 +1706,6 @@ impl AppCore {
                 if k > 0 {
                     attention.push(json!({ "kind": "payables_post", "severity": "info", "count": k, "text": format!("{k} supplier invoice(s) ready to post"), "link": "/admin/payables" }));
                 }
-            }
-            let dead_letters: i64 = c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?;
-            if dead_letters > 0 {
-                attention.push(json!({ "kind": "sync", "severity": "error", "count": dead_letters, "text": format!("{dead_letters} change(s) could not be synchronized"), "link": "/admin/sync" }));
             }
             Ok(json!({
                 "business_date": today,
