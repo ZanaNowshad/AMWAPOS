@@ -70,6 +70,7 @@ pub mod setup;
 pub mod shifts;
 pub mod supplier_returns;
 pub mod sync;
+pub mod sync_recon;
 pub mod system;
 pub mod tickets;
 pub mod time;

@@ -251,6 +251,8 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "sync.enable_hub"
         | "sync.unblock"
         | "sync.retry_dead_letter"
+        | "sync.retry_dead_letters"
+        | "sync.close_dead_letter"
         | "companion.issue"
         | "whatsapp.import_contacts"
         | "whatsapp.start"

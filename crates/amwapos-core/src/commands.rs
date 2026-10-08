@@ -808,8 +808,12 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "sync.status" => out(core.sync_status(tk()?)),
         "sync.pairing_code" => out(core.sync_issue_pairing_code(tk()?, opt(&args, "device_name")?, opt(&args, "branch_id")?)),
         "sync.reset_hub_credentials" => out(core.sync_reset_hub_credentials(tk()?)),
-        "sync.dead_letters" => out(core.sync_dead_letters(tk()?)),
-        "sync.retry_dead_letter" => out(core.sync_retry_dead_letter(tk()?, &req::<String>(&args, "dead_id")?)),
+        "sync.dead_letters" => out(core.sync_dead_letters(tk()?, all(&args)?)),
+        "sync.retry_dead_letter" => {
+            out(core.sync_retry_dead_letter(tk()?, &req::<String>(&args, "dead_id")?, opt::<String>(&args, "operation_id")?.as_deref()))
+        }
+        "sync.retry_dead_letters" => out(core.sync_retry_dead_letters(tk()?, all(&args)?)),
+        "sync.close_dead_letter" => out(core.sync_close_dead_letter(tk()?, all(&args)?)),
         _ => Err(AppError::new(ErrorCode::NotFound, format!("Unknown command '{cmd}'."))),
     };
     let ms = started.elapsed().as_millis();

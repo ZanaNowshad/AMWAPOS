@@ -200,7 +200,10 @@ export function SyncPage() {
     () => (st.data?.mode === "hub" ? api.sync.hubAddresses() : Promise.resolve(null)),
     [st.data?.mode],
   );
-  const dead = useLoad(() => (has("sync.manage") ? api.sync.deadLetters() : Promise.resolve([])), []);
+  const dead = useLoad(
+    () => (has("sync.manage") ? api.sync.deadLetters().then((p) => p.rows) : Promise.resolve([])),
+    [],
+  );
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
   const multi = useFeature("org.multi_branch");
   const branches = useLoad(() => (multi ? api.branches.list() : Promise.resolve([])), [multi]);
@@ -489,7 +492,7 @@ export function SyncPage() {
                     <Button
                       size="sm"
                       onClick={async () => (
-                        await act.run(() => api.sync.retryDeadLetter(String(d.dead_id))),
+                        await act.run(() => api.sync.retryDeadLetter(String(d.dead_id), newOperationId())),
                         void dead.reload(),
                         void st.reload()
                       )}

@@ -314,6 +314,42 @@ pub fn note_closed_by_person(c: &Connection, case_id: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// Add what a person did about an incident to its open case (if one is
+/// open), as evidence in the case history under that person's name.
+pub(crate) fn note_on_open_case(c: &Connection, key: &str, user_id: &str, note: &str, evidence: &Value) -> AppResult<bool> {
+    let case: Option<String> = c
+        .query_row("SELECT case_id FROM cases WHERE dedupe_key=?1 AND status NOT IN ('resolved','dismissed')", [key], |r| r.get(0))
+        .optional()?;
+    let Some(case_id) = case else { return Ok(false) };
+    let seq: i64 = c.query_row("SELECT COALESCE(MAX(seq),0)+1 FROM case_events WHERE case_id=?1", [&case_id], |r| r.get(0))?;
+    c.execute(
+        "INSERT INTO case_events(event_id, case_id, seq, kind, from_status, to_status, note, evidence_json, user_id, operation_id, at)
+         VALUES (?1,?2,?3,'evidence',NULL,NULL,?4,?5,?6,NULL,?7)",
+        params![new_id(), case_id, seq, note, evidence.to_string(), user_id, time::now_str()],
+    )?;
+    Ok(true)
+}
+
+/// A sync problem's reason in plain words (the screens translate it).
+pub fn reason_phrase(code: &str) -> &'static str {
+    match code {
+        "version_mismatch" => "the app versions do not match",
+        "not_permitted" => "the till is not allowed to change these records",
+        "invalid_record" => "the records are incomplete",
+        "missing_dependency" => "records they depend on have not arrived",
+        "conflict" => "they conflict with records already saved",
+        "superseded" => "newer versions were saved since",
+        "storage_error" => "the database was busy or full",
+        "legacy_unclassified" => "the reason was not recorded before this update",
+        _ => "an unexpected error",
+    }
+}
+
+/// The incident key for records from one computer refused for one reason.
+pub fn sync_failure_key(origin: Option<&str>, reason: &str) -> String {
+    format!("sync_failures:{}:{reason}", origin.filter(|o| !o.is_empty()).unwrap_or("local"))
+}
+
 // ------------------------------------------------------------------ the checks
 
 /// Thresholds (documented in OPERATIONAL_CONTROL.md). Terminals sync every
@@ -373,14 +409,15 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
     let branch: String =
         c.query_row("SELECT branch_id FROM devices WHERE device_id=?1", [this_device], |r| r.get(0)).optional()?.unwrap_or_default();
     let ago = |min: i64| time::fmt(now - chrono::Duration::minutes(min));
-    // Records that could not be saved, one incident per sending computer.
+    // Records that could not be saved: one incident per sending computer
+    // and reason (400 sales refused for one reason are one case).
     {
         let fin = FINANCIAL_TABLES.iter().map(|t| format!("'{t}'")).collect::<Vec<_>>().join(",");
         let mut st = c.prepare(&format!(
             "SELECT COALESCE(l.origin,''), COALESCE(d.name,''), COALESCE(d.branch_id,''), COUNT(*), SUM(l.table_name IN ({fin})),
-                    MIN(l.created_at), GROUP_CONCAT(DISTINCT l.table_name)
+                    MIN(l.created_at), GROUP_CONCAT(DISTINCT l.table_name), l.reason_code, SUM(l.retryable)
              FROM sync_dead_letters l LEFT JOIN devices d ON d.device_id=l.origin
-             WHERE l.status='open' GROUP BY COALESCE(l.origin,'')"
+             WHERE l.status='open' GROUP BY COALESCE(l.origin,''), l.reason_code"
         ))?;
         for row in st.query_map([], |r| {
             Ok((
@@ -391,9 +428,11 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
                 r.get::<_, i64>(4)?,
                 r.get::<_, String>(5)?,
                 r.get::<_, Option<String>>(6)?,
+                r.get::<_, String>(7)?,
+                r.get::<_, i64>(8)?,
             ))
         })? {
-            let (origin, name, br, n, fin_n, oldest, tables) = row?;
+            let (origin, name, br, n, fin_n, oldest, tables, reason, retryable) = row?;
             let who = if origin.is_empty() {
                 "this computer".to_string()
             } else if name.is_empty() {
@@ -402,15 +441,16 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
                 name
             };
             out.push(Condition {
-                key: format!("sync_failures:{}", if origin.is_empty() { "local" } else { &origin }),
+                key: sync_failure_key(Some(&origin), &reason),
                 kind: "sync_failures",
                 severity: if fin_n > 0 { "high" } else { "medium" },
-                title: format!("{n} records from {who} could not be saved"),
+                title: format!("{n} records from {who} could not be saved: {}", reason_phrase(&reason)),
                 branch_id: if br.is_empty() { branch.clone() } else { br },
                 entity_type: "device",
                 entity_id: if origin.is_empty() { this_device.to_string() } else { origin.clone() },
                 device_id: (!origin.is_empty()).then_some(origin),
-                facts: json!({ "count": n, "money_or_stock": fin_n, "oldest": oldest, "tables": tables.unwrap_or_default().split(',').collect::<Vec<_>>() }),
+                facts: json!({ "count": n, "money_or_stock": fin_n, "oldest": oldest, "reason": reason, "can_retry": retryable,
+                    "tables": tables.unwrap_or_default().split(',').collect::<Vec<_>>() }),
             });
         }
     }

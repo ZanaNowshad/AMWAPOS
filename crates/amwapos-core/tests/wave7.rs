@@ -230,7 +230,7 @@ fn four_hundred_bad_records_from_one_till_are_one_case_that_recovers() {
         })
         .unwrap();
     assert_eq!(sev, "high", "sales are money");
-    assert_eq!(title, "403 records from Till T02 could not be saved");
+    assert_eq!(title, "403 records from Till T02 could not be saved: the reason was not recorded before this update");
     assert_eq!(link, "/admin/sync-reconciliation");
     // The Dashboard shows the case and does not compute its own sync alert.
     let d = e.core.dashboard(t).unwrap();

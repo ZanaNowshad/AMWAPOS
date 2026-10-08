@@ -302,7 +302,9 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
         }
         let c2 = core.clone();
         let hb = blocking(move || c2.terminal_heartbeat()).await?;
-        client.heartbeat(&hb).await?;
+        let hb_resp = client.heartbeat(&hb).await?;
+        let c2 = core.clone();
+        blocking(move || c2.terminal_after_heartbeat(&hb_resp)).await?;
         report.duration_ms = started.elapsed().as_millis();
         let c2 = core.clone();
         let ver = info.app_version.clone();

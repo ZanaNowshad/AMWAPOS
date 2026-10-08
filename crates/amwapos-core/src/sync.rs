@@ -314,6 +314,18 @@ pub struct Rejected {
     pub table: String,
     pub pk: Map<String, Value>,
     pub error: String,
+    /// Why, as a reason code (Wave 7). Older hubs leave it out; the terminal
+    /// then classifies the message itself.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// One record a terminal could not get the hub to accept (Wave 7): the
+/// heartbeat lists them so the hub can say which it has since settled.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LetterKey {
+    pub table: String,
+    pub pk: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -394,6 +406,87 @@ pub struct Heartbeat {
     pub current_user_id: Option<String>,
     #[serde(default)]
     pub last_error: Option<String>,
+    /// Records this terminal still holds as refused by the hub (at most
+    /// [`HEARTBEAT_LETTERS`]).
+    #[serde(default)]
+    pub open_letters: Vec<LetterKey>,
+}
+
+/// At most this many refused records are listed in one heartbeat.
+pub const HEARTBEAT_LETTERS: i64 = 200;
+
+// ---------- dead letters ----------
+
+/// Why a change could not be saved, as a fixed reason code, and whether
+/// trying again can succeed without changing the data. Decided from the
+/// error's code and the apply path's own fixed messages, never from free
+/// text written by a person.
+pub fn classify(e: &AppError) -> (&'static str, bool) {
+    let m = e.message.as_str();
+    if m.starts_with("Unknown column") || m.contains("is not replicated") {
+        return ("version_mismatch", true);
+    }
+    match e.code {
+        ErrorCode::Forbidden => ("not_permitted", false),
+        ErrorCode::DatabaseBusy | ErrorCode::InsufficientDisk | ErrorCode::DatabaseCorrupt => ("storage_error", true),
+        ErrorCode::Duplicate => ("conflict", false),
+        _ if m.contains("FOREIGN KEY") || m.ends_with("has not arrived yet.") => ("missing_dependency", true),
+        _ if m.starts_with("Data constraint violated") => ("conflict", false),
+        ErrorCode::Validation => ("invalid_record", false),
+        _ => ("unknown", true),
+    }
+}
+
+/// Whether a reason code allows a retry.
+pub fn reason_retryable(code: &str) -> Option<bool> {
+    match code {
+        "version_mismatch" | "missing_dependency" | "storage_error" | "unknown" | "legacy_unclassified" => Some(true),
+        "not_permitted" | "invalid_record" | "conflict" | "superseded" => Some(false),
+        _ => None,
+    }
+}
+
+/// A terminal's refused record, from the hub's reply: the hub's reason when
+/// it sent one, otherwise classified from the message.
+fn rejected_reason(r: &Rejected) -> (&'static str, bool) {
+    if let Some(code) = r.reason.as_deref() {
+        for known in ["version_mismatch", "not_permitted", "invalid_record", "missing_dependency", "conflict", "storage_error", "unknown"] {
+            if code == known {
+                return (known, reason_retryable(known).unwrap_or(true));
+            }
+        }
+    }
+    let code = if r.error.starts_with("Terminals cannot") || r.error.contains("not owned by the pushing terminal") {
+        ErrorCode::Forbidden
+    } else {
+        ErrorCode::Validation
+    };
+    classify(&AppError::new(code, r.error.clone()))
+}
+
+/// Mark the open problem records for this row as settled because the row has
+/// since been saved. Returns how many.
+pub(crate) fn resolve_letters(
+    c: &Connection,
+    direction: &str,
+    origin: Option<&str>,
+    table: &str,
+    pk_json: &str,
+    resolution: &str,
+) -> AppResult<usize> {
+    let n = match (direction, origin) {
+        ("apply", Some(o)) => c.execute(
+            "UPDATE sync_dead_letters SET status='resolved', resolution=?5, resolved_at=?6
+             WHERE direction=?1 AND table_name=?2 AND row_pk=?3 AND status='open' AND origin=?4",
+            params![direction, table, pk_json, o, resolution, time::now_str()],
+        )?,
+        _ => c.execute(
+            "UPDATE sync_dead_letters SET status='resolved', resolution=?4, resolved_at=?5
+             WHERE direction=?1 AND table_name=?2 AND row_pk=?3 AND status='open'",
+            params![direction, table, pk_json, resolution, time::now_str()],
+        )?,
+    };
+    Ok(n)
 }
 
 // ---------- signing ----------
@@ -448,7 +541,7 @@ impl NonceCache {
 
 static COLUMNS: Mutex<Option<HashMap<String, Vec<String>>>> = Mutex::new(None);
 
-fn columns(c: &Connection, table: &str) -> AppResult<Vec<String>> {
+pub(crate) fn columns(c: &Connection, table: &str) -> AppResult<Vec<String>> {
     if policy(table).is_none() && table != "stock_levels" {
         return Err(AppError::validation(format!("Table {table} is not replicated.")));
     }
@@ -565,7 +658,7 @@ pub enum ApplySide<'a> {
     Terminal,
 }
 
-fn set_control(c: &Connection, suppress: bool, origin: Option<&str>) -> AppResult<()> {
+pub(crate) fn set_control(c: &Connection, suppress: bool, origin: Option<&str>) -> AppResult<()> {
     c.execute("UPDATE sync_control SET v=?1 WHERE k='suppress'", [if suppress { "1" } else { "0" }])?;
     c.execute("UPDATE sync_control SET v=?1 WHERE k='origin'", [origin])?;
     Ok(())
@@ -583,10 +676,12 @@ fn validate_hub_push(c: &Connection, ch: &Change, device: &str) -> AppResult<()>
     let owns = |col: &str| row.get(col).and_then(|v| v.as_str()) == Some(device);
     let parent_owned = |table: &str, id_col: &str, parent_col: &str| -> AppResult<bool> {
         let pid = row.get(parent_col).and_then(|v| v.as_str()).unwrap_or("");
-        Ok(c.query_row(&format!("SELECT device_id FROM {table} WHERE {id_col}=?1"), [pid], |r| r.get::<_, String>(0))
-            .optional()?
-            .map(|d| d == device)
-            .unwrap_or(false))
+        match c.query_row(&format!("SELECT device_id FROM {table} WHERE {id_col}=?1"), [pid], |r| r.get::<_, String>(0)).optional()? {
+            Some(d) => Ok(d == device),
+            // Not here yet: a dependency problem a retry can fix, not a
+            // refusal.
+            None => Err(AppError::validation(format!("The {table} record this depends on has not arrived yet."))),
+        }
     };
     let ok = match ch.table.as_str() {
         "sales" | "refunds" | "cash_events" | "shifts" | "stock_movements" | "sale_collections" | "rider_handovers" => owns("device_id"),
@@ -688,7 +783,16 @@ pub fn apply_change(c: &Connection, ch: &Change, side: &ApplySide) -> AppResult<
     Ok(n > 0)
 }
 
-fn record_dead_letter(c: &Connection, direction: &str, origin: Option<&str>, ch: &Change, error: &str) -> AppResult<()> {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_dead_letter(
+    c: &Connection,
+    direction: &str,
+    origin: Option<&str>,
+    ch: &Change,
+    error: &str,
+    reason: &str,
+    retryable: bool,
+) -> AppResult<()> {
     let now = time::now_str();
     let pk = serde_json::to_string(&ch.pk)?;
     let existing: Option<String> = c
@@ -701,19 +805,75 @@ fn record_dead_letter(c: &Connection, direction: &str, origin: Option<&str>, ch:
     match existing {
         Some(id) => {
             c.execute(
-                "UPDATE sync_dead_letters SET attempts=attempts+1, error=?2, payload_json=?3, last_attempt_at=?4 WHERE dead_id=?1",
-                params![id, error, serde_json::to_string(ch)?, now],
+                "UPDATE sync_dead_letters SET attempts=attempts+1, error=?2, payload_json=?3, last_attempt_at=?4, reason_code=?5, retryable=?6
+                 WHERE dead_id=?1",
+                params![id, error, serde_json::to_string(ch)?, now, reason, retryable],
             )?;
         }
         None => {
             c.execute(
-                "INSERT INTO sync_dead_letters(dead_id, direction, origin, table_name, row_pk, op, payload_json, error, attempts, status, created_at, last_attempt_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1,'open',?9,?9)",
-                params![new_id(), direction, origin, ch.table, pk, ch.op, serde_json::to_string(ch)?, error, now],
+                "INSERT INTO sync_dead_letters(dead_id, direction, origin, table_name, row_pk, op, payload_json, error, attempts, status,
+                    created_at, last_attempt_at, reason_code, retryable)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1,'open',?9,?9,?10,?11)",
+                params![new_id(), direction, origin, ch.table, pk, ch.op, serde_json::to_string(ch)?, error, now, reason, retryable],
             )?;
         }
     }
     Ok(())
+}
+
+/// Terminal: after a pull, try again the hub changes this terminal could
+/// not save before and that a retry can fix (a record they depend on has
+/// arrived, the app was updated). Bounded: at most 50 per pull, each at most
+/// once every five minutes. The normal apply path is used; nothing is
+/// edited. Runs inside the pull's transaction with sync capture suppressed.
+fn retry_pull_letters(tx: &Connection) -> AppResult<usize> {
+    let since = time::fmt(chrono::Utc::now() - chrono::Duration::minutes(5));
+    let rows: Vec<(String, String)> = {
+        let mut st = tx.prepare(
+            "SELECT dead_id, payload_json FROM sync_dead_letters
+             WHERE status='open' AND direction='pull' AND retryable=1 AND payload_json IS NOT NULL AND last_attempt_at < ?1
+             ORDER BY created_at LIMIT 50",
+        )?;
+        let r = st.query_map([&since], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<Vec<_>, _>>()?;
+        r
+    };
+    let mut saved = 0;
+    for (id, payload) in rows {
+        let Ok(ch) = serde_json::from_str::<Change>(&payload) else { continue };
+        tx.execute_batch("SAVEPOINT retry")?;
+        match apply_change(tx, &ch, &ApplySide::Terminal) {
+            Ok(_) => {
+                tx.execute_batch("RELEASE retry")?;
+                tx.execute(
+                    "UPDATE sync_dead_letters SET status='resolved', resolution='recovered', attempts=attempts+1, last_attempt_at=?2, resolved_at=?2
+                     WHERE dead_id=?1",
+                    params![id, time::now_str()],
+                )?;
+                saved += 1;
+            }
+            Err(e) => {
+                tx.execute_batch("ROLLBACK TO retry; RELEASE retry")?;
+                let (reason, retryable) = classify(&e);
+                tx.execute(
+                    "UPDATE sync_dead_letters SET attempts=attempts+1, last_attempt_at=?2, error=?3, reason_code=?4, retryable=?5 WHERE dead_id=?1",
+                    params![id, time::now_str(), e.message, reason, retryable],
+                )?;
+            }
+        }
+    }
+    if saved > 0 {
+        audit::record(
+            tx,
+            &audit::Actor::default(),
+            "sync.dead_letters_recovered",
+            "sync",
+            None,
+            None,
+            Some(&json!({ "count": saved, "how": "saved on an automatic retry after a pull" })),
+        )?;
+    }
+    Ok(saved)
 }
 
 fn sync_settings(c: &Connection) -> AppResult<SyncSettings> {
@@ -1087,6 +1247,13 @@ impl AppCore {
                 let mut accepted = 0;
                 let mut rejected = vec![];
                 let mut up_to = 0;
+                // A record refused earlier and accepted now settles its
+                // problem record (looked up only when this till has any).
+                let has_open: bool = tx
+                    .query_row("SELECT 1 FROM sync_dead_letters WHERE status='open' AND origin=?1 LIMIT 1", [device_id], |_| Ok(true))
+                    .optional()?
+                    .unwrap_or(false);
+                let mut recovered = 0;
                 for ch in &req.changes {
                     up_to = up_to.max(ch.seq);
                     tx.execute_batch("SAVEPOINT change")?;
@@ -1094,13 +1261,35 @@ impl AppCore {
                         Ok(_) => {
                             tx.execute_batch("RELEASE change")?;
                             accepted += 1;
+                            if has_open {
+                                recovered +=
+                                    resolve_letters(tx, "apply", Some(device_id), &ch.table, &serde_json::to_string(&ch.pk)?, "recovered")?;
+                            }
                         }
                         Err(e) => {
                             tx.execute_batch("ROLLBACK TO change; RELEASE change")?;
-                            record_dead_letter(tx, "apply", Some(device_id), ch, &e.message)?;
-                            rejected.push(Rejected { seq: ch.seq, table: ch.table.clone(), pk: ch.pk.clone(), error: e.message });
+                            let (reason, retryable) = classify(&e);
+                            record_dead_letter(tx, "apply", Some(device_id), ch, &e.message, reason, retryable)?;
+                            rejected.push(Rejected {
+                                seq: ch.seq,
+                                table: ch.table.clone(),
+                                pk: ch.pk.clone(),
+                                error: e.message,
+                                reason: Some(reason.into()),
+                            });
                         }
                     }
+                }
+                if recovered > 0 {
+                    audit::record(
+                        tx,
+                        &audit::Actor::default(),
+                        "sync.dead_letters_recovered",
+                        "device",
+                        Some(device_id),
+                        None,
+                        Some(&json!({ "count": recovered, "how": "accepted on a later send" })),
+                    )?;
                 }
                 set_control(tx, false, None)?;
                 let now = time::now_str();
@@ -1135,18 +1324,32 @@ impl AppCore {
 
     pub fn hub_heartbeat(&self, device_id: &str, hb: Heartbeat) -> AppResult<Value> {
         self.require_hub()?;
-        self.db.write(|tx| {
+        let settled = self.db.write(|tx| {
             tx.execute(
                 "INSERT INTO device_heartbeats(device_id, last_seen_at, app_version, schema_version, pending_count, last_error, current_user_id)
                  VALUES (?1,?2,?3,?4,?5,?6,?7)
                  ON CONFLICT(device_id) DO UPDATE SET last_seen_at=?2, app_version=?3, schema_version=?4, pending_count=?5, last_error=?6, current_user_id=?7",
                 params![device_id, time::now_str(), hb.app_version, hb.schema_version, hb.pending_count, hb.last_error, hb.current_user_id],
             )?;
-            Ok(())
+            // Which of the till's refused records the hub has since settled:
+            // its own record for the same row is no longer open.
+            let mut settled = vec![];
+            let mut st = tx.prepare(
+                "SELECT status FROM sync_dead_letters WHERE direction='apply' AND origin=?1 AND table_name=?2 AND row_pk=?3
+                 ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END LIMIT 1",
+            )?;
+            for k in hb.open_letters.iter().take(HEARTBEAT_LETTERS as usize) {
+                let status: Option<String> = st.query_row(params![device_id, k.table, k.pk], |r| r.get(0)).optional()?;
+                match status.as_deref() {
+                    Some("resolved") => settled.push(json!({ "table": k.table, "pk": k.pk, "outcome": "saved" })),
+                    Some("closed") => settled.push(json!({ "table": k.table, "pk": k.pk, "outcome": "closed" })),
+                    _ => {}
+                }
+            }
+            Ok(settled)
         })?;
-        Ok(
-            json!({ "ok": true, "server_time": time::now_str(), "schema_version": crate::db::latest_schema_version(), "app_version": audit::APP_VERSION }),
-        )
+        Ok(json!({ "ok": true, "server_time": time::now_str(), "schema_version": crate::db::latest_schema_version(),
+            "app_version": audit::APP_VERSION, "settled": settled }))
     }
 
     // ---------------- terminal side ----------------
@@ -1293,7 +1496,19 @@ impl AppCore {
         self.db.write(|tx| {
             for r in &resp.rejected {
                 if let Some(ch) = pushed.iter().find(|c| c.seq == r.seq) {
-                    record_dead_letter(tx, "push", None, ch, &r.error)?;
+                    let (reason, retryable) = rejected_reason(r);
+                    record_dead_letter(tx, "push", None, ch, &r.error, reason, retryable)?;
+                }
+            }
+            // Accepted now after being refused before: settled.
+            let has_open: bool = tx
+                .query_row("SELECT 1 FROM sync_dead_letters WHERE status='open' AND direction='push' LIMIT 1", [], |_| Ok(true))
+                .optional()?
+                .unwrap_or(false);
+            if has_open {
+                let refused: HashSet<i64> = resp.rejected.iter().map(|r| r.seq).collect();
+                for ch in pushed.iter().filter(|c| !refused.contains(&c.seq)) {
+                    resolve_letters(tx, "push", None, &ch.table, &serde_json::to_string(&ch.pk)?, "recovered")?;
                 }
             }
             let mut ss = sync_settings(tx)?;
@@ -1340,6 +1555,10 @@ impl AppCore {
             set_control(tx, true, None)?;
             let mut applied = 0;
             let mut failed = 0;
+            let has_open: bool = tx
+                .query_row("SELECT 1 FROM sync_dead_letters WHERE status='open' AND direction='pull' LIMIT 1", [], |_| Ok(true))
+                .optional()?
+                .unwrap_or(false);
             for ch in &resp.changes {
                 let key = (ch.table.clone(), serde_json::to_string(&ch.pk)?);
                 if pending.contains(&key) && policy(&ch.table).map(|p| p.1 == Policy::Shared).unwrap_or(false) {
@@ -1350,13 +1569,20 @@ impl AppCore {
                     Ok(_) => {
                         tx.execute_batch("RELEASE change")?;
                         applied += 1;
+                        if has_open {
+                            resolve_letters(tx, "pull", None, &ch.table, &serde_json::to_string(&ch.pk)?, "recovered")?;
+                        }
                     }
                     Err(e) => {
                         tx.execute_batch("ROLLBACK TO change; RELEASE change")?;
-                        record_dead_letter(tx, "pull", ch.origin.as_deref(), ch, &e.message)?;
+                        let (reason, retryable) = classify(&e);
+                        record_dead_letter(tx, "pull", ch.origin.as_deref(), ch, &e.message, reason, retryable)?;
                         failed += 1;
                     }
                 }
+            }
+            if has_open {
+                retry_pull_letters(tx)?;
             }
             set_control(tx, false, None)?;
             ss.pull_cursor = ss.pull_cursor.max(resp.next_seq);
@@ -1430,6 +1656,41 @@ impl AppCore {
             pending_count: self.terminal_pending_count()?,
             current_user_id: self.sessions.active_users().first().map(|u| u.0.clone()),
             last_error: ss.last_error,
+            open_letters: self.db.read(|c| {
+                let mut st = c.prepare(
+                    "SELECT table_name, row_pk FROM sync_dead_letters WHERE status='open' AND direction='push' ORDER BY created_at LIMIT ?1",
+                )?;
+                let rows = st
+                    .query_map([HEARTBEAT_LETTERS], |r| Ok(LetterKey { table: r.get(0)?, pk: r.get(1)? }))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })?,
+        })
+    }
+
+    /// Terminal: after a heartbeat, mark the refused records the hub has
+    /// since settled (retried and saved, or closed by a person there). The
+    /// terminal only records what the hub reports; nobody acts on the till.
+    pub fn terminal_after_heartbeat(&self, resp: &Value) -> AppResult<usize> {
+        let Some(list) = resp.get("settled").and_then(|v| v.as_array()) else { return Ok(0) };
+        if list.is_empty() {
+            return Ok(0);
+        }
+        self.db.write(|tx| {
+            let mut n = 0;
+            for it in list.iter().take(HEARTBEAT_LETTERS as usize) {
+                let (Some(table), Some(pk)) = (it["table"].as_str(), it["pk"].as_str()) else { continue };
+                let note = match it["outcome"].as_str() {
+                    Some("closed") => "Closed on the hub without applying.",
+                    _ => "Saved on the hub.",
+                };
+                n += tx.execute(
+                    "UPDATE sync_dead_letters SET status='resolved', resolution='settled_on_hub', resolution_note=?3, resolved_at=?4
+                     WHERE direction='push' AND table_name=?1 AND row_pk=?2 AND status='open'",
+                    params![table, pk, note, time::now_str()],
+                )?;
+            }
+            Ok(n)
         })
     }
 
@@ -1511,67 +1772,6 @@ impl AppCore {
             "schema_version": crate::db::latest_schema_version(),
             "devices": if mode == "hub" { devices } else { vec![] },
         }))
-    }
-
-    pub fn sync_dead_letters(&self, token: &str) -> AppResult<Vec<Value>> {
-        let s = self.session(token)?;
-        s.require("sync.manage")?;
-        self.db.read(|c| {
-            let mut st = c.prepare(
-                "SELECT l.dead_id, l.direction, d.name, l.table_name, l.row_pk, l.op, l.error, l.attempts, l.created_at, l.last_attempt_at
-                 FROM sync_dead_letters l LEFT JOIN devices d ON d.device_id=l.origin WHERE l.status='open' ORDER BY l.created_at DESC LIMIT 500",
-            )?;
-            let rows = st
-                .query_map([], |r| {
-                    Ok(json!({ "dead_id": r.get::<_, String>(0)?, "direction": r.get::<_, String>(1)?, "origin": r.get::<_, Option<String>>(2)?,
-                        "table": r.get::<_, String>(3)?, "pk": r.get::<_, String>(4)?, "op": r.get::<_, String>(5)?, "error": r.get::<_, String>(6)?,
-                        "attempts": r.get::<_, i64>(7)?, "created_at": r.get::<_, String>(8)?, "last_attempt_at": r.get::<_, String>(9)? }))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
-        })
-    }
-
-    /// Retry a dead letter locally. For 'push' letters on a terminal the row is
-    /// re-queued to the outbox so the next sync sends it again.
-    pub fn sync_retry_dead_letter(&self, token: &str, dead_id: &str) -> AppResult<Value> {
-        let s = self.session(token)?;
-        s.require("sync.manage")?;
-        let id = validate::id(dead_id, "Dead letter")?;
-        let actor = self.actor(&s, None);
-        let is_hub = self.device().map(|d| d.mode == "hub").unwrap_or(false);
-        self.db.write(|tx| {
-            let (direction, origin, payload): (String, Option<String>, String) = tx
-                .query_row("SELECT direction, origin, payload_json FROM sync_dead_letters WHERE dead_id=?1 AND status='open'", [&id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-                })
-                .optional()?
-                .ok_or_else(|| AppError::not_found("Dead letter"))?;
-            let ch: Change = serde_json::from_str(&payload)?;
-            let outcome = match direction.as_str() {
-                "push" => {
-                    tx.execute(
-                        "INSERT INTO sync_outbox(table_name, row_pk, op, origin) VALUES (?1,?2,?3,NULL)",
-                        params![ch.table, serde_json::to_string(&ch.pk)?, ch.op],
-                    )?;
-                    "requeued"
-                }
-                _ => {
-                    let side = if is_hub { ApplySide::Hub(origin.as_deref().unwrap_or("")) } else { ApplySide::Terminal };
-                    set_control(tx, !is_hub, origin.as_deref())?;
-                    let r = apply_change(tx, &ch, &side);
-                    set_control(tx, false, None)?;
-                    r?;
-                    "applied"
-                }
-            };
-            tx.execute(
-                "UPDATE sync_dead_letters SET status='resolved', last_attempt_at=?2 WHERE dead_id=?1",
-                params![id, time::now_str()],
-            )?;
-            audit::record(tx, &actor, "sync.dead_letter_retried", "sync", Some(&id), None, Some(&json!({ "outcome": outcome })))?;
-            Ok(json!({ "outcome": outcome }))
-        })
     }
 
     pub(crate) fn sync_diagnostic(&self) -> AppResult<DiagnosticItem> {

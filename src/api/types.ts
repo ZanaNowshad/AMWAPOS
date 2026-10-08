@@ -3693,3 +3693,78 @@ export interface CommercialSummary {
   channel_price_missing?: number;
   active_policies?: number;
 }
+
+// ---- Wave 7: Sync Reconciliation Centre ------------------------------------
+
+export type DeadLetterReason =
+  | "version_mismatch"
+  | "not_permitted"
+  | "invalid_record"
+  | "missing_dependency"
+  | "conflict"
+  | "superseded"
+  | "storage_error"
+  | "unknown"
+  | "legacy_unclassified";
+
+export interface DeadLetterQuery {
+  status?: "open" | "closed" | "all";
+  origin?: string | null;
+  reason_code?: string | null;
+  table?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DeadLetterRow {
+  dead_id: string;
+  direction: "push" | "pull" | "apply";
+  origin_id: string | null;
+  origin: string | null;
+  table: string;
+  op: string;
+  record_ref: string | null;
+  reason_code: DeadLetterReason;
+  can_retry: boolean;
+  error: string;
+  attempts: number;
+  status: "open" | "resolved" | "closed";
+  resolution: "applied" | "recovered" | "settled_on_hub" | "closed_without_applying" | null;
+  resolution_note: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  last_attempt_at: string;
+}
+
+export interface DeadLetterGroup {
+  origin_id: string | null;
+  origin: string | null;
+  reason_code: DeadLetterReason;
+  count: number;
+  retryable: number;
+  oldest: string;
+}
+
+export interface DeadLetterPage {
+  rows: DeadLetterRow[];
+  total: number;
+  groups: DeadLetterGroup[];
+  can_act: boolean;
+}
+
+export interface RetryOutcome {
+  dead_id: string;
+  outcome: "applied" | "failed" | "superseded" | "not_retryable" | "not_here" | "already_finished";
+  detail: Record<string, unknown>;
+}
+
+export interface BulkRetryOutcome {
+  eligible: number;
+  ineligible: number;
+  tried: number;
+  remaining: number;
+  applied: number;
+  failed: number;
+  superseded: number;
+}
