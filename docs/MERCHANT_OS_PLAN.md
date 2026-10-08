@@ -447,6 +447,23 @@ seven checkpoints:
 Checkpoints 1–4 were pushed as one commit and 5–6 as another (each was verified before the
 push).
 
-The pipeline extends the one Wave 5 pricing path; no second calculator exists. Wave 7 items
-(alert centre, sync reconciliation, terminal health, credential rotation, durable jobs, document
-library, knowledge base) were not started.
+The pipeline extends the one Wave 5 pricing path; no second calculator exists.
+
+## Wave 7 delivered: operational control (2026-10-08)
+
+Design and rules: [OPERATIONAL_CONTROL.md](OPERATIONAL_CONTROL.md). Seven checkpoints, one
+pushed commit each (plus one clippy fix after checkpoint 4):
+
+1. Alert Centre on the existing cases; legacy AI inbox migrated (migration 0033);
+2. checks, noise control, Dashboard and opening integration;
+3. Sync Reconciliation Centre (migration 0034);
+4. Terminal Health (migration 0035);
+5. per-device credential rotation and revocation (migration 0036);
+6. screens, Arabic, permissions, cross-navigation;
+7. tests, performance, the jobs decision (not built), docs.
+
+No parallel source of truth: cases are the alerts, `sync_dead_letters` the reconciliation queue,
+`device_heartbeats` the telemetry, `shifts` the shift. Nothing is fabricated by the migrations.
+The assistant reads; it never acts on operational control. Wave 8 (document library, knowledge
+base, memory, merchant twin, time machine, cashflow radar, broad AI automation) was not started.
+

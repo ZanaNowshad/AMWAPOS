@@ -259,7 +259,11 @@ owner accepts the new hub. Unsynced terminal sales are kept and upload after tha
 | Terminal shows "Offline" | Is the hub PC on? Can the terminal reach `http://<hub>:47800/health`? Is the network profile *Private*? |
 | "Hub credential is missing" on the hub | AMWAPOS was started under a different Windows account. Sign in with the original account, or reset hub credentials and pair all terminals again. |
 | "This hub is not the one this terminal paired with" | The hub was rebuilt or restored. Decide in Admin → Sync / Hub on the terminal. |
-| Items in "Changes that could not be applied" | Read the problem column. Fix the cause (e.g. a missing product on the hub), then Retry. |
+| Records in **Sync problems** (Admin → Sync problems, on the hub) | Each row says why in plain words and whether trying again can help. Fix the cause (update the till, let it send everything), then **Try again** or **Try everything shown again**. A record that can never be applied is **Closed without applying** with a reason (money and stock records need a tick). Nothing is edited by hand. The case in the Alert Centre closes itself once nothing is left. |
+| **Alert Centre** shows a case opened by the system | Open it: the facts, whether it is still happening, and a button to the screen that fixes it. The system closes it itself once it no longer sees the problem; dismissing it stops it from reopening until the problem has cleared once. |
+| **Terminals** shows a till as Unknown | It has not reported yet (just paired, or an older version). Nothing is guessed: let it sync once. "Offline" after closing time is normal; "Needs attention" lists the reasons. |
+| Rotate a till's credential | Admin → Terminals → **Rotate credential**. The till keeps working with its current key until its next sync, picks up the new one, and the hub switches once the till uses it. If a till stays off for a day, a case reminds you; **Cancel** undoes a rotation not yet picked up. |
+| A till is lost or stolen | Admin → Terminals → **Revoke…**, tick **Lost or stolen**. It is refused at once and can never use that credential again; pair a new till. Do not use "Reset every terminal" for one lost till. |
 
 ## Acceptance checklist (run on real Windows hardware)
 
@@ -284,6 +288,8 @@ Automated coverage exists for everything marked ✅. The ☐ items need a person
 - ☐ Two physical tills plus a hub over store Wi-Fi. Unplug the hub mid-sale and re-plug it.
 - ☐ Power loss during a sale (pull the plug), then restart. The database is intact and the sale is either fully present or absent.
 - ☐ Hub left running overnight: next morning the Dashboard shows a backup from the last 24 h. Hub shut down overnight: a backup appears within about 1 minute of opening AMWAPOS.
+- ✅ Operational control: refused records become one case per till and reason, are tried again or closed with a reason, and the case closes itself after recovery; terminal health shows only reported facts; a credential rotates in stages and a lost till is revoked (wave7, wave7_sync tests; Playwright wave7 flows with in-process tills).
+- ☐ Operational control on the store network: switch a till off mid-shift and see the Alert Centre case after 15 minutes; rotate a till's credential and confirm it keeps selling and syncing; revoke a spare till as lost and confirm it is refused.
 
 ## Soak checklist (owner, before going live)
 

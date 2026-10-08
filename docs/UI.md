@@ -292,3 +292,27 @@ overdue + hub "Update needed" with the admin banner and nav flyout.
   - No internal ids.
 - All new strings are in Arabic. The English/Arabic sweep covers Promotions and Bundles and
   hampers.
+
+## Wave 7 surfaces
+
+- **Alert Centre** (Admin → Business → Alert Centre, `/admin/cases`): tabs Needs attention /
+  Open / Finished / All, filters by kind and by who opened it, 50 per page, "Check now" for
+  `cases.manage`. Rows say what, where, since when, whether it is still happening, size and
+  status. The drawer of a system case shows the facts when it opened beside the latest
+  measure, a banner ("Still happening" / "The system no longer sees this…"), and "Open the
+  screen that fixes this". History names the person or "The system". `?case=<id>` opens a
+  case directly (the Dashboard links there).
+- **Sync problems** (Admin → System, `/admin/sync-reconciliation`, `sync.manage`): group cards
+  per till and reason, tabs Waiting / Finished / All, filters, selection, "Try again", "Try
+  everything shown again", "Close…" with a reason and, for money/stock records, a tick. A row
+  opens its details: plain-words reason with what to do, tries, outcome and the technical
+  message. Read-only on a terminal.
+- **Terminals** (Admin → System, `/admin/terminals`): health chips with counts, the documented
+  thresholds, store facts (hub versions, backup, printing here), and per till: health with
+  reasons, last seen, app / database / sync protocol versions separately, sending, refused
+  records (link to Sync problems), open shift, open cases, credential version with Rotate /
+  Cancel / Revoke….
+- The System page shows a banner linking to Sync problems instead of the old table. Reset
+  every terminal is shown to the owner only and needs the typed confirmation.
+- Every new string has Arabic; the English/Arabic sweep covers the three screens.
+

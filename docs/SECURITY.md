@@ -26,6 +26,16 @@
   account per till. If the hub is started under a different account it reports the missing
   credential. It does not generate a new one, which would silently break every paired terminal.
   **Admin → Sync / Hub → Reset hub credentials** replaces it; every terminal must then pair again.
+  Since Wave 7 this is owner-only and needs the typed confirmation `RESET ALL TERMINALS`.
+- Per-terminal credentials (Wave 7): a terminal's key is derived from the hub master secret and a
+  credential version; the database holds versions and times only. **Admin → Terminals → Rotate
+  credential** stages a new version; the terminal receives it inside the sealed heartbeat reply,
+  stores it in its own credential store and proves it by signing with it; the old key is then
+  accepted for 10 minutes and never again. **Revoke** refuses a terminal at once; "lost or
+  stolen" also moves its credential version on, so re-activating the device can never bring the
+  old key back. Keys never appear in the database, logs, audit records, cases, diagnostics or
+  the assistant (tested by scanning the database files). See
+  [OPERATIONAL_CONTROL.md](OPERATIONAL_CONTROL.md).
 - Staff sessions exist only in memory. They are never written to disk or logs.
 - The dev bridge (`amwapos-devserver`) keeps secrets in a plain file. It binds to loopback only
   and is not shipped.

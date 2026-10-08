@@ -826,3 +826,52 @@ External acceptance is not claimed. Real catalogues, printed receipts, the store
 remain part of the soak (OPERATIONS.md acceptance checklist).
 
 - CI on the final head: see the Wave 6 report.
+
+## Merchant OS Wave 7: operational control, 2026-10-08
+
+Design and rules: [OPERATIONAL_CONTROL.md](OPERATIONAL_CONTROL.md).
+Branch `claude/amwapos-merchant-os-wave7`, based on `main` at `e5a7871` (Wave 6, fast-forwarded).
+Seven checkpoint commits (one per checkpoint) plus one clippy fix after checkpoint 4.
+
+Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
+- `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` are clean.
+- `cargo test --workspace`: 571 passed, 0 failed, 4 ignored (benchmark and
+  live-network checks). New: `wave7.rs` (8), `wave7_sync.rs` (17, real hub + terminals:
+  reconciliation, idempotent and concurrent retries, settlement paths, terminal health,
+  staged credential rotation, grace, revoke, reset-all, failure injection, upgrades), unit tests
+  for the checks and for `terminal_health::assess`.
+- `tsc`, `eslint`, `prettier --check`, vitest (49) and `vite build` pass.
+- Playwright: 26 of 26, including three Wave 7 flows against real in-process tills
+  (`--fake-terminal`, dev server only): refused records → one case → Sync problems → retry →
+  the system closes the case after recovery; a record closed without applying with a reason;
+  terminal health from reported facts, staged credential rotation and revoking a lost till. The
+  English/Arabic sweep covers Alert Centre, Sync problems and Terminals.
+- Benchmark (release, 100k products + 40 tills, 10,000 cases, 10,000 refused records): minute
+  check 19 ms steady (46 ms first run), Alert Centre pages 4.0–28.4 ms, Sync problems pages
+  6.1–25.3 ms, Terminals 7.2 ms, Dashboard 150.7 ms, bulk retry of 500 in 31 ms. POS P95: scan
+  1.40 ms, search 5.67 ms, cart change 1.06 ms, sale commit 10.04 ms.
+- Found by the end-to-end flow and fixed: a till that had only asked for changes (first pull
+  after pairing) showed as Healthy with unknown versions; health now stays Unknown until the
+  till sends its own report.
+- Found and fixed while building: a sale line arriving before its sale was refused as "not
+  owned" (not retryable); it is now "waiting for a related record" (retryable).
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| Alert Centre on the existing cases; system cases never pretend to be a person's | Complete | `wave7.rs`; Playwright | — |
+| Legacy AI inbox copied as legacy cases; table read-only; no new writes | Complete | `wave7.rs` upgrade test; `ai_hardening.rs` | Drop the table in a later release |
+| One incident one case, debounce, hysteresis, episodes, deterministic severity | Complete | `ops.rs` unit tests; `wave7.rs` | — |
+| Dismissed ≠ resolved; auto-resolve only on measured recovery, with a system event | Complete | `wave7.rs`; `wave7_sync.rs`; Playwright | — |
+| Alert source audit and classification | Complete | OPERATIONAL_CONTROL.md §3 | — |
+| Sync reconciliation: reason codes, retryability, retry via the apply path, idempotent, bulk eligible-only, close with reason, no record editing, aggregate cases | Complete | `wave7_sync.rs`; Playwright | Two physical tills on store Wi-Fi |
+| Terminal health from observed facts; versions separate; thresholds documented; shift from shifts; unknown stays unknown | Complete | `terminal_health.rs` tests; `wave7_sync.rs`; Playwright | Real tills switched off mid-shift |
+| Per-device staged credential rotation, bounded grace, no secrets stored or logged | Complete | `wave7_sync.rs` (DB files scanned for keys); Playwright | Rotation on real tills over HTTP |
+| Revoke separate from rotate; lost/stolen blocks re-activation; reset-all owner-only with typed confirmation | Complete | `wave7_sync.rs`; `sync.rs`; Playwright | — |
+| Dashboard / opening read cases; bounded indexed queries | Complete | `wave7.rs`; `perf.rs` | — |
+| Durable jobs | Not built (decision documented) | OPERATIONAL_CONTROL.md §9 | — |
+| Permissions reused; cashiers and terminals cannot act; AI reads only | Complete | `wave7.rs`; `wave7_sync.rs`; `ai_admin.rs` coverage test | — |
+| Arabic for every new string | Complete | vitest; e2e sweep | Visual check on real tills |
+| Migrations fabricate nothing (credentials v1, NULL telemetry, no historical cases) | Complete | `wave7.rs`; `wave7_sync.rs` upgrade tests | — |
+
+External acceptance is not claimed: the store's tills, network and a real lost-till drill remain
+part of the soak (OPERATIONS.md acceptance checklist).

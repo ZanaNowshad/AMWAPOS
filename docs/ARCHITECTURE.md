@@ -97,8 +97,15 @@ The same id with a different payload fails with `idempotency_mismatch`.
     Batches, batch corrections and waste records are hub-local; their stock movements
     sync as usual, so a till's stock stays right without the batch ledger.
 - **Stock:** the hub replays stock movements to recompute balances.
-- **Cycle:** a terminal pushes, then pulls (excluding its own origin). Changes that fail to apply
-  go to a dead-letter queue, which can be retried from Admin → Sync.
+- **Cycle:** a terminal pushes, then pulls (excluding its own origin), then sends a heartbeat.
+  Changes that fail to apply go to `sync_dead_letters` with a reason code and whether a retry
+  can help; they are handled in Admin → Sync problems on the hub (Wave 7, see
+  [OPERATIONAL_CONTROL.md](OPERATIONAL_CONTROL.md)). A record accepted on a later send settles
+  by itself; the heartbeat tells the terminal which refused records the hub settled.
+- **Credentials:** a terminal's key is derived from the hub master secret and a credential
+  version (version 1 = the original derivation). Rotation is staged through the sealed heartbeat
+  reply and completes when the terminal signs with the new key; the old key then has a
+  10-minute grace. Revocation is separate. No key is stored in the database.
 - **Safety:**
   - A terminal records the hub's `hub_instance_id` and refuses a hub that was rebuilt or rolled
     back, until a person decides.
@@ -278,3 +285,28 @@ See [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md).
   the parent never moves.
 - **Sync.** Definitions are hub-owned and replicated. Offer rows and coupon redemptions are
   append-only sale evidence. A limited coupon is accepted only by the main computer.
+
+## Wave 7: operational control
+
+Design and rules: [OPERATIONAL_CONTROL.md](OPERATIONAL_CONTROL.md).
+
+- **Alert Centre = cases.** `cases` gains `source` (user/system/legacy), a per-incident
+  `dedupe_key` with one open case per key (partial unique index), and the measured state
+  (`latest_json`, `condition_active`, `first_seen_at`, `last_seen_at`, `occurrences`).
+  `alert_conditions` is the checks' memory between runs (debounce, hysteresis, suppression
+  after a person closed a case), never a second alert list.
+- **Checks:** `ops::measure` (read-only, grouped queries) + `ops::reconcile` in one write
+  transaction, every minute on the hub (`runtime.rs`) and on demand ("Check now"). Terminals
+  never run them.
+- **Sync Reconciliation:** `sync_recon.rs` over `sync_dead_letters` (reason codes,
+  retryability, `closed` state, resolutions). Retry = `sync::apply_change` with the sending
+  terminal's ownership checks; no record editing.
+- **Terminal Health:** `terminal_health.rs` reads `device_heartbeats`, `shifts`,
+  `sync_dead_letters` and `cases`; `assess()` is pure.
+- **Credentials:** `device_credentials.rs` (versioned derivation, staged rotation, grace,
+  revoke, reset-all). `hub_authenticate_key` returns the key that signed so the server seals
+  the reply with it.
+- **Dashboard / opening:** read open cases instead of recomputing alerts.
+- **No jobs table:** the minute check is idempotent and stateless apart from
+  `alert_conditions`.
+

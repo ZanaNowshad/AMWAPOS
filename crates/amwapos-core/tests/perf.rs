@@ -428,4 +428,164 @@ fn perf_100k_products() {
     assert!(pc < Duration::from_millis(500), "commit {pc:?}");
     assert!(att_t < Duration::from_secs(5), "offer attention {att_t:?}");
     assert!(bundles_t < Duration::from_secs(1), "bundle availability {bundles_t:?}");
+
+    // ---- Wave 7: operational control at scale --------------------------
+    // 40 paired terminals with heartbeats, 10,000 earlier cases (30% still
+    // open) and 10,000 refused records from those terminals, on top of the
+    // 100,000 products and the sales above. These rows stand for history the
+    // store already has; every number below is measured through the real
+    // functions a person or the minute check calls.
+    let branch: String = e.core.db.read(|c| Ok(c.query_row("SELECT branch_id FROM branches LIMIT 1", [], |r| r.get(0))?)).unwrap();
+    let reasons = ["missing_dependency", "version_mismatch", "conflict", "not_permitted", "storage_error"];
+    let tables = ["sales", "sale_items", "payments", "customers", "stock_movements"];
+    e.core
+        .db
+        .write(|c| {
+            for d in 0..40 {
+                let id = format!("01BENCHTERM{d:02}00000000000000");
+                c.execute(
+                    "INSERT INTO devices(device_id, branch_id, name, device_code, operating_mode, active, activated_at)
+                     VALUES (?1,?2,?3,?4,'terminal',1,'2026-01-01T00:00:00Z')",
+                    rusqlite::params![id, branch, format!("Till {}", d + 2), format!("B{d:02}")],
+                )?;
+                c.execute(
+                    "INSERT INTO device_heartbeats(device_id, last_seen_at, app_version, schema_version, pending_count, protocol_version,
+                        oldest_pending_at, last_heartbeat_at, problem_count)
+                     VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ','now', ?2), '1.0', ?3, ?4, 2, strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 minutes'),
+                        strftime('%Y-%m-%dT%H:%M:%fZ','now'), 0)",
+                    rusqlite::params![id, format!("-{} minutes", d % 7), amwapos_core::db::latest_schema_version(), d % 5],
+                )?;
+            }
+            for i in 0..10_000 {
+                let status = if i % 10 < 3 { "new" } else if i % 2 == 0 { "resolved" } else { "dismissed" };
+                c.execute(
+                    "INSERT INTO cases(case_id, case_number, kind, severity, status, branch_id, entity_type, entity_id, title, facts_json, created_at,
+                        updated_at, source, dedupe_key, device_id, condition_active, first_seen_at, last_seen_at, resolution_code, resolved_at)
+                     VALUES (?1,?2,?3,?4,?5,?6,'device',?7,?8,'{}',?9,?9,'system',?10,?7,?11,?9,?9,?12,?13)",
+                    rusqlite::params![
+                        format!("bench-case-{i:05}"),
+                        format!("B-{i:05}"),
+                        ["print_failures", "terminal_backlog", "rider_cash_held", "payment_review_backlog"][i % 4],
+                        ["low", "medium", "high"][i % 3],
+                        status,
+                        branch,
+                        format!("01BENCHTERM{:02}00000000000000", i % 40),
+                        format!("Earlier problem {i}"),
+                        format!("2026-0{}-{:02}T08:00:00Z", 1 + i % 9, 1 + i % 28),
+                        (status == "new").then(|| format!("bench:{i}")),
+                        (status == "new") as i64,
+                        (status == "resolved").then_some("fixed"),
+                        (status != "new").then_some("2026-10-01T00:00:00Z"),
+                    ],
+                )?;
+            }
+            for i in 0..10_000 {
+                let origin = format!("01BENCHTERM{:02}00000000000000", i % 40);
+                let table = tables[i % tables.len()];
+                let reason = reasons[(i / 40) % reasons.len()];
+                let payload = serde_json::json!({ "seq": i, "table": table, "pk": { "id": format!("r{i}") }, "op": "upsert",
+                    "row": { "id": format!("r{i}"), "receipt_number": format!("R-{i:06}") } });
+                c.execute(
+                    "INSERT INTO sync_dead_letters(dead_id, direction, origin, table_name, row_pk, op, payload_json, error, attempts, status, created_at,
+                        last_attempt_at, reason_code, retryable)
+                     VALUES (?1,'apply',?2,?3,?4,'upsert',?5,'refused',1,?6,?7,?7,?8,?9)",
+                    rusqlite::params![
+                        format!("bench-dead-{i:05}"),
+                        origin,
+                        table,
+                        format!("{{\"id\":\"r{i}\"}}"),
+                        payload.to_string(),
+                        if (i / 7) % 4 == 0 { "resolved" } else { "open" },
+                        format!("2026-10-0{}T{:02}:00:00Z", 1 + i % 7, i % 24),
+                        reason,
+                        (reason != "conflict" && reason != "not_permitted") as i64,
+                    ],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let time = |f: &mut dyn FnMut()| {
+        let s = Instant::now();
+        f();
+        s.elapsed()
+    };
+    let eval_first = time(&mut || {
+        e.core.ops_evaluate().unwrap();
+    });
+    let eval_again = time(&mut || {
+        e.core.ops_evaluate().unwrap();
+    });
+    let open_sync: i64 = e
+        .core
+        .db
+        .read(|c| Ok(c.query_row("SELECT COUNT(*) FROM cases WHERE kind='sync_failures' AND status='new'", [], |r| r.get(0))?))
+        .unwrap();
+    let q = |status: &str, offset: i64| -> amwapos_core::cases::CaseQuery {
+        serde_json::from_value(serde_json::json!({ "status": status, "limit": 50, "offset": offset })).unwrap()
+    };
+    let mut page_first = Duration::ZERO;
+    let mut page_deep = Duration::ZERO;
+    let mut total = 0;
+    for _ in 0..5 {
+        page_first = page_first.max(time(&mut || total = e.core.cases_query(t, q("needs_attention", 0)).unwrap().total));
+        page_deep = page_deep.max(time(&mut || {
+            e.core.cases_query(t, q("all", 9_900)).unwrap();
+        }));
+    }
+    let dq = |v: serde_json::Value| -> amwapos_core::sync_recon::DeadQuery { serde_json::from_value(v).unwrap() };
+    let mut dead_first = Duration::ZERO;
+    let mut dead_deep = Duration::ZERO;
+    let mut dead_filtered = Duration::ZERO;
+    let mut dead_total = 0;
+    for _ in 0..5 {
+        dead_first = dead_first.max(time(&mut || {
+            dead_total = e.core.sync_dead_letters(t, dq(serde_json::json!({ "limit": 50 }))).unwrap()["total"].as_i64().unwrap();
+        }));
+        dead_deep = dead_deep.max(time(&mut || {
+            e.core.sync_dead_letters(t, dq(serde_json::json!({ "limit": 50, "offset": 7_400 }))).unwrap();
+        }));
+        dead_filtered = dead_filtered.max(time(&mut || {
+            e.core
+                .sync_dead_letters(
+                    t,
+                    dq(serde_json::json!({ "origin": "01BENCHTERM0700000000000000", "reason_code": "missing_dependency" })),
+                )
+                .unwrap();
+        }));
+    }
+    let health = time(&mut || {
+        let h = e.core.terminals_health(t).unwrap();
+        assert_eq!(h["terminals"].as_array().unwrap().len(), 40);
+    });
+    let dash = time(&mut || {
+        e.core.dashboard(t).unwrap();
+    });
+    let bulk = time(&mut || {
+        let r = e
+            .core
+            .sync_retry_dead_letters(
+                t,
+                serde_json::from_value(serde_json::json!({ "reason_code": "storage_error", "operation_id": op() })).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(r["tried"], 500, "bounded to 500 per request");
+    });
+    println!("operational control (40 tills, 10,000 earlier cases, 10,000 refused records):");
+    println!("minute check, first run ({open_sync} sync cases opened): {:.0} ms", eval_first.as_secs_f64() * 1e3);
+    println!("minute check, steady state:        {:.0} ms", eval_again.as_secs_f64() * 1e3);
+    println!("Alert Centre, needs attention ({total}): {:.1} ms", page_first.as_secs_f64() * 1e3);
+    println!("Alert Centre, page at 9,900:       {:.1} ms", page_deep.as_secs_f64() * 1e3);
+    println!("Sync problems, first page ({dead_total}): {:.1} ms", dead_first.as_secs_f64() * 1e3);
+    println!("Sync problems, page at 7,400:      {:.1} ms", dead_deep.as_secs_f64() * 1e3);
+    println!("Sync problems, one till + reason:  {:.1} ms", dead_filtered.as_secs_f64() * 1e3);
+    println!("Terminals (40):                    {:.1} ms", health.as_secs_f64() * 1e3);
+    println!("Dashboard with open cases:         {:.1} ms", dash.as_secs_f64() * 1e3);
+    println!("bulk retry of 500 records:         {:.0} ms", bulk.as_secs_f64() * 1e3);
+    assert_eq!(open_sync, 40 * 5, "one case per till and reason");
+    assert!(eval_again < Duration::from_secs(2), "minute check {eval_again:?}");
+    assert!(page_first < Duration::from_millis(300) && page_deep < Duration::from_millis(300), "case pages {page_first:?} {page_deep:?}");
+    assert!(dead_first < Duration::from_millis(300) && dead_deep < Duration::from_millis(500), "sync pages {dead_first:?} {dead_deep:?}");
+    assert!(health < Duration::from_millis(500), "terminals {health:?}");
+    assert!(dash < Duration::from_secs(1), "dashboard {dash:?}");
 }
