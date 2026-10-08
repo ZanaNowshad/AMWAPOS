@@ -7,6 +7,7 @@
 pub mod address;
 pub mod ai;
 pub mod ai_actions;
+pub mod ai_evidence;
 pub mod ai_helpers;
 pub mod ai_tools;
 pub mod ai_workspace;

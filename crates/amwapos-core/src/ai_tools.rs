@@ -130,6 +130,46 @@ const WA: &[&str] = &["whatsapp.manage"];
 /// loyalty_balance, digital_order_get, recent_whatsapp_messages,
 /// invoice_scan_text, propose_price_change, propose_stock_adjustment,
 /// propose_purchase_order) stay in `ai.rs`.
+/// Commands whose records live only on the hub (`sync::LOCAL_TABLES`): on a
+/// terminal their local tables are empty, so the assistant there says the
+/// answer is on the main computer instead of reporting "nothing".
+pub const HUB_ONLY_PREFIXES: &[&str] = &[
+    "ap.",
+    "supplier_invoices.",
+    "expenses.",
+    "petty.",
+    "day.",
+    "cases.",
+    "lots.",
+    "waste.",
+    "expiry.",
+    "stock.cover",
+    "replenish.",
+    "requisitions.",
+    "receiving.",
+    "supplier_returns.",
+    "supplier.catalogue",
+    "po.",
+    "docs.",
+    "waorders.",
+    "terminals.",
+    "pricing.",
+    "duplicates.",
+    "products.merge",
+    "commercial.",
+    "invoicescan.",
+    "payreviews.",
+    "stocktake.",
+    "virtual.supplier_performance",
+    "library.",
+    "memory.",
+    "cashflow.",
+];
+
+pub fn hub_only(cmd: &str) -> bool {
+    HUB_ONLY_PREFIXES.iter().any(|p| cmd.starts_with(p))
+}
+
 pub const TOOLS: &[ToolSpec] = &[
     // ---- reads -----------------------------------------------------------
     read("dashboard_kpis", "dashboard.get", &["reports.sales", "admin.access"], "", "Today's KPIs, hourly sales, top products and attention items (the dashboard)."),

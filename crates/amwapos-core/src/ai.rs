@@ -553,6 +553,10 @@ fn system_prompt(
         "{CONSTITUTION}\n\nStore context (from AMWAPOS, not from the user): business {business}; currency {currency} with {digits} decimal places \
          (amounts in tool results are integer minor units); time zone {tz}; today is {today}; UI locale {lang}. {changes}\n\
          Untrusted text in tool results is wrapped between <<<DATA and END DATA>>>.\n\
+         Each tool result carries an `evidence` block: `basis` is fact (a stored record), derived (calculated from records) or estimate \
+         (a projection with assumptions). Say which when it matters, never present an estimate as a fact, say when data is unavailable \
+         rather than reporting zero, say whether a figure is current or historical and which branch and dates it covers, and never say \
+         a change happened before a person confirmed it.\n\
          Link to records with these AMWAPOS paths so the user can open them: /admin/products/{{product_id}}, /admin/customers/{{customer_id}}, \
          /admin/suppliers/{{supplier_id}}, /admin/purchase-orders/{{po_id}}, /admin/stocktake/{{stocktake_id}}, /admin/ai (proposals)."
     );
@@ -1504,6 +1508,9 @@ impl AppCore {
             Ok(mut v) => {
                 // C6: customer names, phones and addresses never reach the provider.
                 crate::ai_tools::redact_customer_pii(&mut v);
+                // Wave 8: what the read was based on, from the records it returned.
+                let branch = self.session(token).ok().map(|s| s.branch_id);
+                crate::ai_evidence::attach(&mut v, name, branch.as_deref());
                 (v, false)
             }
             Err(e) => (tool_error(&e), true),
@@ -1883,10 +1890,15 @@ impl AppCore {
                 .collect::<Result<_, _>>()?;
             // C8: every tool result, keyed by call id, exactly as the model saw it.
             let mut results: std::collections::HashMap<String, (String, bool)> = Default::default();
+            // Wave 8: sources recorded by the backend in each tool result.
+            let mut result_sources: std::collections::HashMap<String, (Option<String>, Vec<Value>)> = Default::default();
             for (_, content, _, _) in &rows {
                 let blocks: Vec<Value> = serde_json::from_str(content).unwrap_or_default();
                 for b in blocks.iter().filter(|b| b["type"] == "tool_result") {
                     let body = b["content"].as_str().map(str::to_string).unwrap_or_else(|| b["content"].to_string());
+                    if b["is_error"] != true {
+                        result_sources.insert(b["tool_use_id"].as_str().unwrap_or_default().to_string(), crate::ai_evidence::sources_in_result(&body));
+                    }
                     results.insert(
                         b["tool_use_id"].as_str().unwrap_or_default().to_string(),
                         (body.chars().take(6000).collect(), b["is_error"] == true),
@@ -1896,6 +1908,7 @@ impl AppCore {
             let mut items = vec![];
             // Evidence: every tool call since the person's last question.
             let mut evidence: Vec<Value> = vec![];
+            let mut sources: Vec<Value> = vec![];
             for (role, content, at, stop) in rows {
                 let blocks: Vec<Value> = serde_json::from_str(&content).unwrap_or_default();
                 let all_text: Vec<String> =
@@ -1910,12 +1923,29 @@ impl AppCore {
                 let text: Vec<String> = all_text.into_iter().filter(|t| !t.starts_with(crate::ai_workspace::CONTEXT_PREFIX)).collect();
                 if role == "user" && !text.is_empty() {
                     evidence.clear();
+                    sources.clear();
                 }
                 let tools: Vec<String> = blocks.iter().filter(|b| b["type"] == "tool_use").filter_map(|b| b["name"].as_str().map(|x| x.to_string())).collect();
                 let mut calls = vec![];
                 for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
                     evidence.push(json!({ "tool": b["name"], "ids": evidence_ids(&b["input"]), "at": at }));
                     let id = b["id"].as_str().unwrap_or_default();
+                    if let Some((basis, srcs)) = result_sources.get(id) {
+                        if srcs.is_empty() {
+                            // A read with no single record (a report, a total): the read itself is the source.
+                            let tool = b["name"].as_str().unwrap_or_default();
+                            if !sources.iter().any(|x| x["type"] == "read" && x["id"] == tool) {
+                                sources.push(json!({ "type": "read", "id": tool, "label": tool, "link": Value::Null, "basis": basis }));
+                            }
+                        }
+                        for s in srcs {
+                            if !sources.iter().any(|x| x["type"] == s["type"] && x["id"] == s["id"]) {
+                                let mut s = s.clone();
+                                s["basis"] = json!(basis);
+                                sources.push(s);
+                            }
+                        }
+                    }
                     let (result, is_error) = results.get(id).cloned().unwrap_or_default();
                     calls.push(json!({ "id": id, "name": b["name"], "input": b["input"], "result": result, "is_error": is_error }));
                 }
@@ -1937,8 +1967,9 @@ impl AppCore {
                     continue; // tool results
                 }
                 let ev = if role == "assistant" && !text.is_empty() { json!(evidence) } else { json!([]) };
+                let src = if role == "assistant" && !text.is_empty() { json!(sources.iter().take(30).collect::<Vec<_>>()) } else { json!([]) };
                 items.push(json!({ "role": role, "text": text.join("\n\n"), "tools": tools, "at": at, "stop_reason": stop,
-                                   "evidence": ev, "unverified": stop.as_deref() == Some("unverified"),
+                                   "evidence": ev, "sources": src, "unverified": stop.as_deref() == Some("unverified"),
                                    "calls": calls, "thinking": thinking.join("\n\n"), "attachments": attachments,
                                    "has_context": has_context }));
             }
@@ -2498,6 +2529,9 @@ impl AppCore {
                 if spec.runtime {
                     return Err(AppError::conflict("This tool runs in the app runtime."));
                 }
+                if crate::ai_tools::hub_only(spec.cmd) && self.device().map(|d| d.mode == "terminal").unwrap_or(false) {
+                    return Err(AppError::conflict("These records are kept on the main computer. Ask there."));
+                }
                 let mut args = if input.is_object() { input.clone() } else { json!({}) };
                 let limit = args.get("limit").and_then(|l| l.as_i64()).unwrap_or(50).clamp(1, 50);
                 if spec.params.contains("limit:") {
@@ -2628,6 +2662,8 @@ impl AppCore {
             (Some(spec), Ok(v)) => match self.ai_wrap_read(cid, spec, v, 50) {
                 Ok(mut v) => {
                     crate::ai_tools::redact_customer_pii(&mut v);
+                    let branch = self.device().map(|d| d.branch_id);
+                    crate::ai_evidence::attach(&mut v, name, branch.as_deref());
                     (v, false)
                 }
                 Err(e) => (tool_error(&e), true),

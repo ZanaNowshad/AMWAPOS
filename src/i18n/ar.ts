@@ -6002,4 +6002,11 @@ export const AR: Record<string, string> = {
   "Open Sync problems": "افتح مشاكل المزامنة",
   "{0} records could not be saved between computers.": "تعذّر حفظ {0} سجلات بين الأجهزة.",
   "Check now": "افحص الآن",
+  "These records are kept on the main computer. Ask there.": "هذه السجلات محفوظة على الجهاز الرئيسي. اسأل هناك.",
+  "Z close": "إقفال Z",
+  "Business memory": "ذاكرة الأعمال",
+  Fact: "حقيقة",
+  Derived: "محسوب",
+  "Sources used": "المصادر المستخدمة",
+  "{0} more": "{0} أخرى",
 };

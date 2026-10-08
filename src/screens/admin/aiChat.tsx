@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { api } from "../../api";
 import type {
+  AiSource,
   AiBriefing,
   AiContext,
   AiConversation,
@@ -214,6 +215,78 @@ function Thinking({ text, open }: { text: string; open?: boolean }) {
   );
 }
 
+const SOURCE_TYPE: Record<string, () => string> = {
+  sale: () => t("Sale"),
+  refund: () => t("Refund"),
+  expense: () => t("Expense"),
+  supplier_invoice: () => t("Supplier invoice"),
+  purchase_order: () => t("Purchase order"),
+  requisition: () => t("Requisition"),
+  supplier_return: () => t("Supplier return"),
+  case: () => t("Case"),
+  day_close: () => t("Z close"),
+  shift: () => t("Shift"),
+  batch: () => t("Batch"),
+  waste: () => t("Waste"),
+  offer: () => t("Offer"),
+  bundle: () => t("Bundle"),
+  sync_problem: () => t("Sync problem"),
+  document: () => t("Document"),
+  memory: () => t("Business memory"),
+  supplier: () => t("Supplier"),
+  product: () => t("Product"),
+  customer: () => t("Customer"),
+  read: () => t("Read"),
+};
+
+const BASIS: Record<string, () => string> = {
+  fact: () => t("Fact"),
+  derived: () => t("Derived"),
+  estimate: () => t("Estimate"),
+};
+
+/** The records the reads behind an answer returned, from the backend's record of them. */
+function SourcesUsed({ sources }: { sources: AiSource[] }) {
+  const [open, setOpen] = useState(false);
+  const shown = open ? sources : sources.slice(0, 6);
+  return (
+    <div className="evidence" data-testid="ai-sources">
+      <span className="tiny muted">{t("Sources used")}:</span>
+      {shown.map((s, j) => {
+        const kind = SOURCE_TYPE[s.type]?.() ?? s.type;
+        const body = (
+          <>
+            <span>
+              {kind}
+              {s.label ? (
+                <>
+                  {" "}
+                  <span dir="auto">{s.type === "read" ? (TOOL_LABEL[s.label]?.() ?? s.label) : s.label}</span>
+                </>
+              ) : null}
+            </span>
+            {s.basis && s.basis !== "fact" ? <span className="ev-time">{BASIS[s.basis]?.()}</span> : null}
+          </>
+        );
+        return s.link ? (
+          <Link key={j} to={s.link} className="ev-chip" data-testid="ai-source">
+            {body}
+          </Link>
+        ) : (
+          <span key={j} className="ev-chip" data-testid="ai-source">
+            {body}
+          </span>
+        );
+      })}
+      {sources.length > 6 && !open ? (
+        <button className="link tiny" onClick={() => setOpen(true)}>
+          {t("{0} more", sources.length - 6)}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /** Where a piece of evidence lives in the admin, when it names one record. */
 function evidenceLink(tool: string, ids: string[]): string | null {
   const id = ids.length === 1 ? ids[0] : null;
@@ -392,6 +465,7 @@ function MessageView({ m, fallback }: { m: Message; fallback?: { from: string; t
           </div>
         ) : null}
         {m.text ? mine ? <div style={{ whiteSpace: "pre-wrap" }}>{m.text}</div> : <RichText text={m.text} /> : null}
+        {m.role === "assistant" && m.text && m.sources?.length ? <SourcesUsed sources={m.sources} /> : null}
         {m.role === "assistant" && m.text && m.evidence?.length ? (
           <div className="evidence" data-testid="ai-evidence">
             {m.evidence.slice(0, 8).map((ev, j) => {

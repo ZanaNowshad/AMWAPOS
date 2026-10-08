@@ -1936,6 +1936,8 @@ export interface AiConversation {
     stop_reason: string | null;
     /** Tool calls behind this answer (tool, ids it was called with, when). */
     evidence?: { tool: string; ids: string[]; at: string }[];
+    /** Wave 8: records the reads behind this answer returned (recorded by the backend, never by the model). */
+    sources?: AiSource[];
     /** The answer stated figures without a tool result behind them. */
     unverified?: boolean;
     /** Every tool call in this reply, with the result exactly as the model saw it. */
@@ -3872,4 +3874,16 @@ export interface TerminalHealth {
   };
   counts: Partial<Record<TerminalHealthState, number>>;
   terminals: TerminalHealthRow[];
+}
+
+// ---- Wave 8: evidence ------------------------------------------------------
+
+/** A record a tool read returned: what the "Sources used" chips show. */
+export interface AiSource {
+  type: string;
+  id: string;
+  label: string;
+  link: string | null;
+  /** fact = stored record; derived = calculated from records; estimate = projection with assumptions. */
+  basis: "fact" | "derived" | "estimate" | null;
 }
