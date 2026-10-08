@@ -54,7 +54,10 @@ async fn terminal_pairs_and_syncs_over_http() {
     // Fresh terminal joins over HTTP.
     let term_dir = tempfile::tempdir().unwrap();
     let term_core = Arc::new(AppCore::open(term_dir.path(), Arc::new(MemorySecretStore::default())).unwrap());
-    let term = Runtime::with_bind(term_core.clone(), Ipv4Addr::LOCALHOST, Duration::from_millis(200));
+    // A long background interval: only the loop's first cycle (at join) and
+    // the explicit run_now below synchronize, so what run_now reports does
+    // not depend on timing.
+    let term = Runtime::with_bind(term_core.clone(), Ipv4Addr::LOCALHOST, Duration::from_secs(3600));
     let url = format!("127.0.0.1:{port}");
     let probe = call(&term, "sync.probe", None, json!({ "hub_url": url })).await;
     assert_eq!(probe["info"]["business_name"], "Test Mart");
@@ -66,6 +69,13 @@ async fn terminal_pairs_and_syncs_over_http() {
     let st = call(&term, "sync.join", None, json!({ "hub_url": url, "code": code, "device_name": "Till 2", "device_code": "T02" })).await;
     assert_eq!(st["setup_complete"], true);
     let tt = call(&term, "auth.login", None, json!({ "user_id": owner, "pin": "4826" })).await["token"].as_str().unwrap().to_string();
+    // Let the background loop's first cycle finish before selling.
+    for _ in 0..100 {
+        if call(&term, "sync.status", Some(&tt), json!({})).await["last_success_at"].is_string() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     call(&term, "shift.open", Some(&tt), json!({ "opening_float_minor": 0, "operation_id": op() })).await;
     let scan = call(&term, "pos.scan", Some(&tt), json!({ "barcode": "0012345678905" })).await;
     assert_eq!(scan["outcome"], "added");
