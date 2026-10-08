@@ -9,8 +9,9 @@ use amwapos_core::ai_tools::{self, Kind, NO_TOOL, TOOLS};
 use common::*;
 use serde_json::{json, Value};
 
+/// A source file, with Windows line endings (a CRLF checkout) normalised.
 fn src(path: &str) -> String {
-    std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap()
+    std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap().replace("\r\n", "\n")
 }
 
 /// Each dispatch arm: command → (argument names it reads, whether it takes

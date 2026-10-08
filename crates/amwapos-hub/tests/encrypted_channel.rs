@@ -131,10 +131,18 @@ async fn nothing_sensitive_crosses_the_lan_in_clear() {
         json!({ "cart_id": scan["cart"]["cart_id"], "operation_id": ulid::Ulid::new().to_string(), "tenders": [{ "method": "cash", "amount_minor": 4750 }] }),
     )
     .await;
+    // The terminal's own sync loop (every 200 ms here) may send the sale
+    // before this explicit run; either way it must reach the hub.
     let r = call(&term, "sync.run_now", Some(&tt), json!({})).await;
-    assert!(r["pushed"].as_u64().unwrap() >= 3, "{r}");
-    let hub_sales: i64 = h.core.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))?)).unwrap();
-    assert_eq!(hub_sales, 1, "sync worked through the proxy");
+    let mut hub_sales = 0i64;
+    for _ in 0..100 {
+        hub_sales = h.core.db.read(|c| Ok(c.query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0))?)).unwrap();
+        if hub_sales == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(hub_sales, 1, "sync worked through the proxy: {r}");
 
     let wire = wire.lock().unwrap().clone();
     assert!(wire.len() > 10_000, "the proxy saw the traffic ({} bytes)", wire.len());
