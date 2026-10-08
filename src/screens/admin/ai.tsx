@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, CalendarClock, Inbox } from "lucide-react";
 import { api } from "../../api";
 import type { AiPlaybookResult, AiProposal, AiProvider, AiSettings, AiTestResult, WaStatus } from "../../api/types";
@@ -619,45 +619,26 @@ export function PlaybookResult({ r, onAsk }: { r: AiPlaybookResult; onAsk: (q: s
 }
 
 /** A7 + D2: every open proposal in one place, with today's digest. */
-const ALERT_LABEL: Record<string, () => string> = {
-  refund_spike: () => t("Refund spike"),
-  discount_spike: () => t("Discount spike"),
-  negative_stock: () => t("Negative stock"),
-  hub_lag: () => t("Tills not syncing"),
-  backup_overdue: () => t("Backup overdue"),
-};
-
 export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
   const open = useLoad(() => api.ai.proposals("proposed"), []);
   const digest = useLoad(() => api.ai.digest(), []);
-  const alerts = useLoad(() => api.ai.alerts(), []);
   const notes = useLoad(() => api.ai.notes(10), []);
-  const reload = () => (void open.reload(), void digest.reload(), void alerts.reload(), void notes.reload());
+  const nav = useNavigate();
+  const reload = () => (void open.reload(), void digest.reload(), void notes.reload());
   const unread = (notes.data ?? []).filter((n) => !n.read_at);
   return (
     <div className="col gap-16" data-testid="ai-inbox">
-      {alerts.data?.length || unread.length ? (
-        <section className="inbox-list" data-testid="ai-alerts">
-          {alerts.data?.map((a) => (
-            <div key={a.alert_id} className={`inbox-row alert ${a.severity}`}>
-              <AlertTriangle size={20} className="ir-icon" aria-hidden />
-              <div className="ir-main">
-                <div className="ir-title ellipsis">
-                  <span className="ir-kind">{ALERT_LABEL[a.kind]?.() ?? a.kind}</span> {tb(a.title)}
-                </div>
-                <div className="tiny">
-                  {t("Alert")} · {formatDateTime(a.created_at)}
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                data-testid="ai-alert-dismiss"
-                onClick={() => void api.ai.alertDismiss(a.alert_id).then(() => alerts.reload())}
-              >
-                {t("Dismiss")}
-              </Button>
-            </div>
-          ))}
+      <section className="side-card" data-testid="ai-alerts-moved">
+        <div className="row gap-8">
+          <AlertTriangle size={18} aria-hidden />
+          <span className="grow small">{t("Operational alerts are cases in the Alert Centre.")}</span>
+          <Button variant="ghost" onClick={() => nav("/admin/cases")}>
+            {t("Open the Alert Centre")}
+          </Button>
+        </div>
+      </section>
+      {unread.length ? (
+        <section className="inbox-list">
           {unread.map((n) => (
             <details
               key={n.note_id}
@@ -679,9 +660,6 @@ export function ActionInbox({ onOpen }: { onOpen: (cid: string) => void }) {
               {n.summary ? <div className="ir-body">{n.summary}</div> : null}
             </details>
           ))}
-          <div className="tiny" style={{ padding: "8px 12px" }}>
-            {t("Checked every 5 minutes while the app is open, against the limits in AI settings. Nothing is changed.")}
-          </div>
         </section>
       ) : null}
       <section className="side-card">

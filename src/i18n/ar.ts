@@ -5763,4 +5763,8 @@ export const AR: Record<string, string> = {
   "{0} starts {1} but is still a draft": "{0} يبدأ {1} لكنه ما زال مسودة",
   "Coupon {0} is used up": "نفدت استخدامات القسيمة {0}",
   "{0} cannot be made from stock (short of {1})": "لا يمكن تجهيز {0} من المخزون (نقص في {1})",
+  "This alert is now a case in the Alert Centre. Handle it there.":
+    "هذا التنبيه أصبح حالة في مركز التنبيهات. تعامل معه هناك.",
+  "Operational alerts are cases in the Alert Centre.": "التنبيهات التشغيلية هي حالات في مركز التنبيهات.",
+  "Open the Alert Centre": "افتح مركز التنبيهات",
 };

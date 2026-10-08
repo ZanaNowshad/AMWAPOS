@@ -49,6 +49,20 @@ pub struct CaseRow {
     pub resolution_note: Option<String>,
     pub resolved_by_name: Option<String>,
     pub resolved_at: Option<String>,
+    /// user | system | legacy (who opened it).
+    pub source: String,
+    pub dedupe_key: Option<String>,
+    pub device_id: Option<String>,
+    pub device_name: Option<String>,
+    /// The screen that fixes it.
+    pub link: Option<String>,
+    /// System cases: the facts measured most recently (facts = when opened).
+    pub latest: Option<Value>,
+    /// System cases: whether the condition still holds.
+    pub condition_active: Option<bool>,
+    pub first_seen_at: Option<String>,
+    pub last_seen_at: Option<String>,
+    pub occurrences: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -70,6 +84,28 @@ pub struct CaseDetail {
     pub events: Vec<CaseEvent>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct CaseQuery {
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub device_id: Option<String>,
+    #[serde(default)]
+    pub limit: Option<i64>,
+    #[serde(default)]
+    pub offset: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CasePage {
+    pub rows: Vec<CaseRow>,
+    pub total: i64,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CaseAction {
     pub case_id: String,
@@ -85,9 +121,10 @@ pub struct CaseAction {
 }
 
 const ROW_SQL: &str = "SELECT k.case_id, k.case_number, k.kind, k.severity, k.status, k.branch_id, k.entity_type, k.entity_id, k.title, k.facts_json,
-        k.assignee_user_id, a.display_name, c.display_name, k.created_at, k.updated_at, k.resolution_code, k.resolution_note, r.display_name, k.resolved_at
+        k.assignee_user_id, a.display_name, c.display_name, k.created_at, k.updated_at, k.resolution_code, k.resolution_note, r.display_name, k.resolved_at,
+        k.source, k.dedupe_key, k.device_id, dv.name, k.link, k.latest_json, k.condition_active, k.first_seen_at, k.last_seen_at, k.occurrences
      FROM cases k LEFT JOIN users a ON a.user_id=k.assignee_user_id LEFT JOIN users c ON c.user_id=k.created_by
-     LEFT JOIN users r ON r.user_id=k.resolved_by";
+     LEFT JOIN users r ON r.user_id=k.resolved_by LEFT JOIN devices dv ON dv.device_id=k.device_id";
 
 fn row(r: &rusqlite::Row) -> rusqlite::Result<CaseRow> {
     let facts: String = r.get(9)?;
@@ -111,6 +148,16 @@ fn row(r: &rusqlite::Row) -> rusqlite::Result<CaseRow> {
         resolution_note: r.get(16)?,
         resolved_by_name: r.get(17)?,
         resolved_at: r.get(18)?,
+        source: r.get(19)?,
+        dedupe_key: r.get(20)?,
+        device_id: r.get(21)?,
+        device_name: r.get(22)?,
+        link: r.get(23)?,
+        latest: r.get::<_, Option<String>>(24)?.and_then(|j| serde_json::from_str(&j).ok()),
+        condition_active: r.get::<_, Option<i64>>(25)?.map(|v| v == 1),
+        first_seen_at: r.get(26)?,
+        last_seen_at: r.get(27)?,
+        occurrences: r.get(28)?,
     })
 }
 
@@ -268,24 +315,43 @@ impl AppCore {
     }
 
     pub fn cases_list(&self, token: &str, status: Option<String>) -> AppResult<Vec<CaseRow>> {
+        Ok(self.cases_query(token, CaseQuery { status, ..Default::default() })?.rows)
+    }
+
+    /// The Alert Centre queue: one page of cases, most urgent first. Filters:
+    /// status (open | needs_attention | in_progress | closed | all | one
+    /// status), kind, source, device. Bounded and indexed: never loads the
+    /// whole history.
+    pub fn cases_query(&self, token: &str, q: CaseQuery) -> AppResult<CasePage> {
         let s = self.session(token)?;
         s.require("cases.view")?;
+        let limit = q.limit.unwrap_or(50).clamp(1, 200);
+        let offset = q.offset.unwrap_or(0).max(0);
         self.db.read(|c| {
             let scope = crate::branches::list_scope(c, &s)?;
-            let filter = match status.as_deref().unwrap_or("open") {
+            let status = q.status.clone().unwrap_or_else(|| "open".into());
+            let filter = match status.as_str() {
                 "open" => "k.status NOT IN ('resolved','dismissed')",
+                "needs_attention" => "k.status IN ('new','acknowledged')",
                 "closed" => "k.status IN ('resolved','dismissed')",
                 "all" => "1=1",
                 other if STATUSES.contains(&other) => "k.status=?2",
                 _ => return Err(AppError::validation("Unknown case status.")),
             };
+            let wh = format!(
+                "WHERE (?1 IS NULL OR k.branch_id=?1) AND {filter} AND (?2 IS NULL OR ?2=?2) AND (?3 IS NULL OR k.kind=?3)
+                   AND (?4 IS NULL OR k.source=?4) AND (?5 IS NULL OR k.device_id=?5)"
+            );
+            let args = params![scope, status, q.kind, q.source, q.device_id];
+            let total: i64 = c.query_row(&format!("SELECT COUNT(*) FROM cases k {wh}"), args, |r| r.get(0))?;
             let mut st = c.prepare(&format!(
-                "{ROW_SQL} WHERE (?1 IS NULL OR k.branch_id=?1) AND {filter} AND (?2 IS NULL OR ?2=?2)
+                "{ROW_SQL} {wh}
                  ORDER BY CASE k.status WHEN 'new' THEN 0 WHEN 'acknowledged' THEN 1 WHEN 'in_progress' THEN 2 ELSE 3 END,
-                          CASE k.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, k.created_at DESC LIMIT 500"
+                          CASE k.severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, k.created_at DESC, k.case_id
+                 LIMIT {limit} OFFSET {offset}"
             ))?;
-            let rows = st.query_map(params![scope, status], row)?.collect::<Result<Vec<_>, _>>()?;
-            Ok(rows)
+            let rows = st.query_map(params![scope, status, q.kind, q.source, q.device_id], row)?.collect::<Result<Vec<_>, _>>()?;
+            Ok(CasePage { rows, total })
         })
     }
 
@@ -419,6 +485,11 @@ impl AppCore {
                         tx.execute("UPDATE cases SET status=?2, updated_at=?3 WHERE case_id=?1", params![id, to, now])?;
                     }
                     add_event(tx, &id, "status", Some(&case.status), Some(to), note.as_deref(), code.as_ref().map(|c| json!({ "resolution_code": c })).as_ref(), Some(&s.user_id), Some(&req.operation_id))?;
+                    // A person closed a system case: it stays closed while the
+                    // condition still holds (the health views keep showing it).
+                    if (to == "resolved" || to == "dismissed") && case.source == "system" {
+                        crate::ops::note_closed_by_person(tx, &id)?;
+                    }
                 }
             }
             audit::record(tx, &actor, &format!("case.{}", req.action), "case", Some(&id), Some(&json!({ "status": case.status })), Some(&json!({ "action": req.action, "note": note, "resolution_code": req.resolution_code })))?;

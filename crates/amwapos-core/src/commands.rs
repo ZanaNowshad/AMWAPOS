@@ -622,6 +622,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "registers.save" => out(core.register_save(tk()?, opt(&args, "register_id")?, req(&args, "register")?)),
         "drawers.save" => out(core.drawer_save(tk()?, opt(&args, "drawer_id")?, req(&args, "drawer")?)),
         "cases.list" => out(core.cases_list(tk()?, opt(&args, "status")?)),
+        "cases.query" => out(core.cases_query(tk()?, all(&args)?)),
         "cases.get" => out(core.case_get(tk()?, &req::<String>(&args, "case_id")?)),
         "cases.open_for_shift" => out(core.case_open_for_shift(tk()?, &req::<String>(&args, "shift_id")?, opt(&args, "note")?)),
         "cases.act" => out(core.case_act(tk()?, all(&args)?)),

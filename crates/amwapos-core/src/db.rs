@@ -57,6 +57,7 @@ pub const MIGRATIONS: &[Migration] = &[
     Migration { version: 30, name: "wave4_procurement", sql: include_str!("migrations/0030_wave4_procurement.sql") },
     Migration { version: 31, name: "wave5_commercial", sql: include_str!("migrations/0031_wave5_commercial.sql") },
     Migration { version: 32, name: "wave6_promotions", sql: include_str!("migrations/0032_wave6_promotions.sql") },
+    Migration { version: 33, name: "wave7_alert_centre", sql: include_str!("migrations/0033_wave7_alert_centre.sql") },
 ];
 
 pub fn latest_schema_version() -> i64 {

@@ -12,7 +12,6 @@ use rusqlite::{params, OptionalExtension};
 use serde_json::{json, Value};
 
 use crate::error::{AppError, AppResult};
-use crate::ids::new_id;
 use crate::service::AppCore;
 use crate::{time, validate};
 
@@ -180,85 +179,12 @@ impl AppCore {
 
     // ---- B3 -------------------------------------------------------------
 
-    /// Run the anomaly checks (no session: the maintenance loop). Adds at most
-    /// one open inbox item per check per business day. Never writes records.
+    /// Former B3 inbox writer. Since Wave 7 operational alerts are cases made
+    /// by the Alert Centre checks (`ops_evaluate`); the old inbox table is
+    /// read-only and nothing writes to it. Refund and discount spikes and
+    /// negative stock are business figures shown on the Dashboard, not cases.
     pub fn ai_anomaly_scan(&self) -> AppResult<usize> {
-        if !self.features()?.is_on("ai.enabled") {
-            return Ok(0);
-        }
-        let st = self.ai_settings_pub()?;
-        let day = self.db.read(time::day)?;
-        let today = time::business_date(time::now(), &day)?;
-        let mut found: Vec<(&str, &str, String, Value)> = vec![];
-        let (refund_n, refund_sum, discount, negative): (i64, i64, i64, i64) = self.db.read(|c| {
-            let (n, sum): (i64, i64) =
-                c.query_row("SELECT COUNT(*), COALESCE(SUM(total_minor),0) FROM refunds WHERE business_date=?1", [&today], |r| {
-                    Ok((r.get(0)?, r.get(1)?))
-                })?;
-            let disc: i64 =
-                c.query_row("SELECT COALESCE(SUM(discount_minor),0) FROM sales WHERE business_date=?1", [&today], |r| r.get(0))?;
-            let neg: i64 = c.query_row("SELECT COUNT(*) FROM stock_levels WHERE qty_milli < 0", [], |r| r.get(0))?;
-            Ok((n, sum, disc, neg))
-        })?;
-        if st.anomaly_refund_count > 0 && refund_n >= st.anomaly_refund_count
-            || st.anomaly_refund_minor > 0 && refund_sum >= st.anomaly_refund_minor
-        {
-            found.push((
-                "refund_spike",
-                "warning",
-                format!("{refund_n} refunds today"),
-                json!({ "count": refund_n, "total_minor": refund_sum, "count_threshold": st.anomaly_refund_count, "amount_threshold_minor": st.anomaly_refund_minor }),
-            ));
-        }
-        if st.anomaly_discount_minor > 0 && discount >= st.anomaly_discount_minor {
-            found.push((
-                "discount_spike",
-                "warning",
-                "Discounts today are above the limit".into(),
-                json!({ "discount_minor": discount, "threshold_minor": st.anomaly_discount_minor }),
-            ));
-        }
-        if negative > 0 {
-            found.push(("negative_stock", "warning", format!("{negative} products below zero stock"), json!({ "products": negative })));
-        }
-        if st.anomaly_hub_lag_minutes > 0 {
-            let cutoff = time::fmt(time::now() - chrono::Duration::minutes(st.anomaly_hub_lag_minutes));
-            let (late, dead): (i64, i64) = self.db.read(|c| {
-                let late: i64 = c.query_row(
-                    "SELECT COUNT(*) FROM devices d JOIN device_heartbeats h ON h.device_id=d.device_id
-                     WHERE d.active=1 AND d.operating_mode='terminal' AND h.last_seen_at < ?1",
-                    [&cutoff],
-                    |r| r.get(0),
-                )?;
-                let dead: i64 = c.query_row("SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'", [], |r| r.get(0))?;
-                Ok((late, dead))
-            })?;
-            if late > 0 || dead > 0 {
-                found.push((
-                    "hub_lag",
-                    "danger",
-                    "Tills are not synchronising".into(),
-                    json!({ "tills_silent": late, "minutes": st.anomaly_hub_lag_minutes, "dead_letters": dead }),
-                ));
-            }
-        }
-        if let Ok(b) = self.backup_diagnostic() {
-            if b.state != "ok" && b.state != "info" {
-                found.push(("backup_overdue", "danger", b.summary.clone(), json!({ "state": b.state })));
-            }
-        }
-        let now = time::now_str();
-        let mut added = 0;
-        self.db.write(|tx| {
-            for (kind, sev, title, detail) in &found {
-                added += tx.execute(
-                    "INSERT OR IGNORE INTO ai_alerts(alert_id, kind, day_key, severity, title, detail_json, created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
-                    params![new_id(), kind, today, sev, title, detail.to_string(), now],
-                )?;
-            }
-            Ok(())
-        })?;
-        Ok(added)
+        Ok(0)
     }
 
     pub fn ai_alerts(&self, token: &str, include_dismissed: bool) -> AppResult<Vec<Value>> {
@@ -281,18 +207,13 @@ impl AppCore {
         })
     }
 
+    /// The old inbox is read-only: its items are legacy cases now, handled in
+    /// the Alert Centre.
     pub fn ai_alert_dismiss(&self, token: &str, alert_id: &str) -> AppResult<Vec<Value>> {
         let s = self.session(token)?;
         s.require("admin.access")?;
-        let id = validate::id(alert_id, "Alert")?;
-        self.db.write(|tx| {
-            tx.execute(
-                "UPDATE ai_alerts SET dismissed_by=?2, dismissed_at=?3 WHERE alert_id=?1 AND dismissed_at IS NULL",
-                params![id, s.user_id, time::now_str()],
-            )?;
-            Ok(())
-        })?;
-        self.ai_alerts(token, false)
+        validate::id(alert_id, "Alert")?;
+        Err(AppError::conflict("This alert is now a case in the Alert Centre. Handle it there."))
     }
 }
 

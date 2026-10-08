@@ -287,6 +287,7 @@ fn is_read_command(c: &str) -> bool {
         "day.close_get",
         "day.opening",
         "cases.list",
+        "cases.query",
         "cases.get",
         "registers.list",
         "lots.product",

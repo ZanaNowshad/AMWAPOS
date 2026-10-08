@@ -140,6 +140,8 @@ pub const LOCAL_TABLES: &[&str] = &[
     "day_close_items",
     "cases",
     "case_events",
+    // The condition checks' memory between runs (Wave 7); cases are the alerts.
+    "alert_conditions",
     // Lots, their corrections and waste records are kept on the hub, which
     // receives the goods; their stock movements are what tills receive.
     "stock_lots",

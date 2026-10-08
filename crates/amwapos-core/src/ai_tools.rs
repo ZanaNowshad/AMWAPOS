@@ -220,6 +220,8 @@ pub const TOOLS: &[ToolSpec] = &[
     read("day_close_get", "day.close_get", &["day.x_report"], "close_id:s!", "One Z close exactly as it was closed."),
     read("day_opening", "day.opening", &["day.x_report"], "", "The opening checklist for today: last close, backups, sync, register, float, printer."),
     read("list_cases", "cases.list", &["cases.view"], "status:s", "Cases to look into, such as cash differences (status: open, closed, all)."),
+    read("alert_centre", "cases.query", &["cases.view"], "status:s,kind:s,source:s,device_id:s,limit:i,offset:i",
+        "The Alert Centre queue: cash differences and system-opened operational cases (sync failures, terminals not seen, backups, print failures) with their facts, latest evidence, whether the condition still holds, and who is handling it. Reads only."),
     read("case_get", "cases.get", &["cases.view"], "case_id:s!", "One case with its facts and full history."),
     read("list_registers", "registers.list", &["registers.manage", "day.x_report"], "", "Registers, their drawers, computers and open shifts."),
     read("product_batches", "lots.product", INV, "product_id:s!",
