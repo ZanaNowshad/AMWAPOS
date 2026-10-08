@@ -234,6 +234,14 @@ pub const LOCAL_TABLES: &[&str] = &[
     "stock_levels",
     "products_fts",
     "products_fts_map",
+    // The Document Library (Wave 8) is kept on the hub with the records its
+    // documents are evidence for; the search index is rebuilt from it.
+    "library_files",
+    "library_file_pages",
+    "library_documents",
+    "library_links",
+    "library_adoptions",
+    "library_fts",
     "user_login_state",
     "backups",
     "role_permission_seeds",

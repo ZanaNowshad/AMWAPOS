@@ -541,11 +541,64 @@ async fn run(w: Arc<OcrWorker>) {
             let _ = blocking(move || c.ocr_result(kind, &id, outcome)).await;
             w.status.lock().unwrap().last_job_at = Some(amwapos_core::time::now_str());
         }
+        // Document Library: scans and photos waiting for their text (a
+        // missing language model leaves them waiting).
+        let _ = read_library(&w).await;
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(4)) => {}
             _ = w.poke.notified() => {}
         }
     }
+}
+
+/// OCR for Document Library files: each page of a scanned PDF (its own text
+/// layer where it has one) or the photo itself (page 1). Err = OCR models
+/// missing (try again later).
+async fn read_library(w: &Arc<OcrWorker>) -> AppResult<()> {
+    let c = w.core.clone();
+    let jobs = blocking(move || c.library_text_pending(2)).await.unwrap_or_default();
+    for (sha, path, mime) in jobs {
+        let work = w.core.data_dir.join("library").join("ocr-work").join(&sha);
+        let outcome: AppResult<Vec<(u32, String)>> = async {
+            let bytes = tokio::fs::read(&path).await.map_err(|_| AppError::validation("The file is missing from this computer."))?;
+            let mut pages = vec![];
+            if mime == "application/pdf" {
+                let pdf = blocking(move || dq::pdfdoc::read_pdf(&bytes)).await?;
+                for p in pdf {
+                    if p.has_text() {
+                        pages.push((p.number, p.text.clone()));
+                    } else if let Some(img) = p.image {
+                        std::fs::create_dir_all(&work)?;
+                        let f = work.join(format!("p{}.{}", p.number, if p.image_is_jpeg { "jpg" } else { "png" }));
+                        std::fs::write(&f, &img)?;
+                        let (text, _) = w.recognize(&f, &["eng", "ara"]).await?;
+                        pages.push((p.number, text));
+                    }
+                }
+            } else {
+                if let Some((x, y)) = dq::page_oversized(&bytes) {
+                    return Err(AppError::validation(format!("The image is too large to read ({x} × {y} pixels).")));
+                }
+                let (text, _) = w.recognize(&path, &["eng", "ara"]).await?;
+                pages.push((1, text));
+            }
+            Ok(pages)
+        }
+        .await;
+        let _ = std::fs::remove_dir_all(&work);
+        let c = w.core.clone();
+        match outcome {
+            Ok(pages) => {
+                let _ = blocking(move || c.library_text_done(&sha, pages, "ocr")).await;
+            }
+            Err(e) if e.code == ErrorCode::OcrModelMissing => return Err(e),
+            Err(e) => {
+                let m = e.message.clone();
+                let _ = blocking(move || c.library_text_failed(&sha, &m)).await;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

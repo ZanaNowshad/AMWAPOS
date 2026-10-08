@@ -339,6 +339,9 @@ impl Runtime {
                             }
                         }
                     }
+                    // Document Library: PDF text layers (OCR reads scans and photos).
+                    let c = core.clone();
+                    let _ = tokio::task::spawn_blocking(move || c.library_read_pending_pdfs(20)).await;
                     let c = core.clone();
                     match tokio::task::spawn_blocking(move || c.backup_run_scheduled()).await {
                         Ok(Ok(Some(b))) => tracing::info!(path = %b.path, "automatic backup completed"),

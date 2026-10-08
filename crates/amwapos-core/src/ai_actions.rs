@@ -217,7 +217,11 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "transfers.cancel"
         | "locations.save"
         | "payreviews.set_expected"
-        | "stocktake.set_status" => ReversibleWrite,
+        | "stocktake.set_status"
+        // Document Library: a link or a corrected title/category (removable,
+        // audited; the file and the record it points at never change).
+        | "library.link"
+        | "library.update" => ReversibleWrite,
         // ---- authoritative records ----------------------------------------
         "products.create"
         | "products.update"
@@ -296,6 +300,10 @@ fn is_read_command(c: &str) -> bool {
         "cases.query",
         "terminals.health",
         "cases.get",
+        "library.search",
+        "library.get",
+        "library.text",
+        "library.list",
         "registers.list",
         "lots.product",
         "lots.get",

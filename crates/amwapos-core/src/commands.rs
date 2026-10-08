@@ -666,6 +666,31 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             &req::<String>(&args, "data")?,
         )),
         "expenses.attachment" => out(core.expense_attachment(tk()?, &req::<String>(&args, "attachment_id")?)),
+        // Document Library (Wave 8).
+        "library.add" => out(core.library_add(tk()?, req(&args, "document")?)),
+        "library.list" => out(core.library_list(tk()?, opt(&args, "filter")?.unwrap_or_default())),
+        "library.search" => {
+            out(core.library_search(tk()?, &req::<String>(&args, "q")?, opt(&args, "include_old")?.unwrap_or(false), opt(&args, "limit")?))
+        }
+        "library.get" => out(core.library_get(tk()?, &req::<String>(&args, "document_id")?)),
+        "library.text" => out(core.library_text(tk()?, &req::<String>(&args, "document_id")?, opt(&args, "page")?)),
+        "library.file" => out(core.library_file(tk()?, &req::<String>(&args, "document_id")?)),
+        "library.update" => out(core.library_update(tk()?, &req::<String>(&args, "document_id")?, req(&args, "changes")?)),
+        "library.link" => out(core.library_link(tk()?, &req::<String>(&args, "document_id")?, req(&args, "link")?)),
+        "library.unlink" => out(core.library_unlink(tk()?, &req::<String>(&args, "document_id")?, &req::<String>(&args, "link_id")?)),
+        "library.replace" => out(core.library_replace(
+            tk()?,
+            &req::<String>(&args, "document_id")?,
+            &req::<String>(&args, "file_name")?,
+            &req::<String>(&args, "data")?,
+            opt(&args, "note")?,
+        )),
+        "library.archive" => {
+            out(core.library_archive(tk()?, &req::<String>(&args, "document_id")?, &req::<String>(&args, "reason")?, true))
+        }
+        "library.unarchive" => out(core.library_archive(tk()?, &req::<String>(&args, "document_id")?, "", false)),
+        "library.delete" => out(core.library_delete(tk()?, &req::<String>(&args, "document_id")?)),
+        "library.reindex" => out(core.library_reindex(tk()?)),
         "expenses.categories" => out(core.expense_categories(tk()?)),
         "expenses.category_save" => out(core.expense_category_save(
             tk()?,

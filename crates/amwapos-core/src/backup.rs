@@ -256,11 +256,21 @@ impl AppCore {
         let now = time::now_str();
         match res {
             Ok(m) => {
+                // Document Library files go next to the database copy, once
+                // each (named by their SHA-256), checked as they are copied.
+                let files = self.db.read(|c| crate::library::backup_files(c, &self.data_dir, &dir));
+                let files_note = match &files {
+                    Ok((_, missing)) if missing.is_empty() => None,
+                    Ok((_, missing)) => {
+                        Some(format!("{} document file(s) could not be copied: missing or changed on this computer.", missing.len()))
+                    }
+                    Err(e) => Some(format!("Document files were not copied: {}", e.message)),
+                };
                 self.db.write(|tx| {
                     tx.execute(
-                        "INSERT INTO backups(backup_id, path, kind, size_bytes, sha256, status, record_counts_json, duration_ms, created_by, created_at)
-                         VALUES (?1,?2,?3,?4,?5,'completed',?6,?7,?8,?9)",
-                        params![id, file.to_string_lossy(), kind, m.size_bytes as i64, m.sha256, serde_json::to_string(&m.record_counts)?, dur, user_id, now],
+                        "INSERT INTO backups(backup_id, path, kind, size_bytes, sha256, status, error, record_counts_json, duration_ms, created_by, created_at)
+                         VALUES (?1,?2,?3,?4,?5,'completed',?6,?7,?8,?9,?10)",
+                        params![id, file.to_string_lossy(), kind, m.size_bytes as i64, m.sha256, files_note, serde_json::to_string(&m.record_counts)?, dur, user_id, now],
                     )?;
                     Ok(())
                 })?;
@@ -271,7 +281,7 @@ impl AppCore {
                     kind: kind.into(),
                     size_bytes: Some(m.size_bytes as i64),
                     status: "completed".into(),
-                    error: None,
+                    error: files_note,
                     created_at: now,
                     duration_ms: Some(dur),
                     exists: true,
@@ -437,6 +447,10 @@ impl AppCore {
         self.db.close_readers();
         let device = self.db.read(crate::service::load_device)?;
         self.set_device(device);
+        // Document Library files missing here are put back from the copies
+        // kept next to the backup (each checked against its SHA-256).
+        let from = src_path.parent().map(|p| p.to_path_buf()).unwrap_or_default();
+        let (files_restored, files_missing) = self.db.read(|c| crate::library::restore_files(c, &self.data_dir, &from))?;
         let counts_after = self.db.read(record_counts)?;
         let dur = started.elapsed().as_millis() as i64;
         let ok = counts_after == insp.record_counts || report.from_version != report.to_version;
@@ -460,6 +474,7 @@ impl AppCore {
         Ok(json!({
             "restored_from": path, "safety_backup": safety.path, "duration_ms": dur, "record_counts": counts_after,
             "counts_verified": ok, "migrated_from_schema": report.from_version, "schema_version": report.to_version,
+            "files_restored": files_restored, "files_missing": files_missing.len(),
         }))
     }
 

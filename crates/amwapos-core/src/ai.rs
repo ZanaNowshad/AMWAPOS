@@ -2438,6 +2438,7 @@ pub const WRITE_PERMISSIONS: &[&str] = &[
     "cash.paid_in",
     "cash.paid_out",
     "cash.safe_drop",
+    "documents.manage",
 ];
 
 /// Does the session hold at least one write permission?
@@ -2453,7 +2454,9 @@ pub fn can_propose(f: &settings::FeatureFlags, s: &crate::auth::Session) -> bool
 }
 
 /// Text fields that come from outside the store, wrapped as DATA.
-const DATA_FIELDS: [&str; 12] = [
+const DATA_FIELDS: [&str; 14] = [
+    "snippet",
+    "original_name",
     "note",
     "notes",
     "body",

@@ -36,6 +36,7 @@ pub mod idempotency;
 pub mod ids;
 pub mod importer;
 pub mod inventory;
+pub mod library;
 pub mod lots;
 pub mod loyalty;
 pub mod merge;

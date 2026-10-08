@@ -117,6 +117,8 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("promotions.manage", "Catalogue", "Create, schedule, switch on and end promotions"),
     ("coupons.manage", "Catalogue", "Create and switch off coupon codes"),
     ("bundles.manage", "Catalogue", "Set up bundles, kits and hampers"),
+    ("documents.view", "Documents", "Open the document library (only documents for records the role may see)"),
+    ("documents.manage", "Documents", "Add, link, replace and archive documents"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -182,6 +184,7 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "reports.profit",
         "day.x_report",
         "cases.view",
+        "documents.view",
     ];
     let inventory = vec![
         "admin.access",
@@ -199,6 +202,8 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "waste.record",
         "requisitions.create",
         "supplier_returns.manage",
+        "documents.view",
+        "documents.manage",
     ];
     let delivery = vec!["deliveries.view", "deliveries.manage", "customers.view", "whatsapp.send", "orders.manage"];
     vec![
@@ -214,6 +219,8 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 /// Permissions added to the catalogue after the first release. Built-in
 /// roles created before an upgrade get the ones their defaults include, once.
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
+    "documents.view",
+    "documents.manage",
     "promotions.manage",
     "coupons.manage",
     "bundles.manage",

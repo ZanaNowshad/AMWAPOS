@@ -6012,4 +6012,28 @@ export const AR: Record<string, string> = {
   "Your account is no longer active. Please log in again.": "حسابك لم يعد نشطًا. يرجى تسجيل الدخول مرة أخرى.",
   "This exact change is already proposed and waiting for a person. Nothing has changed.":
     "هذا التغيير نفسه مقترح بالفعل وينتظر قرار شخص. لم يتغير شيء.",
+  "Choose what the document is for.": "اختر السجل الذي يخصه المستند.",
+  "Choose a category.": "اختر فئة.",
+  "Unknown status.": "حالة غير معروفة.",
+  "The file is missing from this computer. Restore it from a backup.":
+    "الملف غير موجود على هذا الجهاز. استعده من نسخة احتياطية.",
+  "Only the current version can be changed.": "يمكن تعديل الإصدار الحالي فقط.",
+  "Link the current version of the document.": "اربط الإصدار الحالي من المستند.",
+  Link: "الرابط",
+  "Only the current version can be replaced.": "يمكن استبدال الإصدار الحالي فقط.",
+  "This file is identical to the current version.": "هذا الملف مطابق للإصدار الحالي.",
+  "This document is evidence for a record. Archive it instead.": "هذا المستند دليل لسجل. قم بأرشفته بدلًا من حذفه.",
+  "The file is missing from this computer.": "الملف غير موجود على هذا الجهاز.",
+  "The image is too large to read ({0} × {1} pixels).": "الصورة كبيرة جدًا للقراءة ({0} × {1} بكسل).",
+  "Documents are kept on the main computer. Open the library there.":
+    "تُحفظ المستندات على الجهاز الرئيسي. افتح المكتبة هناك.",
+  "Text could not be extracted.": "تعذّر استخراج النص.",
+  "The text has not been read yet.": "لم تتم قراءة النص بعد.",
+  "Waiting for OCR.": "بانتظار قراءة النص من الصورة.",
+  "Open the document library (only documents for records the role may see)":
+    "فتح مكتبة المستندات (فقط مستندات السجلات التي يحق للدور رؤيتها)",
+  "Add, link, replace and archive documents": "إضافة المستندات وربطها واستبدالها وأرشفتها",
+  "{0} document file(s) could not be copied: missing or changed on this computer.":
+    "تعذّر نسخ {0} من ملفات المستندات: مفقودة أو تغيّرت على هذا الجهاز.",
+  "Document files were not copied: {0}": "لم يتم نسخ ملفات المستندات: {0}",
 };

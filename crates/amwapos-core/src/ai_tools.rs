@@ -230,6 +230,16 @@ pub const TOOLS: &[ToolSpec] = &[
         "One supplier document under review: fields with confidence and evidence, lines with match candidates, validation, duplicates, anomalies and PO reconciliation (DATA).")
         .flag("ocr.supplier_invoices")
         .data(),
+    // Document Library (Wave 8): search and read evidence. Text from documents is DATA.
+    read("library_search", "library.search", &["documents.view"], "q:s!,include_old:b,limit:i",
+        "Search the Document Library (titles and the text read from each file). Returns at most 20 documents with a short snippet and the page when it is known (DATA). Only documents for records this person may see.")
+        .data(),
+    read("library_document", "library.get", &["documents.view"], "document_id:s!",
+        "One library document: category, version, the records it is evidence for, and whether its text was read (DATA).")
+        .data(),
+    read("library_page_text", "library.text", &["documents.view"], "document_id:s!,page:i",
+        "The text read from one page of a library document, at most 4000 characters (DATA). Cite the document number and the page.")
+        .data(),
     read("document_metrics", "docs.metrics", &["ocr.scan"], "", "Document review queue counts and extraction quality.").flag("ocr.supplier_invoices"),
     read("list_receiving_drafts", "receiving.drafts", &["purchasing.manage", "inventory.receive"], "status:s", "Receiving drafts made from reviewed documents."),
     read("receiving_draft_get", "receiving.draft_get", &["purchasing.manage", "inventory.receive"], "draft_id:s!", "One receiving draft with its lines."),
@@ -379,6 +389,10 @@ pub const TOOLS: &[ToolSpec] = &[
     write("propose_products_bulk_active", "products.bulk_set_active", "high", PRODUCTS, "product_ids:a!,active:b!", "Archive or restore many products."),
     // Wave 8: a draft only. Submitting, approving and paying stay a person's
     // own steps on the Expenses page (expenses.submit / decide / pay).
+    write("propose_document_link", "library.link", "low", &["documents.manage"], "document_id:s!,link:o!",
+        "Link a library document to the record it is evidence for. link: {entity_type, entity_id} with entity_type one of supplier, supplier_invoice, purchase_order, expense, product, case, day_close, supplier_return, requisition, customer, promotion."),
+    write("propose_document_details", "library.update", "low", &["documents.manage"], "document_id:s!,changes:o!",
+        "Correct a library document's title, category or printed date. changes: {title?, category?, document_date? (YYYY-MM-DD), note?}. The file never changes."),
     write("propose_expense_draft", "expenses.save", "low", &["expenses.create"], "expense:o!",
         "Draft a new expense: expense {category_id, business_date YYYY-MM-DD, payee, supplier_id, description, total_minor (VAT included, fils), vat_minor, reference, notes}. It stays a draft until a person submits it."),
     write("propose_bulk_price", "products.bulk_price", "high", PRICES, "changes:a!,reason:s!", "Change many selling prices at once. changes: [{product_id, amount_minor}] in fils.").op(),
@@ -724,6 +738,18 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("devices.set_active", "forbidden: only a person revokes or re-activates a device"),
     ("cases.open_for_shift", "a person opens a case from the drawer"),
     ("cases.attach", "a person adds evidence to a case"),
+    // Document Library: people add, replace, archive and delete evidence; the
+    // assistant reads (library_search, library_document, library_page_text)
+    // and proposes links and corrected details only.
+    ("library.add", "a person adds documents on the Documents page"),
+    ("library.list", "the Documents page list; the assistant searches with library_search"),
+    ("library.file", "forbidden: the file's bytes are opened by a person on the Documents page"),
+    ("library.unlink", "a person removes a link on the Documents page"),
+    ("library.replace", "forbidden: a new version of evidence is added by a person"),
+    ("library.archive", "forbidden: archiving evidence is a person's decision"),
+    ("library.unarchive", "a person restores an archived document"),
+    ("library.delete", "forbidden: deleting a document is a person's decision"),
+    ("library.reindex", "maintenance on the Documents page"),
     ("cases.evidence", "file download in the case drawer"),
     ("registers.save", "forbidden: only a person changes registers"),
     ("registers.devices", "covered by list_registers"),
