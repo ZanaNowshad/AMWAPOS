@@ -81,6 +81,8 @@ const ROUTES = [
   "analytics",
   "end-of-day",
   "cases",
+  "terminals",
+  "sync-reconciliation",
   "phone-view",
   "whatsapp",
   "ai",

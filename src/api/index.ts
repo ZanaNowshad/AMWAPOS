@@ -207,6 +207,8 @@ export const api = {
   },
   cases: {
     list: (status?: string | null) => call<T.CaseRow[]>("cases.list", { status: status ?? null }),
+    query: (q: T.CaseQuery) => call<T.CasePage>("cases.query", { ...q }),
+    checkNow: () => call<{ opened: number; updated: number; resolved: number; suppressed: number }>("cases.check_now"),
     get: (case_id: string) => call<T.CaseDetail>("cases.get", { case_id }),
     openForShift: (shift_id: string, note?: string | null) =>
       call<T.CaseDetail>("cases.open_for_shift", { shift_id, note: note ?? null }),

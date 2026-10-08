@@ -10,6 +10,12 @@
 //! client and adds `POST /dev/whatsapp` (`{"action":"scan"}`, `{"action":
 //! "deliver","messages":[Inbound…]}`, `{"action":"sent"}`) so end-to-end tests
 //! can drive customer chats without a phone.
+//!
+//! `--fake-terminal` adds `POST /dev/terminal` (see `fake_terminal`): real
+//! in-process terminals paired with this hub, for the operational-control
+//! end-to-end tests.
+
+mod fake_terminal;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -82,6 +88,7 @@ struct Rpc {
 struct AppState {
     rt: Option<Arc<Runtime>>,
     fake_wa: Option<FakeAdapter>,
+    fake_terms: Option<fake_terminal::FakeTerminals>,
     startup_error: Option<amwapos_core::AppError>,
     static_dir: Option<PathBuf>,
 }
@@ -120,6 +127,24 @@ async fn dev_whatsapp(State(st): State<Arc<AppState>>, Json(req): Json<Value>) -
                 .into_response()
         }
         _ => StatusCode::BAD_REQUEST.into_response(),
+    }
+}
+
+async fn dev_terminal(State(st): State<Arc<AppState>>, Json(req): Json<Value>) -> Response {
+    let (Some(_), Some(rt)) = (&st.fake_terms, &st.rt) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let core = rt.core.clone();
+    let st2 = st.clone();
+    let res = tokio::task::spawn_blocking(move || match &st2.fake_terms {
+        Some(t) => t.act(&core, &req),
+        None => Err(AppError::internal("no fake terminals")),
+    })
+    .await
+    .unwrap_or_else(|e| Err(AppError::internal(e.to_string())));
+    match res {
+        Ok(v) => Json(json!({ "ok": true, "data": v })).into_response(),
+        Err(e) => Json(json!({ "ok": false, "error": e })).into_response(),
     }
 }
 
@@ -180,8 +205,17 @@ async fn main() {
             (None, Some(e))
         }
     };
-    let st = Arc::new(AppState { rt, fake_wa, startup_error, static_dir });
-    let app = Router::new().route("/rpc", post(rpc)).route("/dev/whatsapp", post(dev_whatsapp)).fallback(static_files).with_state(st);
+    let fake_terms = args
+        .iter()
+        .any(|a| a == "--fake-terminal")
+        .then(|| fake_terminal::FakeTerminals::new(data_dir.parent().unwrap_or(&data_dir).join("fake-terminals")));
+    let st = Arc::new(AppState { rt, fake_wa, fake_terms, startup_error, static_dir });
+    let app = Router::new()
+        .route("/rpc", post(rpc))
+        .route("/dev/whatsapp", post(dev_whatsapp))
+        .route("/dev/terminal", post(dev_terminal))
+        .fallback(static_files)
+        .with_state(st);
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
     tracing::info!(%addr, data_dir = %data_dir.display(), "AMWAPOS dev bridge listening (loopback only)");

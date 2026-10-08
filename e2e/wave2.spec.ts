@@ -132,7 +132,8 @@ test("a short drawer becomes a case; the trading day is closed once", async ({ p
 
   // The difference waits as a case; a manager resolves it with a note.
   await page.evaluate(() => (location.hash = "#/admin/cases"));
-  await expect(page.getByRole("heading", { name: "Cases", level: 1 })).toBeVisible();
+  // Wave 7: the cases page is the Alert Centre.
+  await expect(page.getByRole("heading", { name: "Alert Centre", level: 1 })).toBeVisible();
   await page.getByRole("cell", { name: "Drawer is BHD 2.500 short" }).click();
   const drawer = page.getByTestId("case-drawer");
   await expect(drawer).toContainText("Expected cash");

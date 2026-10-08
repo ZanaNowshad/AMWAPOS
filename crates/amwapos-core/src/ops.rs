@@ -682,6 +682,14 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
 impl crate::service::AppCore {
     /// Run the checks and update the Alert Centre (hub or single computer;
     /// a terminal never writes cases). Idempotent; never on the sale path.
+    /// A person asks for the checks to run now (they also run every minute
+    /// on the hub). Same checks, same rules; nothing else.
+    pub fn ops_check_now(&self, token: &str) -> AppResult<Reconciled> {
+        let s = self.session(token)?;
+        s.require("cases.manage")?;
+        self.ops_evaluate()
+    }
+
     pub fn ops_evaluate(&self) -> AppResult<Reconciled> {
         let d = match self.device() {
             Some(d) if d.mode != "terminal" => d,

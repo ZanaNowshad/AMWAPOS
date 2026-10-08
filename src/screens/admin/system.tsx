@@ -28,7 +28,7 @@ import type {
   TaxRuleRow,
 } from "../../api/types";
 import { DeliveryZonesEditor } from "./waOrders";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSession } from "../../state/session";
 import { FEATURE_LABELS, FEATURE_PARENT, FeatureGate, useFeature } from "../../components/FeatureGate";
 import { AiSettingsSection } from "./ai";
@@ -195,14 +195,11 @@ export function SyncPage() {
   const hubFeature = useFeature("hub");
   const toast = useToast();
   const { has, session } = useSession();
+  const nav = useNavigate();
   const st = useLoad(() => api.sync.status(), []);
   const addr = useLoad(
     () => (st.data?.mode === "hub" ? api.sync.hubAddresses() : Promise.resolve(null)),
     [st.data?.mode],
-  );
-  const dead = useLoad(
-    () => (has("sync.manage") ? api.sync.deadLetters().then((p) => p.rows) : Promise.resolve([])),
-    [],
   );
   const [code, setCode] = useState<{ code: string; expires_at: string } | null>(null);
   const multi = useFeature("org.multi_branch");
@@ -463,49 +460,17 @@ export function SyncPage() {
           </div>
         </div>
       ) : null}
-      {(dead.data ?? []).length ? (
-        <div className="card">
-          <div className="card-head">
-            <h3>{t("Changes that could not be applied")}</h3>
-          </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>{t("When")}</th>
-                <th>{t("Direction")}</th>
-                <th>{t("From")}</th>
-                <th>{t("Record")}</th>
-                <th>{t("Problem")}</th>
-                <th className="num">{t("Attempts")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {(dead.data ?? []).map((d) => (
-                <tr key={String(d.dead_id)}>
-                  <td>{formatShort(String(d.created_at))}</td>
-                  <td>{codeLabel(String(d.direction))}</td>
-                  <td>{String(d.origin ?? "—")}</td>
-                  <td className="mono small">{String(d.table)}</td>
-                  <td className="small">{String(d.error)}</td>
-                  <td className="num">{String(d.attempts)}</td>
-                  <td className="num">
-                    <Button
-                      size="sm"
-                      onClick={async () => (
-                        await act.run(() => api.sync.retryDeadLetter(String(d.dead_id), newOperationId())),
-                        void dead.reload(),
-                        void st.reload()
-                      )}
-                    >
-                      {t("Retry")}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {s && Number(s.dead_letters) > 0 && has("sync.manage") ? (
+        <Banner
+          tone="warning"
+          action={
+            <Button size="sm" onClick={() => nav("/admin/sync-reconciliation")}>
+              {t("Open Sync problems")}
+            </Button>
+          }
+        >
+          {t("{0} records could not be saved between computers.", String(s.dead_letters))}
+        </Banner>
       ) : null}
       {resetCreds ? (
         <Confirm

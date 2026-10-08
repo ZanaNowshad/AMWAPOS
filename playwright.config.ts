@@ -21,7 +21,8 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "rm -rf .amwapos-e2e && cargo run -q -p amwapos-devserver -- --data-dir .amwapos-e2e/data --port 8799 --static dist --fake-whatsapp",
+    command:
+      "rm -rf .amwapos-e2e && cargo run -q -p amwapos-devserver -- --data-dir .amwapos-e2e/data --port 8799 --static dist --fake-whatsapp --fake-terminal",
     url: "http://127.0.0.1:8799/",
     timeout: 240_000,
     reuseExistingServer: false,

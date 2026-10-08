@@ -245,6 +245,7 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         | "branches.switch"
         | "devices.set_active"
         | "devices.rotate_credential"
+        | "cases.check_now"
         | "devices.cancel_rotation"
         | "devices.revoke"
         | "settings.save"

@@ -3242,10 +3242,23 @@ export interface DrawerInput {
 
 export type CaseStatus = "new" | "acknowledged" | "in_progress" | "resolved" | "dismissed";
 
+export type CaseKind =
+  | "cash_variance"
+  | "sync_failures"
+  | "terminal_not_seen"
+  | "terminal_backlog"
+  | "terminal_incompatible"
+  | "credential_rotation_stale"
+  | "backup_overdue"
+  | "print_failures"
+  | "payment_review_backlog"
+  | "rider_cash_held"
+  | "legacy_alert";
+
 export interface CaseRow {
   case_id: string;
   case_number: string;
-  kind: "cash_variance";
+  kind: CaseKind;
   severity: "low" | "medium" | "high";
   status: CaseStatus;
   branch_id: string;
@@ -3291,6 +3304,34 @@ export interface CaseRow {
   resolution_note: string | null;
   resolved_by_name: string | null;
   resolved_at: string | null;
+  /** Who opened it: a person, the system (a measured condition) or the old AI inbox. */
+  source: "user" | "system" | "legacy";
+  dedupe_key: string | null;
+  device_id: string | null;
+  device_name: string | null;
+  /** The screen that fixes it. */
+  link: string | null;
+  /** System cases: what was measured most recently (facts = when it opened). */
+  latest: Record<string, unknown> | null;
+  /** System cases: whether the condition still holds. */
+  condition_active: boolean | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  occurrences: number;
+}
+
+export interface CaseQuery {
+  status?: "needs_attention" | "open" | "closed" | "all" | CaseStatus;
+  kind?: string | null;
+  source?: string | null;
+  device_id?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CasePage {
+  rows: CaseRow[];
+  total: number;
 }
 
 export interface CaseEvent {
@@ -3806,6 +3847,14 @@ export interface TerminalHealthRow {
   signed_in: string | null;
   open_cases: number;
   shift: { shift_id: string; shift_number: string | null; opened_at: string | null; user: string | null } | null;
+  credential: {
+    version: number;
+    next_version: number | null;
+    staged_at: string | null;
+    rotated_at: string | null;
+    previous_accepted_until: string | null;
+    lost_or_stolen: boolean;
+  };
 }
 
 export interface TerminalHealth {

@@ -26,6 +26,9 @@ use crate::time;
 #[derive(Debug, Clone, Default)]
 pub struct Observed {
     pub active: bool,
+    /// The terminal sent a heartbeat (its own report). A till that was only
+    /// seen asking for changes has not said what it runs.
+    pub reported: bool,
     pub last_seen_at: Option<String>,
     pub schema_version: Option<i64>,
     pub protocol_version: Option<i64>,
@@ -71,6 +74,9 @@ pub fn assess(o: &Observed, now: DateTime<Utc>, hub_schema: i64) -> Assessment {
     };
     let minutes = time::parse(seen).map(|t| (now - t).num_minutes()).unwrap_or(i64::MAX);
     let connection = if minutes >= ops::NOT_SEEN_HEALTH_MIN { "not_seen_recently" } else { "online" };
+    if !o.reported {
+        return Assessment { health: "unknown", connection, reasons: vec!["never_reported"], unknown };
+    }
     let mut reasons = vec![];
     if connection == "not_seen_recently" && o.open_shift {
         reasons.push("not_seen_during_shift");
@@ -138,6 +144,7 @@ impl AppCore {
                 .query_map([], |r| {
                     let o = Observed {
                         active: r.get::<_, i64>(3)? == 1,
+                        reported: r.get::<_, Option<String>>(9)?.is_some() || r.get::<_, Option<String>>(10)?.is_some(),
                         last_seen_at: r.get(8)?,
                         schema_version: r.get(11)?,
                         protocol_version: r.get(12)?,
@@ -239,13 +246,16 @@ mod tests {
     fn unknown_stays_unknown_and_offline_after_closing_is_not_a_problem() {
         let now = time::now();
         let hub = 35;
-        let base = Observed { active: true, last_seen_at: at(1, now), schema_version: Some(hub), ..Default::default() };
+        let base = Observed { active: true, reported: true, last_seen_at: at(1, now), schema_version: Some(hub), ..Default::default() };
         let a = assess(&base, now, hub);
         assert_eq!((a.health, a.connection), ("healthy", "online"));
         assert!(a.unknown.contains(&"protocol_version") && a.unknown.contains(&"refused_reported"));
         // Never reported.
         let a = assess(&Observed { active: true, ..Default::default() }, now, hub);
         assert_eq!((a.health, a.connection), ("unknown", "never_reported"));
+        // Seen asking for changes, but never said what it runs: still unknown.
+        let a = assess(&Observed { active: true, last_seen_at: at(1, now), ..Default::default() }, now, hub);
+        assert_eq!((a.health, a.connection, a.reasons), ("unknown", "online", vec!["never_reported"]));
         // Switched off after closing vs silent during a shift.
         let off = Observed { last_seen_at: at(90, now), ..base.clone() };
         assert_eq!(assess(&off, now, hub).health, "offline");
@@ -261,6 +271,7 @@ mod tests {
         let hub = 35;
         let o = Observed {
             active: true,
+            reported: true,
             last_seen_at: at(1, now),
             schema_version: Some(34),
             protocol_version: Some(PROTOCOL_VERSION + 1),

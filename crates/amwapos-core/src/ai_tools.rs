@@ -677,6 +677,7 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("devices.rotate_credential", "forbidden: only a person rotates a terminal's credential"),
     ("devices.cancel_rotation", "forbidden: only a person cancels a credential rotation"),
     ("devices.revoke", "forbidden: only a person revokes a terminal"),
+    ("cases.check_now", "the checks run every minute; a person can run them from the Alert Centre"),
     ("devices.set_active", "forbidden: only a person revokes or re-activates a device"),
     ("cases.open_for_shift", "a person opens a case from the drawer"),
     ("cases.attach", "a person adds evidence to a case"),

@@ -3,6 +3,8 @@ import { HashRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate 
 import {
   Search,
   Activity,
+  RefreshCcwDot,
+  TabletSmartphone,
   Barcode,
   Bell,
   Boxes,
@@ -68,6 +70,7 @@ import { BranchesPage, BranchSwitcher, OrdersPage, PhoneViewPage, TransfersPage 
 import { TradingDayPage } from "./tradingDay";
 import { RegistersPage } from "./registers";
 import { CasesPage } from "./cases";
+import { SyncReconciliationPage, TerminalsPage } from "./operations";
 import { ExpiryPage, StockCoverPage, WastePage } from "./stockTruth";
 import { DuplicatesPage, PricingPoliciesPage, PricingReviewPage, ScaleRulesPage } from "./commercial";
 import { BundlesPage, PromotionsPage } from "./promotions";
@@ -342,7 +345,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         perm: ["day.x_report", "reports.sales"],
         element: TradingDayPage,
       },
-      { path: "cases", label: t("Cases"), icon: ClipboardList, perm: "cases.view", element: CasesPage },
+      { path: "cases", label: t("Alert Centre"), icon: ClipboardList, perm: "cases.view", element: CasesPage },
       {
         path: "phone-view",
         label: t("Phone view"),
@@ -402,6 +405,20 @@ const NAV: { group: string; items: NavItem[] }[] = [
         perm: ["devices.manage", "diagnostics.view"],
         element: DevicesPage,
         advanced: true,
+      },
+      {
+        path: "terminals",
+        label: t("Terminals"),
+        icon: TabletSmartphone,
+        perm: ["devices.manage", "sync.manage"],
+        element: TerminalsPage,
+      },
+      {
+        path: "sync-reconciliation",
+        label: t("Sync problems"),
+        icon: RefreshCcwDot,
+        perm: "sync.manage",
+        element: SyncReconciliationPage,
       },
       {
         path: "sync",

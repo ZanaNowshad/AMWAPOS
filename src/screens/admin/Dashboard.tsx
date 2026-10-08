@@ -114,7 +114,7 @@ export function Dashboard() {
                 key={i}
                 className="result-row"
                 style={{ border: 0, background: "none", textAlign: "start", borderRadius: 8 }}
-                onClick={() => nav(a.link.split("?")[0])}
+                onClick={() => nav(a.kind === "case" ? a.link : a.link.split("?")[0])}
               >
                 {a.severity === "error" ? (
                   <CircleAlert size={17} color="var(--danger)" />

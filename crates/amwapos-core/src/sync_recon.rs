@@ -432,8 +432,7 @@ impl AppCore {
                 return Err(AppError::conflict("This sync problem is already finished."));
             }
             if ops::FINANCIAL_TABLES.contains(&table.as_str()) && !req.confirm_financial {
-                return Err(AppError::new(
-                    ErrorCode::ApprovalRequired,
+                return Err(AppError::validation(
                     "This is a money or stock record. Closing it means the hub's totals will not include it. Confirm to continue.",
                 ));
             }

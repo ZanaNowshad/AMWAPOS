@@ -27,6 +27,9 @@ use crate::validate;
 
 pub const STATUSES: [&str; 5] = ["new", "acknowledged", "in_progress", "resolved", "dismissed"];
 pub const CASH_RESOLUTIONS: [&str; 5] = ["counting_error", "cash_found", "change_error", "unexplained", "other"];
+/// What a person can record when finishing any other case. "recovered" is
+/// not here: only the system records that, after it saw the condition clear.
+pub const OPERATIONAL_RESOLUTIONS: [&str; 4] = ["fixed", "not_a_problem", "duplicate", "other"];
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CaseRow {
@@ -469,6 +472,9 @@ impl AppCore {
                         }
                         match req.resolution_code.as_deref().filter(|c| !c.is_empty()) {
                             Some(c) if case.kind == "cash_variance" && !CASH_RESOLUTIONS.contains(&c) => {
+                                return Err(AppError::validation("Unknown outcome."));
+                            }
+                            Some(c) if case.kind != "cash_variance" && !OPERATIONAL_RESOLUTIONS.contains(&c) => {
                                 return Err(AppError::validation("Unknown outcome."));
                             }
                             other => other.map(String::from),

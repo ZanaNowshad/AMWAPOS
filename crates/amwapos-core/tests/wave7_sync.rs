@@ -265,7 +265,8 @@ fn a_refused_record_is_closed_only_with_a_reason_and_is_kept() {
     let (_, cashier) = hub.user("Cashier", "role_cashier", "5937");
     assert_eq!(close(&cashier, "Wrong till", true).unwrap_err().code, ErrorCode::Forbidden);
     assert_eq!(close(&ht, "no", true).unwrap_err().code, ErrorCode::Validation);
-    assert_eq!(close(&ht, "Sent by the wrong till", false).unwrap_err().code, ErrorCode::ApprovalRequired);
+    let e = close(&ht, "Sent by the wrong till", false).unwrap_err();
+    assert!(e.code == ErrorCode::Validation && e.message.contains("money or stock record"), "{e:?}");
     close(&ht, "Sent by the wrong till; Till 2 sends it itself", true).unwrap();
     assert_eq!(close(&ht, "Sent by the wrong till again", true).unwrap_err().code, ErrorCode::Conflict);
     assert_eq!(
@@ -508,8 +509,14 @@ fn terminal_health_shows_only_what_was_observed() {
     assert!(h["versions"]["schema"]["matches"].is_null());
     assert!(h["sending"]["pending"].is_null());
 
-    // A shift is opened and a sale made; the till sends, then reports.
+    // Seen asking for changes, but it has not said what it runs: still
+    // unknown, not healthy.
     pull_all(&hub.core, &t1.core);
+    let h = health_of(&hub, &dev);
+    assert_eq!((h["health"].as_str(), h["connection"].as_str()), (Some("unknown"), Some("online")), "{h}");
+    assert_eq!(h["reasons"], json!(["never_reported"]));
+
+    // A shift is opened and a sale made; the till sends, then reports.
     t1.core.shift_open(&t1.token, 0, &op()).unwrap();
     sell(&t1.core, &t1.token, "7301");
     let (resp, _) = push_some(&hub.core, &t1.core, |_| true);
@@ -574,6 +581,12 @@ fn new_heartbeat_fields_stay_empty_after_the_upgrade_until_reported() {
         [],
     )
     .unwrap();
+    c.execute_batch(
+        "INSERT INTO branches(branch_id, code, name, created_at, updated_at) VALUES ('br','B1','Main','2026-01-01','2026-01-01');
+         INSERT INTO devices(device_id, branch_id, name, device_code, operating_mode, active, activated_at)
+           VALUES ('d1','br','Till 2','T02','terminal',1,'2026-01-01T00:00:00Z');",
+    )
+    .unwrap();
     amwapos_core::db::migrate_until(&c, &path, amwapos_core::db::latest_schema_version()).unwrap();
     type Row = (Option<i64>, Option<String>, Option<String>, Option<i64>, Option<String>, i64);
     let row: Row = c
@@ -584,6 +597,17 @@ fn new_heartbeat_fields_stay_empty_after_the_upgrade_until_reported() {
         )
         .unwrap();
     assert_eq!(row, (None, None, None, None, None, 7));
+    // An existing terminal keeps its credential, as version 1, with nothing
+    // staged, nothing in grace and no revocation invented.
+    let cred: (i64, Option<i64>, Option<i64>, Option<String>, Option<String>) = c
+        .query_row(
+            "SELECT credential_version, credential_next_version, credential_prev_version, credential_grace_until, revocation_reason FROM devices",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(cred, (1, None, None, None, None));
+    assert_eq!(c.query_row("SELECT COUNT(*) FROM cases", [], |r| r.get::<_, i64>(0)).unwrap(), 0, "no case invented");
 }
 
 // ------------------------------------------------------------------ credentials
@@ -793,4 +817,100 @@ fn revoking_is_not_rotating_and_only_people_on_the_hub_do_either() {
     signed(&hub.core, &nonces, &d2, &k_other).unwrap();
     assert_eq!(hub.core.sync_reset_hub_credentials(&ht, RESET_ALL_PHRASE).unwrap()["terminals"], 1);
     assert_eq!(signed(&hub.core, &nonces, &d2, &k_other).unwrap_err().code, ErrorCode::Unauthenticated);
+}
+
+// ------------------------------------------------------------------ failure injection
+
+#[test]
+fn a_check_run_that_fails_half_way_changes_nothing() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    hub.product("Oil", "7401", 900, 500, 20_000);
+    let t1 = pair(&hub, "Till 2", "T02");
+    pull_all(&hub.core, &t1.core);
+    t1.core.shift_open(&t1.token, 0, &op()).unwrap();
+    sell(&t1.core, &t1.token, "7401");
+    push_some(&hub.core, &t1.core, |c| c.table != "sales");
+    // The database refuses the new case (injected): the whole run rolls back.
+    hub.core
+        .db
+        .write(|c| {
+            Ok(c.execute_batch(
+                "CREATE TRIGGER inject_fail BEFORE INSERT ON cases WHEN NEW.kind='sync_failures' BEGIN SELECT RAISE(ABORT, 'injected'); END;",
+            )?)
+        })
+        .unwrap();
+    assert!(hub.core.ops_evaluate().is_err());
+    // Not even the other case of that run (the new store has no backup yet).
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM cases"), 0);
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM alert_conditions"), 0, "no half-remembered state");
+    hub.core.db.write(|c| Ok(c.execute_batch("DROP TRIGGER inject_fail;")?)).unwrap();
+    hub.core.ops_evaluate().unwrap();
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM cases WHERE kind='sync_failures'"), 1);
+}
+
+#[test]
+fn a_lost_heartbeat_reply_during_a_rotation_is_harmless() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let t1 = pair(&hub, "Till 2", "T02");
+    let dev = t1.core.device().unwrap().device_id;
+    let nonces = NonceCache::default();
+    let k1 = t1.core.terminal_device_key().unwrap();
+    hub.core.device_rotate_credential(&ht, &dev).unwrap();
+    // The hub answers with the new credential but the reply never arrives.
+    let lost = hub.core.hub_heartbeat(&dev, t1.core.terminal_heartbeat().unwrap()).unwrap();
+    assert!(lost["credential"]["next"]["key"].is_string());
+    // The till still signs with its current credential, which still works.
+    assert_eq!(t1.core.terminal_device_key().unwrap(), k1);
+    signed(&hub.core, &nonces, &dev, &k1).unwrap();
+    // The next reply hands over the same credential (derived, not random).
+    let again = heartbeat_round(&hub.core, &t1);
+    assert_eq!(again["credential"]["next"]["key"], lost["credential"]["next"]["key"]);
+    let k2 = t1.core.terminal_device_key().unwrap();
+    signed(&hub.core, &nonces, &dev, &k2).unwrap();
+    assert_eq!(count(&hub.core, &format!("SELECT credential_version FROM devices WHERE device_id='{dev}'")), 2);
+}
+
+#[test]
+fn one_failing_record_in_a_bulk_retry_does_not_undo_the_others() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    hub.product("Salt", "7501", 200, 100, 20_000);
+    let t1 = pair(&hub, "Till 2", "T02");
+    pull_all(&hub.core, &t1.core);
+    t1.core.shift_open(&t1.token, 0, &op()).unwrap();
+    sell(&t1.core, &t1.token, "7501");
+    sell(&t1.core, &t1.token, "7501");
+    push_some(&hub.core, &t1.core, |c| c.table != "sales");
+    // Only the first sale arrives; the second sale's parts still wait.
+    let dev = t1.core.device().unwrap().device_id;
+    let first: String =
+        t1.core.db.read(|c| Ok(c.query_row("SELECT sale_id FROM sales ORDER BY created_at LIMIT 1", [], |r| r.get(0))?)).unwrap();
+    t1.core
+        .db
+        .write(|c| {
+            Ok(c.execute(
+                "INSERT INTO sync_outbox(table_name, row_pk, op, origin) VALUES ('sales', json_object('sale_id', ?1), 'upsert', NULL)",
+                [&first],
+            )?)
+        })
+        .unwrap();
+    let ch: Vec<Change> = t1.core.terminal_collect_push(1000).unwrap().0.into_iter().filter(|c| c.table == "sales").collect();
+    hub.core.hub_apply_push(&dev, PushRequest { device_id: dev.clone(), changes: ch }).unwrap();
+    let waiting = count(&hub.core, "SELECT COUNT(*) FROM sync_dead_letters WHERE status='open'");
+    let out = hub
+        .core
+        .sync_retry_dead_letters(&ht, BulkRetry { dead_ids: vec![], origin: None, reason_code: None, table: None, operation_id: op() })
+        .unwrap();
+    assert_eq!(out["eligible"].as_i64(), Some(waiting));
+    let (applied, failed) = (out["applied"].as_i64().unwrap(), out["failed"].as_i64().unwrap());
+    assert!(applied > 0 && failed > 0 && applied + failed == waiting, "{out}");
+    // The saved ones stay saved; the failed ones stay open with their tries counted.
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM sync_dead_letters WHERE status='resolved' AND resolution='applied'"), applied);
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM sync_dead_letters WHERE status='open' AND attempts=2"), failed);
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM sale_items"), 1);
 }
