@@ -575,7 +575,8 @@ fn new_heartbeat_fields_stay_empty_after_the_upgrade_until_reported() {
     )
     .unwrap();
     amwapos_core::db::migrate_until(&c, &path, amwapos_core::db::latest_schema_version()).unwrap();
-    let row: (Option<i64>, Option<String>, Option<String>, Option<i64>, Option<String>, i64) = c
+    type Row = (Option<i64>, Option<String>, Option<String>, Option<i64>, Option<String>, i64);
+    let row: Row = c
         .query_row(
             "SELECT protocol_version, oldest_pending_at, last_sync_ok_at, problem_count, last_heartbeat_at, pending_count FROM device_heartbeats",
             [],
