@@ -355,6 +355,14 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "audit.verify" => out(core.audit_verify(tk()?)),
         "devices.list" => out(core.devices_list(tk()?)),
         "terminals.health" => out(core.terminals_health(tk()?)),
+        "devices.rotate_credential" => out(core.device_rotate_credential(tk()?, &req::<String>(&args, "device_id")?)),
+        "devices.cancel_rotation" => out(core.device_cancel_rotation(tk()?, &req::<String>(&args, "device_id")?)),
+        "devices.revoke" => out(core.device_revoke(
+            tk()?,
+            &req::<String>(&args, "device_id")?,
+            &req::<String>(&args, "reason")?,
+            opt(&args, "lost_or_stolen")?.unwrap_or(false),
+        )),
         "devices.rename" => out(core.device_rename(tk()?, &req::<String>(&args, "device_id")?, &req::<String>(&args, "name")?)),
         "devices.set_active" => out(core.device_set_active(tk()?, &req::<String>(&args, "device_id")?, req(&args, "active")?)),
         "diagnostics.get" => out(core.diagnostics(tk()?, opt(&args, "full")?.unwrap_or(false))),
@@ -808,7 +816,7 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         // sync
         "sync.status" => out(core.sync_status(tk()?)),
         "sync.pairing_code" => out(core.sync_issue_pairing_code(tk()?, opt(&args, "device_name")?, opt(&args, "branch_id")?)),
-        "sync.reset_hub_credentials" => out(core.sync_reset_hub_credentials(tk()?)),
+        "sync.reset_hub_credentials" => out(core.sync_reset_hub_credentials(tk()?, &opt::<String>(&args, "confirm")?.unwrap_or_default())),
         "sync.dead_letters" => out(core.sync_dead_letters(tk()?, all(&args)?)),
         "sync.retry_dead_letter" => {
             out(core.sync_retry_dead_letter(tk()?, &req::<String>(&args, "dead_id")?, opt::<String>(&args, "operation_id")?.as_deref()))

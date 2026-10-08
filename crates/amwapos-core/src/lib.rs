@@ -26,6 +26,7 @@ pub mod credit;
 pub mod customers;
 pub mod dayclose;
 pub mod db;
+pub mod device_credentials;
 pub mod docintel;
 pub mod eod;
 pub mod error;

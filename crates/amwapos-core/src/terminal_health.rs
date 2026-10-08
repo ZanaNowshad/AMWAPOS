@@ -121,7 +121,9 @@ impl AppCore {
                         h.problem_count, u.display_name,
                         (SELECT COUNT(*) FROM sync_dead_letters l WHERE l.status='open' AND l.origin=d.device_id),
                         (SELECT COUNT(*) FROM cases k WHERE k.device_id=d.device_id AND k.status NOT IN ('resolved','dismissed')),
-                        x.shift_id, x.shift_number, x.opened_at, xu.display_name
+                        x.shift_id, x.shift_number, x.opened_at, xu.display_name,
+                        d.credential_version, d.credential_next_version, d.credential_staged_at, d.credential_rotated_at,
+                        d.credential_grace_until, d.revocation_reason
                  FROM devices d
                  LEFT JOIN branches b ON b.branch_id=d.branch_id
                  LEFT JOIN device_heartbeats h ON h.device_id=d.device_id
@@ -176,6 +178,10 @@ impl AppCore {
                         "signed_in": r.get::<_, Option<String>>(20)?,
                         "open_cases": r.get::<_, i64>(22)?,
                         "shift": shift,
+                        "credential": { "version": r.get::<_, i64>(27)?, "next_version": r.get::<_, Option<i64>>(28)?,
+                            "staged_at": r.get::<_, Option<String>>(29)?, "rotated_at": r.get::<_, Option<String>>(30)?,
+                            "previous_accepted_until": r.get::<_, Option<String>>(31)?,
+                            "lost_or_stolen": r.get::<_, Option<String>>(32)?.is_some() },
                     }))
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

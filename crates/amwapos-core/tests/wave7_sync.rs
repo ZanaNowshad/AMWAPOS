@@ -585,3 +585,212 @@ fn new_heartbeat_fields_stay_empty_after_the_upgrade_until_reported() {
         .unwrap();
     assert_eq!(row, (None, None, None, None, None, 7));
 }
+
+// ------------------------------------------------------------------ credentials
+
+use amwapos_core::device_credentials::{self, RESET_ALL_PHRASE};
+use amwapos_core::sync::{hmac_hex, signing_string, NonceCache};
+
+/// A request signed with `key`, as a terminal sends it.
+fn signed(hub: &AppCore, nonces: &NonceCache, dev: &str, key: &str) -> Result<(String, String), amwapos_core::AppError> {
+    let ts = chrono::Utc::now().timestamp_millis();
+    let nonce = ulid::Ulid::new().to_string();
+    let body = br#"{"x":1}"#;
+    let sig = hmac_hex(key, signing_string("POST", "/heartbeat", ts, &nonce, body).as_bytes());
+    hub.hub_authenticate_key(nonces, dev, ts, &nonce, &sig, "POST", "/heartbeat", body)
+}
+
+fn heartbeat_round(hub: &AppCore, t: &Term) -> Value {
+    let dev = t.core.device().unwrap().device_id;
+    let resp = hub.hub_heartbeat(&dev, t.core.terminal_heartbeat().unwrap()).unwrap();
+    t.core.terminal_after_heartbeat(&resp).unwrap();
+    resp
+}
+
+fn db_bytes(dir: &std::path::Path) -> Vec<u8> {
+    let mut all = vec![];
+    for e in std::fs::read_dir(dir).unwrap() {
+        let p = e.unwrap().path();
+        if p.is_file() {
+            all.extend(std::fs::read(p).unwrap());
+        }
+    }
+    all
+}
+
+fn contains(hay: &[u8], needle: &str) -> bool {
+    hay.windows(needle.len()).any(|w| w == needle.as_bytes())
+}
+
+#[test]
+fn a_terminal_credential_rotates_in_stages_and_the_old_one_ends() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let t1 = pair(&hub, "Till 2", "T02");
+    let dev = t1.core.device().unwrap().device_id;
+    let nonces = NonceCache::default();
+    let k1 = t1.core.terminal_device_key().unwrap();
+    // Existing credentials survive as version 1 (the pre-rotation derivation).
+    assert_eq!(count(&hub.core, &format!("SELECT credential_version FROM devices WHERE device_id='{dev}'")), 1);
+    assert_eq!(signed(&hub.core, &nonces, &dev, &k1).unwrap().1, k1);
+
+    // Staged: the current credential keeps working; staging twice is one.
+    let r = hub.core.device_rotate_credential(&ht, &dev).unwrap();
+    assert_eq!((r["version"].as_i64(), r["next_version"].as_i64()), (Some(1), Some(2)));
+    assert_eq!(hub.core.device_rotate_credential(&ht, &dev).unwrap()["already_staged"], true);
+    signed(&hub.core, &nonces, &dev, &k1).unwrap();
+
+    // Handed over in the (sealed) heartbeat reply, installed by the till,
+    // which keeps the old one until the hub confirms.
+    let resp = heartbeat_round(&hub.core, &t1);
+    assert_eq!(resp["credential"]["next"]["version"], 2);
+    let k2 = t1.core.terminal_device_key().unwrap();
+    assert_ne!(k1, k2);
+    assert_eq!(t1.core.terminal_sync_settings().unwrap().credential_version, Some(2));
+    assert_eq!(t1.core.secrets.get(device_credentials::SECRET_DEVICE_KEY_PREV).unwrap().as_deref(), Some(k1.as_str()));
+
+    // The first request signed with it is the proof: it becomes current, by
+    // the system, once.
+    let (_, used) = signed(&hub.core, &nonces, &dev, &k2).unwrap();
+    assert_eq!(used, k2, "the reply is sealed with the credential that signed");
+    assert_eq!(count(&hub.core, &format!("SELECT credential_version FROM devices WHERE device_id='{dev}'")), 2);
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='device.credential_rotated' AND user_id IS NULL"), 1);
+    signed(&hub.core, &nonces, &dev, &k2).unwrap();
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='device.credential_rotated'"), 1);
+
+    // The old one works only inside the grace, then never.
+    signed(&hub.core, &nonces, &dev, &k1).unwrap();
+    hub.core
+        .db
+        .write(|c| Ok(c.execute("UPDATE devices SET credential_grace_until='2020-01-01T00:00:00Z' WHERE device_id=?1", [&dev])?))
+        .unwrap();
+    let e = signed(&hub.core, &nonces, &dev, &k1).unwrap_err();
+    assert_eq!((e.code, e.message.as_str()), (ErrorCode::Unauthenticated, "Invalid request signature."));
+    // The next heartbeat confirms: the till forgets the old one.
+    heartbeat_round(&hub.core, &t1);
+    assert!(t1.core.secrets.get(device_credentials::SECRET_DEVICE_KEY_PREV).unwrap().is_none());
+
+    // No credential is ever written to the database, the audit or a screen.
+    let health = hub.core.terminals_health(&ht).unwrap().to_string();
+    let audit = text(&hub.core, "SELECT group_concat(COALESCE(before_json,'') || COALESCE(after_json,''), ' ') FROM audit_logs");
+    for k in [&k1, &k2] {
+        assert!(!health.contains(k.as_str()) && !audit.contains(k.as_str()));
+        assert!(!contains(&db_bytes(hub.dir.path()), k), "hub database holds a credential");
+        assert!(!contains(&db_bytes(t1._dir.path()), k), "terminal database holds a credential");
+    }
+    let h = health_of(&hub, &dev);
+    assert_eq!(h["credential"]["version"], 2);
+    assert!(h["credential"]["next_version"].is_null());
+}
+
+#[test]
+fn a_cancelled_rotation_falls_back_and_a_silent_till_raises_a_case() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let t1 = pair(&hub, "Till 2", "T02");
+    let dev = t1.core.device().unwrap().device_id;
+    let nonces = NonceCache::default();
+    let k1 = t1.core.terminal_device_key().unwrap();
+    hub.core.device_rotate_credential(&ht, &dev).unwrap();
+    heartbeat_round(&hub.core, &t1);
+    let k2 = t1.core.terminal_device_key().unwrap();
+    // Cancelled before the till used it: the new one is refused and the
+    // till goes back to the one it kept.
+    assert_eq!(hub.core.device_cancel_rotation(&ht, &dev).unwrap()["cancelled"], true);
+    assert_eq!(signed(&hub.core, &nonces, &dev, &k2).unwrap_err().message, "Invalid request signature.");
+    assert!(t1.core.terminal_credential_fallback().unwrap());
+    assert_eq!(t1.core.terminal_device_key().unwrap(), k1);
+    assert_eq!(t1.core.terminal_sync_settings().unwrap().credential_version, Some(1));
+    signed(&hub.core, &nonces, &dev, &k1).unwrap();
+    assert!(!t1.core.terminal_credential_fallback().unwrap(), "nothing kept, nothing to fall back to");
+
+    // A till that stays offline keeps its credential; after a day the
+    // pending rotation becomes a case.
+    hub.core.device_rotate_credential(&ht, &dev).unwrap();
+    hub.core.ops_evaluate().unwrap();
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM cases WHERE kind='credential_rotation_stale'"), 0);
+    hub.core
+        .db
+        .write(|c| Ok(c.execute("UPDATE devices SET credential_staged_at='2026-01-01T00:00:00Z' WHERE device_id=?1", [&dev])?))
+        .unwrap();
+    hub.core.ops_evaluate().unwrap();
+    assert_eq!(count(&hub.core, &format!("SELECT COUNT(*) FROM cases WHERE kind='credential_rotation_stale' AND device_id='{dev}'")), 1);
+    let facts = text(&hub.core, "SELECT facts_json FROM cases WHERE kind='credential_rotation_stale'");
+    assert!(!facts.contains(&k1), "versions and times only");
+    signed(&hub.core, &nonces, &dev, &k1).unwrap();
+    // It comes back and picks it up: the case resolves itself.
+    heartbeat_round(&hub.core, &t1);
+    let k3 = t1.core.terminal_device_key().unwrap();
+    signed(&hub.core, &nonces, &dev, &k3).unwrap();
+    assert_eq!(hub.core.ops_evaluate().unwrap().resolved, 1);
+}
+
+#[test]
+fn two_requests_proving_the_new_credential_at_once_rotate_it_once() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let t1 = pair(&hub, "Till 2", "T02");
+    let dev = t1.core.device().unwrap().device_id;
+    hub.core.device_rotate_credential(&ht, &dev).unwrap();
+    heartbeat_round(&hub.core, &t1);
+    let k2 = t1.core.terminal_device_key().unwrap();
+    let nonces = NonceCache::default();
+    let ok = std::thread::scope(|sc| {
+        let hs: Vec<_> = (0..4).map(|_| sc.spawn(|| signed(&hub.core, &nonces, &dev, &k2).is_ok())).collect();
+        hs.into_iter().map(|h| h.join().unwrap()).filter(|x| *x).count()
+    });
+    assert_eq!(ok, 4);
+    assert_eq!(count(&hub.core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='device.credential_rotated'"), 1);
+    assert_eq!(count(&hub.core, &format!("SELECT credential_version FROM devices WHERE device_id='{dev}'")), 2);
+}
+
+#[test]
+fn revoking_is_not_rotating_and_only_people_on_the_hub_do_either() {
+    let hub = env();
+    let ht = hub.owner_token.clone();
+    enable_hub(&hub.core, &ht);
+    let t1 = pair(&hub, "Till 2", "T02");
+    let t2 = pair(&hub, "Till 3", "T03");
+    let dev = t1.core.device().unwrap().device_id;
+    let nonces = NonceCache::default();
+    let k1 = t1.core.terminal_device_key().unwrap();
+    // A cashier cannot; a terminal cannot (operational control is the hub's).
+    let (_, cashier) = hub.user("Cashier", "role_cashier", "5937");
+    assert_eq!(hub.core.device_rotate_credential(&cashier, &dev).unwrap_err().code, ErrorCode::Forbidden);
+    assert_eq!(hub.core.device_revoke(&cashier, &dev, "lost", true).unwrap_err().code, ErrorCode::Forbidden);
+    assert!(t2.core.device_rotate_credential(&t2.token, &dev).is_err());
+    assert!(t2.core.device_revoke(&t2.token, &dev, "lost", true).is_err());
+
+    // Lost: refused at once, and its credential moved on so re-activating
+    // the device can never bring it back.
+    hub.core.device_rotate_credential(&ht, &dev).unwrap();
+    assert_eq!(hub.core.device_revoke(&ht, &dev, "", true).unwrap_err().code, ErrorCode::Validation);
+    hub.core.device_revoke(&ht, &dev, "Stolen from the counter", true).unwrap();
+    assert_eq!(signed(&hub.core, &nonces, &dev, &k1).unwrap_err().code, ErrorCode::Forbidden);
+    assert_eq!(hub.core.device_set_active(&ht, &dev, true).unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(
+        count(
+            &hub.core,
+            &format!("SELECT COUNT(*) FROM devices WHERE device_id='{dev}' AND credential_version=2 AND credential_next_version IS NULL")
+        ),
+        1
+    );
+    assert_eq!(hub.core.device_rotate_credential(&ht, &dev).unwrap_err().code, ErrorCode::Conflict);
+    assert_eq!(health_of(&hub, &dev)["credential"]["lost_or_stolen"], true);
+    let a = text(&hub.core, "SELECT after_json FROM audit_logs WHERE event_type='device.revoked'");
+    assert!(a.contains("Stolen from the counter") && a.contains("\"lost_or_stolen\":true"), "{a}");
+
+    // Resetting every terminal: owner only, typed confirmation.
+    let (_, manager) = hub.user("Manager", "role_manager", "6142");
+    let mgr_err = hub.core.sync_reset_hub_credentials(&manager, RESET_ALL_PHRASE).unwrap_err();
+    assert_eq!(mgr_err.code, ErrorCode::Forbidden);
+    assert_eq!(hub.core.sync_reset_hub_credentials(&ht, "reset").unwrap_err().code, ErrorCode::Validation);
+    let k_other = t2.core.terminal_device_key().unwrap();
+    let d2 = t2.core.device().unwrap().device_id;
+    signed(&hub.core, &nonces, &d2, &k_other).unwrap();
+    assert_eq!(hub.core.sync_reset_hub_credentials(&ht, RESET_ALL_PHRASE).unwrap()["terminals"], 1);
+    assert_eq!(signed(&hub.core, &nonces, &d2, &k_other).unwrap_err().code, ErrorCode::Unauthenticated);
+}

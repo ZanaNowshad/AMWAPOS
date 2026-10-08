@@ -194,7 +194,7 @@ export function DevicesPage() {
 export function SyncPage() {
   const hubFeature = useFeature("hub");
   const toast = useToast();
-  const { has } = useSession();
+  const { has, session } = useSession();
   const st = useLoad(() => api.sync.status(), []);
   const addr = useLoad(
     () => (st.data?.mode === "hub" ? api.sync.hubAddresses() : Promise.resolve(null)),
@@ -210,6 +210,7 @@ export function SyncPage() {
   const [pairBranch, setPairBranch] = useState("");
   const [enable, setEnable] = useState(false);
   const [resetCreds, setResetCreds] = useState(false);
+  const [resetPhrase, setResetPhrase] = useState("");
   const act = useAction();
   useEffect(() => {
     const tv = setInterval(() => void st.reload(), 10000);
@@ -454,7 +455,7 @@ export function SyncPage() {
                 "Pair one terminal at a time: a new code cancels the previous one, and five wrong entries cancel the code. The code is never sent over the network; all hub traffic is encrypted and each terminal can be revoked.",
               )}
             </div>
-            {has("sync.manage") ? (
+            {has("sync.manage") && session?.role_id === "role_owner" ? (
               <Button size="sm" variant="ghost" onClick={() => setResetCreds(true)}>
                 {t("Reset hub credentials…")}
               </Button>
@@ -515,7 +516,7 @@ export function SyncPage() {
           error={act.error}
           onCancel={() => setResetCreds(false)}
           onConfirm={async () => {
-            const r = await act.run(() => api.sync.resetHubCredentials());
+            const r = await act.run(() => api.sync.resetHubCredentials(resetPhrase));
             if (r) {
               setResetCreds(false);
               toast("success", t("Hub credentials replaced. Pair every terminal again."));
@@ -526,6 +527,17 @@ export function SyncPage() {
           {t(
             "Use this only when the hub reports its credential is missing or does not match. Every paired terminal will stop syncing until it is paired again; their unsynced sales stay safe on the terminal and upload after re-pairing.",
           )}
+          <div className="small" style={{ marginTop: 8 }}>
+            {t("To rotate one terminal's credential, use Terminals instead.")}
+          </div>
+          <Field label={t("Type RESET ALL TERMINALS to confirm")}>
+            <TextInput
+              data-testid="reset-all-phrase"
+              value={resetPhrase}
+              onChange={(e) => setResetPhrase(e.target.value)}
+              autoComplete="off"
+            />
+          </Field>
         </Confirm>
       ) : null}
       {enable ? (

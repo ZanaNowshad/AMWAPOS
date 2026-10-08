@@ -553,6 +553,39 @@ pub fn measure(c: &Connection, now: DateTime<Utc>, this_device: &str, backup_sta
             }
         }
     }
+    // Credential rotations a terminal has not picked up (versions and times
+    // only).
+    {
+        let mut st = c.prepare(
+            "SELECT device_id, name, branch_id, credential_staged_at, credential_version, credential_next_version FROM devices
+             WHERE operating_mode='terminal' AND active=1 AND credential_next_version IS NOT NULL AND credential_staged_at < ?1",
+        )?;
+        let cutoff = time::fmt(now - chrono::Duration::hours(crate::device_credentials::STALE_HOURS));
+        for row in st.query_map([&cutoff], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+            ))
+        })? {
+            let (id, name, br, staged, v, n) = row?;
+            let hours = minutes_between(&staged, now) / 60;
+            out.push(Condition {
+                key: format!("credential_rotation_stale:{id}"),
+                kind: "credential_rotation_stale",
+                severity: "medium",
+                title: format!("{name} has not picked up its new credential for {hours} hours"),
+                branch_id: br,
+                entity_type: "device",
+                entity_id: id.clone(),
+                device_id: Some(id),
+                facts: json!({ "staged_at": staged, "version": v, "next_version": n }),
+            });
+        }
+    }
     // Backups (a store-wide fact, kept by the backup subsystem).
     if let Some((state, summary)) = backup_state.filter(|b| b.0 == "warning" || b.0 == "error") {
         out.push(Condition {

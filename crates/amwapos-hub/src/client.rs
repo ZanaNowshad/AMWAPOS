@@ -313,6 +313,16 @@ pub async fn sync_cycle(core: Arc<AppCore>) -> AppResult<CycleReport> {
     }
     .await;
     if let Err(e) = &result {
+        // Refused credential after a rotation the hub did not complete (for
+        // example cancelled): go back to the one kept until confirmation.
+        // Only a signature refusal: a clock or replay error must never undo
+        // a rotation the hub completed.
+        if e.code == ErrorCode::Unauthenticated && e.message == "Invalid request signature." {
+            let c2 = core.clone();
+            if let Ok(true) = blocking(move || c2.terminal_credential_fallback()).await {
+                tracing::warn!("the hub refused the new credential; using the previous one again");
+            }
+        }
         let c2 = core.clone();
         let e2 = e.clone();
         let _ = blocking(move || c2.terminal_note_result(Some(&e2), None)).await;

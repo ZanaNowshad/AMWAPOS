@@ -42,7 +42,6 @@ use crate::service::{AppCore, DeviceIdentity};
 use crate::settings;
 use crate::system::DiagnosticItem;
 use crate::time;
-use crate::validate;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum Policy {
@@ -112,7 +111,16 @@ pub const TABLES: &[(&str, &[&str], Policy)] = &[
 ];
 
 /// Columns never shipped to other devices.
-const PRIVATE_COLUMNS: &[(&str, &str)] = &[("devices", "credential_hash")];
+const PRIVATE_COLUMNS: &[(&str, &str)] = &[
+    ("devices", "credential_hash"),
+    ("devices", "credential_version"),
+    ("devices", "credential_next_version"),
+    ("devices", "credential_staged_at"),
+    ("devices", "credential_prev_version"),
+    ("devices", "credential_grace_until"),
+    ("devices", "credential_rotated_at"),
+    ("devices", "revocation_reason"),
+];
 
 /// Wire protocol. 2 = encrypted channel (SPAKE2 pairing + ChaCha20-Poly1305
 /// bodies, see `channel`). Hubs and terminals refuse any other version.
@@ -270,6 +278,13 @@ pub struct SyncSettings {
     pub hub_version: Option<String>,
     /// Class of `last_error`: version_mismatch | unreachable | auth | other.
     pub last_error_kind: Option<String>,
+    /// Terminal: the version of the hub credential it signs with (None =
+    /// version 1, from before Wave 7), and the one before a rotation until
+    /// the hub confirms the new one. Versions only, never a key.
+    #[serde(default)]
+    pub credential_version: Option<i64>,
+    #[serde(default)]
+    pub credential_prev_version: Option<i64>,
 }
 
 /// Classify a sync failure so the UI can say "update needed" rather than a
@@ -740,9 +755,11 @@ pub fn apply_change(c: &Connection, ch: &Change, side: &ApplySide) -> AppResult<
             return Err(AppError::validation("Missing primary key."));
         }
     }
-    // Never overwrite a local-only secret column.
-    if ch.table == "devices" {
-        row.remove("credential_hash");
+    // Never overwrite a local-only column.
+    for (t, col) in PRIVATE_COLUMNS {
+        if *t == ch.table {
+            row.remove(*col);
+        }
     }
     // Stock movements: insert once, recompute the running balance locally,
     // and adjust the cached stock level.
@@ -890,6 +907,11 @@ fn sync_settings(c: &Connection) -> AppResult<SyncSettings> {
     settings::get(c, KEY_SYNC)
 }
 
+/// Keep the fingerprint of the hub's master secret (never the secret).
+pub(crate) fn record_hub_secret_fingerprint(c: &Connection, secret: &str, user: Option<&str>) -> AppResult<()> {
+    settings::put(c, KEY_HUB_SECRET, &HubSecretFingerprint { fingerprint: auth::sha256_hex(secret) }, user)
+}
+
 fn hub_instance_id(c: &Connection) -> AppResult<String> {
     // The business id plus the first migration time identifies this database instance.
     let bid: String = c.query_row("SELECT business_id FROM business LIMIT 1", [], |r| r.get(0))?;
@@ -938,74 +960,6 @@ impl AppCore {
                 Ok(s)
             }
         }
-    }
-
-    /// Replace the hub master secret. Every paired terminal must pair again.
-    pub fn sync_reset_hub_credentials(&self, token: &str) -> AppResult<Value> {
-        let s = self.session(token)?;
-        s.require("sync.manage")?;
-        let d = self.require_hub()?;
-        let secret = auth::random_token();
-        self.secrets.set(SECRET_HUB_MASTER, &secret)?;
-        let actor = self.actor(&s, None);
-        self.db.write(|tx| {
-            settings::put(tx, KEY_HUB_SECRET, &HubSecretFingerprint { fingerprint: auth::sha256_hex(&secret) }, Some(&s.user_id))?;
-            audit::record(tx, &actor, "sync.hub_credentials_reset", "device", Some(&d.device_id), None, None)?;
-            Ok(())
-        })?;
-        Ok(json!({ "ok": true, "terminals_must_pair_again": true }))
-    }
-
-    pub fn hub_device_key(&self, device_id: &str) -> AppResult<String> {
-        Ok(hmac_hex(&self.hub_master_secret()?, format!("device:{device_id}").as_bytes()))
-    }
-
-    /// Authenticate a signed request. Returns the active device row id.
-    #[allow(clippy::too_many_arguments)]
-    pub fn hub_authenticate(
-        &self,
-        nonces: &NonceCache,
-        device_id: &str,
-        ts: i64,
-        nonce: &str,
-        signature: &str,
-        method: &str,
-        path: &str,
-        body: &[u8],
-    ) -> AppResult<String> {
-        self.require_hub()?;
-        let id = validate::id(device_id, "Device")?;
-        let now = time::now().timestamp_millis();
-        if (now - ts).abs() > 5 * 60 * 1000 {
-            return Err(AppError::new(
-                ErrorCode::Unauthenticated,
-                "Request timestamp outside the allowed window. Check the terminal clock.",
-            ));
-        }
-        if nonce.len() < 16 || nonce.len() > 64 {
-            return Err(AppError::new(ErrorCode::Unauthenticated, "Invalid nonce."));
-        }
-        let active: Option<i64> =
-            self.db.read(|c| Ok(c.query_row("SELECT active FROM devices WHERE device_id=?1", [&id], |r| r.get(0)).optional()?))?;
-        match active {
-            Some(1) => {}
-            Some(_) => {
-                return Err(AppError::new(
-                    ErrorCode::Forbidden,
-                    "This terminal has been revoked. Ask the owner to re-activate or re-pair it.",
-                ))
-            }
-            None => return Err(AppError::new(ErrorCode::Unauthenticated, "Unknown terminal. Pair it with the hub again.")),
-        }
-        let key = self.hub_device_key(&id)?;
-        let expect = hmac_hex(&key, signing_string(method, path, ts, nonce, body).as_bytes());
-        if !verify_hex_eq(&expect, signature) {
-            return Err(AppError::new(ErrorCode::Unauthenticated, "Invalid request signature."));
-        }
-        if !nonces.check_and_insert(&id, nonce, ts) {
-            return Err(AppError::new(ErrorCode::Unauthenticated, "Replayed request rejected."));
-        }
-        Ok(id)
     }
 
     pub fn hub_info(&self) -> AppResult<HubInfo> {
@@ -1373,7 +1327,7 @@ impl AppCore {
             Ok(settled)
         })?;
         Ok(json!({ "ok": true, "server_time": time::now_str(), "schema_version": crate::db::latest_schema_version(),
-            "app_version": audit::APP_VERSION, "settled": settled }))
+            "app_version": audit::APP_VERSION, "settled": settled, "credential": self.heartbeat_credential(device_id)? }))
     }
 
     // ---------------- terminal side ----------------
@@ -1493,6 +1447,16 @@ impl AppCore {
 
     pub fn terminal_sync_settings(&self) -> AppResult<SyncSettings> {
         self.db.read(sync_settings)
+    }
+
+    /// Terminal: record which credential version it now signs with.
+    pub(crate) fn set_terminal_credential_version(&self, version: i64, prev: Option<i64>) -> AppResult<()> {
+        self.db.write(|tx| {
+            let mut ss = sync_settings(tx)?;
+            ss.credential_version = Some(version);
+            ss.credential_prev_version = prev;
+            settings::put(tx, KEY_SYNC, &ss, None)
+        })
     }
 
     pub fn terminal_device_key(&self) -> AppResult<String> {
@@ -1709,6 +1673,9 @@ impl AppCore {
     /// since settled (retried and saved, or closed by a person there). The
     /// terminal only records what the hub reports; nobody acts on the till.
     pub fn terminal_after_heartbeat(&self, resp: &Value) -> AppResult<usize> {
+        if let Some(cred) = resp.get("credential").filter(|v| v.is_object()) {
+            self.terminal_apply_credential(cred)?;
+        }
         let Some(list) = resp.get("settled").and_then(|v| v.as_array()) else { return Ok(0) };
         if list.is_empty() {
             return Ok(0);

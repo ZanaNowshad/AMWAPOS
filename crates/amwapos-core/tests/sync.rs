@@ -298,7 +298,9 @@ fn lost_hub_credential_is_reported_not_silently_replaced() {
     let err = core.hub_device_key("dev-1").unwrap_err();
     assert_eq!(err.code, ErrorCode::Sync);
     let token = core.login(&owner_id, OWNER_PIN).unwrap().token;
-    core.sync_reset_hub_credentials(&token).unwrap();
+    // Owner only, with the typed confirmation.
+    assert_eq!(core.sync_reset_hub_credentials(&token, "yes").unwrap_err().code, ErrorCode::Validation);
+    core.sync_reset_hub_credentials(&token, amwapos_core::device_credentials::RESET_ALL_PHRASE).unwrap();
     let key_after = core.hub_device_key("dev-1").unwrap();
     assert_ne!(key_before, key_after);
     let audit = count(&core, "SELECT COUNT(*) FROM audit_logs WHERE event_type='sync.hub_credentials_reset'");

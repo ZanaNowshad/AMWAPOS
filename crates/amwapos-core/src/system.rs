@@ -411,6 +411,11 @@ impl AppCore {
         }
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
+            let lost: Option<String> =
+                tx.query_row("SELECT revocation_reason FROM devices WHERE device_id=?1", [&id], |r| r.get(0)).optional()?.flatten();
+            if active && lost.is_some() {
+                return Err(AppError::conflict("This terminal was revoked as lost or stolen. Pair a new terminal instead."));
+            }
             let now = time::now_str();
             let n = tx.execute(
                 "UPDATE devices SET active=?2, revoked_at=CASE WHEN ?2=1 THEN NULL ELSE ?3 END WHERE device_id=?1",

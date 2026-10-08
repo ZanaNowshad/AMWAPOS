@@ -289,20 +289,14 @@ where
     let dev = device.clone();
     let nonce2 = nonce.clone();
     let path2 = path.clone();
-    let auth = blocking(move || st2.core.hub_authenticate(&st2.nonces, &dev, ts, &nonce2, &sig, &m, &path2, &body2)).await;
-    let device_id = match auth {
+    // The reply is sealed with the same credential version that signed the
+    // request (during a rotation the terminal may use either).
+    let auth = blocking(move || st2.core.hub_authenticate_key(&st2.nonces, &dev, ts, &nonce2, &sig, &m, &path2, &body2)).await;
+    let (device_id, key) = match auth {
         Ok(d) => d,
         Err(e) => {
             tracing::warn!(device = %device, path = %path, error = %e.message, "rejected hub request");
             return err_response(e);
-        }
-    };
-    let key = {
-        let core = core.clone();
-        let d = device_id.clone();
-        match blocking(move || core.hub_device_key(&d)).await {
-            Ok(k) => k,
-            Err(e) => return err_response(e),
         }
     };
     let (k_req, k_resp) = channel::device_keys(&key);

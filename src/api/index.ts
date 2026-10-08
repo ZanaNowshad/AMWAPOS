@@ -757,8 +757,17 @@ export const api = {
     join: (a: { hub_url: string; code: string; device_name: string; device_code: string }) =>
       call<T.SetupStatus>("sync.join", a),
     runNow: () => call<Record<string, number>>("sync.run_now"),
-    resetHubCredentials: () => call<Record<string, unknown>>("sync.reset_hub_credentials"),
+    resetHubCredentials: (confirm: string) => call<Record<string, unknown>>("sync.reset_hub_credentials", { confirm }),
     terminalsHealth: () => call<T.TerminalHealth>("terminals.health"),
+    rotateCredential: (device_id: string) =>
+      call<{ device_id: string; version: number; next_version: number; already_staged: boolean }>(
+        "devices.rotate_credential",
+        { device_id },
+      ),
+    cancelRotation: (device_id: string) =>
+      call<{ device_id: string; cancelled: boolean }>("devices.cancel_rotation", { device_id }),
+    revokeDevice: (device_id: string, reason: string, lost_or_stolen: boolean) =>
+      call<{ device_id: string; revoked: boolean }>("devices.revoke", { device_id, reason, lost_or_stolen }),
     deadLetters: (q: T.DeadLetterQuery = {}) => call<T.DeadLetterPage>("sync.dead_letters", { ...q }),
     retryDeadLetter: (dead_id: string, operation_id: string) =>
       call<T.RetryOutcome>("sync.retry_dead_letter", { dead_id, operation_id }),

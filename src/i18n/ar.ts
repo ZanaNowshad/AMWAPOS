@@ -5809,4 +5809,19 @@ export const AR: Record<string, string> = {
   "Saved on the hub.": "حُفظ على الخادم الرئيسي.",
   "{0} speaks a different sync protocol ({1}; the hub speaks {2})":
     "يستخدم {0} بروتوكول مزامنة مختلفًا ({1}؛ يستخدم الخادم الرئيسي {2})",
+  "Only a terminal's credential can be rotated or revoked here.": "يمكن هنا تدوير أو إلغاء بيانات اعتماد نقطة بيع فقط.",
+  "Credentials are managed on the hub.": "تُدار بيانات الاعتماد على الخادم الرئيسي.",
+  "This terminal is revoked. A revoked terminal is paired again, not rotated.":
+    "نقطة البيع هذه ملغاة. تُقرن نقطة البيع الملغاة من جديد ولا تُدوَّر بيانات اعتمادها.",
+  "Say why this terminal is revoked.": "اذكر سبب إلغاء نقطة البيع هذه.",
+  "Only the owner can reset every terminal's credential.":
+    "المالك فقط يمكنه إعادة تعيين بيانات اعتماد جميع نقاط البيع.",
+  "Type RESET ALL TERMINALS to confirm. Every terminal will stop syncing until it is paired again.":
+    "اكتب RESET ALL TERMINALS للتأكيد. ستتوقف كل نقاط البيع عن المزامنة حتى تُقرن من جديد.",
+  "This terminal was revoked as lost or stolen. Pair a new terminal instead.":
+    "أُلغيت نقطة البيع هذه لأنها مفقودة أو مسروقة. اقرن نقطة بيع جديدة بدلًا منها.",
+  "{0} has not picked up its new credential for {1} hours": "لم تستلم {0} بيانات اعتمادها الجديدة منذ {1} ساعة",
+  "To rotate one terminal's credential, use Terminals instead.":
+    "لتدوير بيانات اعتماد نقطة بيع واحدة، استخدم صفحة نقاط البيع بدلًا من ذلك.",
+  "Type RESET ALL TERMINALS to confirm": "اكتب RESET ALL TERMINALS للتأكيد",
 };

@@ -459,7 +459,6 @@ pub const TOOLS: &[ToolSpec] = &[
         .owner(),
     write("propose_switch_branch", "branches.switch", "medium", &["admin.access"], "branch_id:s!", "Work in another branch for back-office tasks.").flag("org.multi_branch"),
     write("propose_device_rename", "devices.rename", "low", &["devices.manage"], "device_id:s!,name:s!", "Rename a till or hub."),
-    write("propose_device_active", "devices.set_active", "high", &["devices.manage"], "device_id:s!,active:b!", "Enable or disable (revoke) a device.").owner(),
     // ---- system ----------------------------------------------------------
     write("propose_setting", "settings.save", "medium", SETTINGS, "key:s!,value:o!",
         "Save one settings section (keys: pos, shift, payments, receipt, inventory, appearance, security, loyalty, features). features, security and inventory (costing method) are owner-only and high risk. Read settings_public first; send the whole section."),
@@ -675,6 +674,10 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("sync.retry_dead_letter", "forbidden: only a person retries a sync problem"),
     ("sync.retry_dead_letters", "forbidden: only a person retries sync problems"),
     ("sync.close_dead_letter", "forbidden: only a person closes a sync problem"),
+    ("devices.rotate_credential", "forbidden: only a person rotates a terminal's credential"),
+    ("devices.cancel_rotation", "forbidden: only a person cancels a credential rotation"),
+    ("devices.revoke", "forbidden: only a person revokes a terminal"),
+    ("devices.set_active", "forbidden: only a person revokes or re-activates a device"),
     ("cases.open_for_shift", "a person opens a case from the drawer"),
     ("cases.attach", "a person adds evidence to a case"),
     ("cases.evidence", "file download in the case drawer"),
