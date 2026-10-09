@@ -15,6 +15,12 @@ import { formatDateTime } from "../../lib/time";
 import { t, tb } from "../../i18n";
 
 export const TOOL_LABEL: Record<string, () => string> = {
+  library_search: () => t("Searched the documents"),
+  library_document: () => t("Opened a document"),
+  library_page_text: () => t("Read a document page"),
+  propose_document_link: () => t("Proposed linking a document"),
+  propose_document_details: () => t("Proposed correcting a document's details"),
+  propose_expense_draft: () => t("Proposed a draft expense"),
   list_reports: () => t("Listed reports"),
   run_report: () => t("Ran a report"),
   search_products: () => t("Searched products"),

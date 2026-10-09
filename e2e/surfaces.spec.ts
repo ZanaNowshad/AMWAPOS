@@ -83,6 +83,7 @@ const ROUTES = [
   "cases",
   "terminals",
   "sync-reconciliation",
+  "documents",
   "phone-view",
   "whatsapp",
   "ai",

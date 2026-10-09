@@ -225,6 +225,44 @@ export const api = {
     evidence: (case_id: string, file_id: string) =>
       call<{ file_name: string; mime: string; base64: string }>("cases.evidence", { case_id, file_id }),
   },
+  library: {
+    list: (filter: T.LibraryFilter) => call<T.LibraryList>("library.list", { filter }),
+    search: (q: string, include_old = false, limit?: number) =>
+      call<{ results: T.LibraryHit[] }>("library.search", { q, include_old, limit: limit ?? null }),
+    get: (document_id: string) => call<T.LibraryDocument>("library.get", { document_id }),
+    text: (document_id: string, page?: number | null) =>
+      call<{
+        document_id: string;
+        page: number | null;
+        text: string | null;
+        truncated?: boolean;
+        text_status: T.LibraryTextStatus;
+        message?: string;
+      }>("library.text", { document_id, page: page ?? null }),
+    file: (document_id: string) =>
+      call<{ file_name: string; mime: string; base64: string; intact: boolean }>("library.file", { document_id }),
+    add: (document: T.LibraryAddInput) =>
+      call<{ document_id: string; number: string; duplicate: boolean; sha256: string }>("library.add", { document }),
+    update: (
+      document_id: string,
+      changes: { title?: string; category?: string; document_date?: string; note?: string },
+    ) => call<{ document_id: string }>("library.update", { document_id, changes }),
+    link: (document_id: string, link: { entity_type: T.LibraryEntityType; entity_id: string }) =>
+      call<{ document_id: string; linked: boolean }>("library.link", { document_id, link }),
+    unlink: (document_id: string, link_id: string) =>
+      call<{ document_id: string }>("library.unlink", { document_id, link_id }),
+    replace: (document_id: string, file_name: string, data: string, note?: string | null) =>
+      call<{ document_id: string; number: string; version: number }>("library.replace", {
+        document_id,
+        file_name,
+        data,
+        note: note ?? null,
+      }),
+    archive: (document_id: string, reason: string) =>
+      call<{ document_id: string }>("library.archive", { document_id, reason }),
+    unarchive: (document_id: string) => call<{ document_id: string }>("library.unarchive", { document_id }),
+    remove: (document_id: string) => call<{ document_id: string; deleted: boolean }>("library.delete", { document_id }),
+  },
   statements: {
     get: (customer_id: string, from?: string | null, to?: string | null) =>
       call<T.CustomerStatement>("customers.statement", { customer_id, from: from ?? null, to: to ?? null }),

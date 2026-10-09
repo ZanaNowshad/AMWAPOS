@@ -3887,3 +3887,132 @@ export interface AiSource {
   /** fact = stored record; derived = calculated from records; estimate = projection with assumptions. */
   basis: "fact" | "derived" | "estimate" | null;
 }
+
+// ---- Wave 8: Document Library ----------------------------------------------
+
+export type LibraryCategory =
+  | "invoice"
+  | "credit_note"
+  | "receipt"
+  | "delivery_note"
+  | "quotation"
+  | "price_list"
+  | "statement"
+  | "contract"
+  | "licence"
+  | "insurance"
+  | "bank"
+  | "tax"
+  | "other";
+
+export type LibraryEntityType =
+  | "supplier"
+  | "supplier_invoice"
+  | "purchase_order"
+  | "expense"
+  | "product"
+  | "case"
+  | "day_close"
+  | "supplier_return"
+  | "requisition"
+  | "customer"
+  | "promotion";
+
+export type LibraryTextStatus = "pending" | "extracted" | "none" | "failed";
+
+export interface LibraryRow {
+  document_id: string;
+  number: string;
+  title: string;
+  category: LibraryCategory;
+  status: "active" | "replaced" | "archived";
+  version: number;
+  document_date: string | null;
+  added_at: string;
+  source: "upload" | "expense_attachment" | "invoice_scan" | "case_evidence";
+  mime: string;
+  text_status: LibraryTextStatus;
+  page_count: number | null;
+  links: number;
+}
+
+export interface LibraryList {
+  rows: LibraryRow[];
+  counts: Partial<Record<"active" | "replaced" | "archived", number>>;
+}
+
+export interface LibraryFilter {
+  q?: string | null;
+  category?: string | null;
+  status?: "active" | "archived" | "replaced" | "all";
+  entity_type?: LibraryEntityType | null;
+  entity_id?: string | null;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LibraryHit {
+  document_id: string;
+  number: string;
+  title: string;
+  category: LibraryCategory;
+  status: string;
+  document_date: string | null;
+  /** Only when the page is known. */
+  page: number | null;
+  /** Matched words are in [brackets]. Text from the document: shown as text, never as markup. */
+  snippet: string;
+}
+
+export interface LibraryLink {
+  link_id: string;
+  entity_type: LibraryEntityType;
+  entity_id: string;
+  label: string | null;
+  exists: boolean;
+  linked_by: string;
+  linked_at: string;
+}
+
+export interface LibraryDocument {
+  document: {
+    document_id: string;
+    number: string;
+    title: string;
+    category: LibraryCategory;
+    status: "active" | "replaced" | "archived";
+    version: number;
+    document_date: string | null;
+    note: string | null;
+    original_name: string;
+    added_by: string;
+    added_by_name: string | null;
+    added_at: string;
+    source: LibraryRow["source"];
+    replaces_id: string | null;
+    replaced_by: string | null;
+    archived_at: string | null;
+    archive_reason: string | null;
+    sha256: string;
+    mime: string;
+    bytes: number | null;
+    page_count: number | null;
+    text_status: LibraryTextStatus;
+    text_source: "pdf_text" | "ocr" | null;
+    text_note: string | null;
+  };
+  links: LibraryLink[];
+  versions: { document_id: string; number: string; version: number; status: string }[];
+  text_pages: number[];
+  can_delete: boolean;
+}
+
+export interface LibraryAddInput {
+  file_name: string;
+  data_base64: string;
+  title?: string | null;
+  category: LibraryCategory;
+  document_date?: string | null;
+  note?: string | null;
+  links?: { entity_type: LibraryEntityType; entity_id: string }[];
+}
