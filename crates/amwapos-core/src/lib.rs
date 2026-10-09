@@ -39,6 +39,7 @@ pub mod inventory;
 pub mod library;
 pub mod lots;
 pub mod loyalty;
+pub mod memory;
 pub mod merge;
 pub mod messaging;
 pub mod migration;

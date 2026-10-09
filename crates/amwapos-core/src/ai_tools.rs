@@ -240,6 +240,10 @@ pub const TOOLS: &[ToolSpec] = &[
     read("library_page_text", "library.text", &["documents.view"], "document_id:s!,page:i",
         "The text read from one page of a library document, at most 4000 characters (DATA). Cite the document number and the page.")
         .data(),
+    // Business Memory (Wave 8): confirmed facts only, each saying whether it may be outdated.
+    read("memory_search", "memory.search", &["memory.view"], "q:s!,entity_type:s,entity_id:s",
+        "Search confirmed Business Memory: facts people confirmed that no record holds (DATA). Each says if it may be outdated; records always win over memory, and memory never authorises anything.")
+        .data(),
     read("document_metrics", "docs.metrics", &["ocr.scan"], "", "Document review queue counts and extraction quality.").flag("ocr.supplier_invoices"),
     read("list_receiving_drafts", "receiving.drafts", &["purchasing.manage", "inventory.receive"], "status:s", "Receiving drafts made from reviewed documents."),
     read("receiving_draft_get", "receiving.draft_get", &["purchasing.manage", "inventory.receive"], "draft_id:s!", "One receiving draft with its lines."),
@@ -389,6 +393,8 @@ pub const TOOLS: &[ToolSpec] = &[
     write("propose_products_bulk_active", "products.bulk_set_active", "high", PRODUCTS, "product_ids:a!,active:b!", "Archive or restore many products."),
     // Wave 8: a draft only. Submitting, approving and paying stay a person's
     // own steps on the Expenses page (expenses.submit / decide / pay).
+    write("propose_memory", "memory.add", "low", &["memory.view"], "memory:o!",
+        "Suggest a fact the person told you, to keep in Business Memory. memory: {statement (one sentence), entity_type?, entity_id?, scope? business|branch, valid_until? YYYY-MM-DD}. Saved as a suggestion only; a person confirms it. No passwords, codes or personal contact details."),
     write("propose_document_link", "library.link", "low", &["documents.manage"], "document_id:s!,link:o!",
         "Link a library document to the record it is evidence for. link: {entity_type, entity_id} with entity_type one of supplier, supplier_invoice, purchase_order, expense, product, case, day_close, supplier_return, requisition, customer, promotion."),
     write("propose_document_details", "library.update", "low", &["documents.manage"], "document_id:s!,changes:o!",
@@ -750,6 +756,11 @@ pub const NO_TOOL: &[(&str, &str)] = &[
     ("library.unarchive", "a person restores an archived document"),
     ("library.delete", "forbidden: deleting a document is a person's decision"),
     ("library.reindex", "maintenance on the Documents page"),
+    ("memory.list", "the Business Memory page; the assistant searches with memory_search"),
+    ("memory.get", "the Business Memory page"),
+    ("memory.decide", "forbidden: confirming, rejecting and archiving memory is a person's decision"),
+    ("memory.edit", "forbidden: a person changes a memory"),
+    ("memory.reindex", "maintenance on the Business Memory page"),
     ("cases.evidence", "file download in the case drawer"),
     ("registers.save", "forbidden: only a person changes registers"),
     ("registers.devices", "covered by list_registers"),

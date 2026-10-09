@@ -222,6 +222,12 @@ pub fn class_of(cmd: &str, args: &Value) -> Option<ActionClass> {
         // audited; the file and the record it points at never change).
         | "library.link"
         | "library.update" => ReversibleWrite,
+        // Business Memory: the assistant's suggestion is a candidate that
+        // changes nothing until a person confirms it.
+        "memory.add" if args.get("confirm").and_then(|v| v.as_bool()) == Some(false) => Suggest,
+        // A person writing a fact down as confirmed. The assistant's
+        // propose_memory never takes this path: it only adds candidates.
+        "memory.add" => CommitRecord,
         // ---- authoritative records ----------------------------------------
         "products.create"
         | "products.update"
@@ -301,6 +307,9 @@ fn is_read_command(c: &str) -> bool {
         "terminals.health",
         "cases.get",
         "library.search",
+        "memory.search",
+        "memory.list",
+        "memory.get",
         "library.get",
         "library.text",
         "library.list",

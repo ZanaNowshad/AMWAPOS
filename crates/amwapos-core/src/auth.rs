@@ -119,6 +119,8 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("bundles.manage", "Catalogue", "Set up bundles, kits and hampers"),
     ("documents.view", "Documents", "Open the document library (only documents for records the role may see)"),
     ("documents.manage", "Documents", "Add, link, replace and archive documents"),
+    ("memory.view", "Business Memory", "See confirmed business facts and suggestions (only for records the role may see)"),
+    ("memory.manage", "Business Memory", "Write down, confirm, reject, change and archive business facts"),
 ];
 
 pub const ROLE_OWNER: &str = "role_owner";
@@ -221,6 +223,8 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
 pub const UPGRADE_PERMISSIONS: &[&str] = &[
     "documents.view",
     "documents.manage",
+    "memory.view",
+    "memory.manage",
     "promotions.manage",
     "coupons.manage",
     "bundles.manage",

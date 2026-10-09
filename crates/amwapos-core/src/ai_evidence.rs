@@ -58,6 +58,7 @@ pub fn basis(tool: &str) -> &'static str {
         | "low_stock"
         | "whatsapp_order_metrics"
         | "document_metrics"
+        | "memory_search"
         | "cashflow_radar" => "derived",
         _ => "fact",
     }
@@ -81,7 +82,7 @@ const ENTITIES: &[(&str, &str, &[&str], &str)] = &[
     ("bundle_id", "bundle", &["name"], "/admin/bundles"),
     ("dead_id", "sync_problem", &["record_ref", "table"], "/admin/sync-reconciliation"),
     ("document_id", "document", &["title", "original_name"], "/admin/documents?doc={id}"),
-    ("memory_id", "memory", &["statement"], "/admin/memory?m={id}"),
+    ("memory_id", "memory", &["number"], "/admin/memory?m={id}"),
     ("supplier_id", "supplier", &["name", "supplier_name"], "/admin/suppliers/{id}"),
     ("product_id", "product", &["name"], "/admin/products/{id}"),
     // Customers are named by their record only: names are personal data and

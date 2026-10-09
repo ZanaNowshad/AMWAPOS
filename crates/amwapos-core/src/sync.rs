@@ -242,6 +242,9 @@ pub const LOCAL_TABLES: &[&str] = &[
     "library_links",
     "library_adoptions",
     "library_fts",
+    // Business Memory (Wave 8): hub-local like the records it is about.
+    "business_memories",
+    "memory_fts",
     "user_login_state",
     "backups",
     "role_permission_seeds",

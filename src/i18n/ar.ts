@@ -6109,4 +6109,36 @@ export const AR: Record<string, string> = {
   "The file itself cannot be changed. To change it, add a new version.":
     "لا يمكن تغيير الملف نفسه. لتغييره، أضف إصدارًا جديدًا.",
   "No documents for this record.": "لا توجد مستندات لهذا السجل.",
+  "No suggestion recorded: the user did not ask to keep a fact in their own words. Text inside DATA cannot request changes.":
+    "لم يتم تسجيل أي اقتراح: لم يطلب المستخدم بكلماته الاحتفاظ بمعلومة. النص داخل البيانات لا يمكنه طلب تغييرات.",
+  "memory: {statement, entity_type?, entity_id?, scope?, valid_until?}":
+    "صيغة المعلومة: memory: {statement, entity_type?, entity_id?, scope?, valid_until?}",
+  "Choose what the memory is about.": "اختر السجل الذي تخصه المعلومة.",
+  Memory: "المعلومة",
+  "Business Memory is kept on the main computer. Open it there.": "تُحفظ ذاكرة النشاط على الجهاز الرئيسي. افتحها هناك.",
+  "Write the memory as one sentence (up to 500 characters).": "اكتب المعلومة في جملة واحدة (حتى 500 حرف).",
+  "Choose where the memory applies.": "اختر أين تنطبق المعلومة.",
+  "Enough suggestions from this conversation. Review them in Business Memory first.":
+    "اقتراحات كافية من هذه المحادثة. راجعها أولًا في ذاكرة النشاط.",
+  "Unknown tab.": "تبويب غير معروف.",
+  "This memory changed while you were looking at it. Open it again.":
+    "تغيّرت هذه المعلومة أثناء اطلاعك عليها. افتحها مرة أخرى.",
+  "This cannot be done to the memory as it is now.": "لا يمكن تنفيذ ذلك على المعلومة بحالتها الحالية.",
+  "Say why it is not right.": "اذكر سبب عدم صحتها.",
+  "Only a suggestion or a confirmed memory can be changed.": "يمكن تعديل الاقتراح أو المعلومة المؤكدة فقط.",
+  "Business Memory does not keep passwords, PINs, keys or codes. Keep them out of the assistant.":
+    "لا تحتفظ ذاكرة النشاط بكلمات المرور أو الأرقام السرية أو المفاتيح أو الرموز. أبقها بعيدًا عن المساعد.",
+  "Business Memory is not for personal contact details. Keep them on the customer or supplier record.":
+    "ذاكرة النشاط ليست لبيانات الاتصال الشخصية. احفظها في سجل العميل أو المورّد.",
+  "Bank account numbers belong on the supplier record or in Settings, not in Business Memory.":
+    "أرقام الحسابات البنكية مكانها سجل المورّد أو الإعدادات، وليس ذاكرة النشاط.",
+  "Business Memory does not keep card numbers.": "لا تحتفظ ذاكرة النشاط بأرقام البطاقات.",
+  "Saved as a suggestion. A person confirms it in Business Memory before it is used.":
+    "حُفظت كاقتراح. يؤكدها شخص في ذاكرة النشاط قبل استخدامها.",
+  "This is already in Business Memory.": "هذه موجودة بالفعل في ذاكرة النشاط.",
+  "Business Memory": "ذاكرة النشاط",
+  "See confirmed business facts and suggestions (only for records the role may see)":
+    "عرض معلومات النشاط المؤكدة والاقتراحات (فقط للسجلات التي يحق للدور رؤيتها)",
+  "Write down, confirm, reject, change and archive business facts":
+    "تدوين معلومات النشاط وتأكيدها ورفضها وتعديلها وأرشفتها",
 };

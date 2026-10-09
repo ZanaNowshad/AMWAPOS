@@ -691,6 +691,22 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
         "library.unarchive" => out(core.library_archive(tk()?, &req::<String>(&args, "document_id")?, "", false)),
         "library.delete" => out(core.library_delete(tk()?, &req::<String>(&args, "document_id")?)),
         "library.reindex" => out(core.library_reindex(tk()?)),
+        // Business Memory (Wave 8).
+        "memory.list" => out(core.memory_list(tk()?, opt(&args, "filter")?.unwrap_or_default())),
+        "memory.get" => out(core.memory_get(tk()?, &req::<String>(&args, "memory_id")?)),
+        "memory.add" => out(core.memory_add(tk()?, req(&args, "memory")?, opt(&args, "confirm")?.unwrap_or(true))),
+        "memory.decide" => out(core.memory_decide(
+            tk()?,
+            &req::<String>(&args, "memory_id")?,
+            &req::<String>(&args, "action")?,
+            req(&args, "revision")?,
+            opt(&args, "note")?,
+        )),
+        "memory.edit" => out(core.memory_edit(tk()?, &req::<String>(&args, "memory_id")?, req(&args, "revision")?, req(&args, "memory")?)),
+        "memory.search" => {
+            out(core.memory_search(tk()?, &req::<String>(&args, "q")?, opt(&args, "entity_type")?, opt(&args, "entity_id")?))
+        }
+        "memory.reindex" => out(core.memory_reindex(tk()?)),
         "expenses.categories" => out(core.expense_categories(tk()?)),
         "expenses.category_save" => out(core.expense_category_save(
             tk()?,
