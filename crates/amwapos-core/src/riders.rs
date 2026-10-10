@@ -72,7 +72,7 @@ fn can_hand_over(s: &Session) -> AppResult<()> {
     }
 }
 
-fn rider_cash(c: &Connection, rider: &str, name: &str, branch: &str) -> AppResult<RiderCash> {
+pub(crate) fn rider_cash(c: &Connection, rider: &str, name: &str, branch: &str) -> AppResult<RiderCash> {
     let mut st = c.prepare(
         "SELECT k.collection_id, k.delivery_id, COALESCE(s.receipt_number, d.delivery_number), cu.name, d.area, k.amount_minor, k.created_at
          FROM sale_collections k LEFT JOIN delivery_orders d ON d.delivery_id=k.delivery_id LEFT JOIN sales s ON s.sale_id=k.sale_id

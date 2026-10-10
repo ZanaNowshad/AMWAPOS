@@ -85,6 +85,7 @@ const ROUTES = [
   "sync-reconciliation",
   "documents",
   "memory",
+  "cashflow",
   "phone-view",
   "whatsapp",
   "ai",

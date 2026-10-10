@@ -308,6 +308,7 @@ fn is_read_command(c: &str) -> bool {
         "cases.get",
         "library.search",
         "memory.search",
+        "cashflow.radar",
         "memory.list",
         "memory.get",
         "library.get",

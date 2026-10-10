@@ -18,6 +18,7 @@ pub mod barcodes;
 pub mod branches;
 pub mod bundles;
 pub mod cases;
+pub mod cashflow;
 pub mod catalog;
 pub mod catalogue;
 pub mod channel;

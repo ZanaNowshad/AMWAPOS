@@ -1068,20 +1068,20 @@ fn allocate(
     Ok(())
 }
 
-struct OpenItem {
-    supplier_id: String,
-    supplier_name: String,
-    invoice_id: String,
-    number: String,
-    invoice_number: Option<String>,
-    doc_date: String,
-    due_date: String,
-    amount: i64,
-    outstanding: i64,
+pub(crate) struct OpenItem {
+    pub(crate) supplier_id: String,
+    pub(crate) supplier_name: String,
+    pub(crate) invoice_id: String,
+    pub(crate) number: String,
+    pub(crate) invoice_number: Option<String>,
+    pub(crate) doc_date: String,
+    pub(crate) due_date: String,
+    pub(crate) amount: i64,
+    pub(crate) outstanding: i64,
 }
 
 /// Every posted, unreversed invoice with something still outstanding.
-fn all_open_items(c: &Connection) -> AppResult<Vec<OpenItem>> {
+pub(crate) fn all_open_items(c: &Connection) -> AppResult<Vec<OpenItem>> {
     let mut st = c.prepare(
         "SELECT l.supplier_id, s.name, l.invoice_id, i.number, i.invoice_number, l.doc_date, l.due_date, l.amount_minor,
                 l.amount_minor - COALESCE((SELECT SUM(a.amount_minor) FROM ap_allocations a WHERE a.liability_id=l.liability_id AND a.status='active'),0)

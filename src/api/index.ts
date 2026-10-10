@@ -282,6 +282,9 @@ export const api = {
     edit: (memory_id: string, revision: number, memory: T.MemoryInput) =>
       call<T.MemoryRow>("memory.edit", { memory_id, revision, memory }),
   },
+  cashflow: {
+    radar: (horizon: number) => call<T.CashflowRadar>("cashflow.radar", { horizon }),
+  },
   statements: {
     get: (customer_id: string, from?: string | null, to?: string | null) =>
       call<T.CustomerStatement>("customers.statement", { customer_id, from: from ?? null, to: to ?? null }),

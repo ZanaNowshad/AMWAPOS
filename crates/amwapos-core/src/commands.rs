@@ -707,6 +707,8 @@ pub fn dispatch(core: &AppCore, cmd: &str, token: Option<&str>, args: Value) -> 
             out(core.memory_search(tk()?, &req::<String>(&args, "q")?, opt(&args, "entity_type")?, opt(&args, "entity_id")?))
         }
         "memory.reindex" => out(core.memory_reindex(tk()?)),
+        // Cash-flow Radar (Wave 8).
+        "cashflow.radar" => out(core.cashflow_radar(tk()?, opt(&args, "horizon")?)),
         "expenses.categories" => out(core.expense_categories(tk()?)),
         "expenses.category_save" => out(core.expense_category_save(
             tk()?,

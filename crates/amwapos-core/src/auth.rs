@@ -120,6 +120,7 @@ pub const PERMISSIONS: &[(&str, &str, &str)] = &[
     ("documents.view", "Documents", "Open the document library (only documents for records the role may see)"),
     ("documents.manage", "Documents", "Add, link, replace and archive documents"),
     ("memory.view", "Business Memory", "See confirmed business facts and suggestions (only for records the role may see)"),
+    ("cashflow.view", "Finance", "See the Cash-flow Radar: money the records say will go out and come in"),
     ("memory.manage", "Business Memory", "Write down, confirm, reject, change and archive business facts"),
 ];
 
@@ -187,6 +188,7 @@ pub fn default_roles() -> Vec<(&'static str, &'static str, &'static str, Vec<&'s
         "day.x_report",
         "cases.view",
         "documents.view",
+        "cashflow.view",
     ];
     let inventory = vec![
         "admin.access",
@@ -225,6 +227,7 @@ pub const UPGRADE_PERMISSIONS: &[&str] = &[
     "documents.manage",
     "memory.view",
     "memory.manage",
+    "cashflow.view",
     "promotions.manage",
     "coupons.manage",
     "bundles.manage",

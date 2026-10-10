@@ -18,6 +18,7 @@ import {
   FolderInput,
   FolderOpen,
   Brain,
+  Radar,
   FileScan,
   FileText,
   Gauge,
@@ -111,6 +112,7 @@ import { WhatsAppPage, InvoiceScanPage, PaymentReviewsPage } from "./automation"
 import { DocumentReviewPage } from "./documents";
 import { LibraryPage } from "./library";
 import { MemoryPage } from "./memory";
+import { CashflowPage } from "./cashflow";
 import { WhatsAppOrdersPage } from "./waOrders";
 import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
@@ -341,6 +343,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
         element: ReportsHome,
       },
       { path: "expenses", label: t("Expenses"), icon: Receipt, perm: "expenses.view", element: ExpensesPage },
+      { path: "cashflow", label: t("Cash-flow Radar"), icon: Radar, perm: "cashflow.view", element: CashflowPage },
       { path: "analytics", label: t("Analytics"), icon: LineChart, perm: "reports.financial", element: AnalyticsPage },
       {
         path: "end-of-day",

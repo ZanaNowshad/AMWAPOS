@@ -4073,3 +4073,82 @@ export interface MemoryInput {
   document_id?: string | null;
   excerpt?: string | null;
 }
+
+// ---- Wave 8: Cash-flow Radar -----------------------------------------------
+
+export type RadarBand = "known" | "scheduled" | "exposure";
+
+export interface RadarLine {
+  band: RadarBand;
+  direction: "out" | "in";
+  kind: string;
+  date: string | null;
+  overdue: boolean;
+  amount_minor: number;
+  label: string;
+  source: { type: string; id: string; link: string };
+}
+
+export interface CashflowRadar {
+  as_of: string;
+  horizon_days: number;
+  until: string;
+  not_a_bank_balance: string;
+  cash_recorded: {
+    drawers: {
+      shift_id: string;
+      shift_number: string;
+      cashier: string;
+      till: string | null;
+      expected_cash_minor: number;
+    }[];
+    drawers_expected_minor: number;
+    last_counts: {
+      shift_number: string;
+      counted_cash_minor: number | null;
+      expected_cash_minor: number | null;
+      difference_minor: number | null;
+      closed_at: string | null;
+      till: string | null;
+    }[];
+    petty_cash: { fund_id: string; name: string; balance_minor: number }[];
+    petty_cash_minor: number;
+    riders_held_minor: number;
+    total_minor: number;
+  };
+  horizons: {
+    days: number;
+    until: string;
+    known_out_minor: number;
+    scheduled_out_minor: number;
+    exposure_out_minor: number;
+    scenario_in_minor: number | null;
+  }[];
+  weeks: {
+    from: string;
+    to: string;
+    known_out_minor: number;
+    scheduled_out_minor: number;
+    exposure_out_minor: number;
+    scenario_in_minor: number | null;
+    pressure: boolean;
+  }[];
+  lines: RadarLine[];
+  overdue_out_minor: number;
+  undated_out_minor: number;
+  unapplied_supplier_balance_minor: number;
+  expected_supplier_credits_minor: number;
+  receivables: {
+    customers: number;
+    total_minor: number;
+    current_minor: number;
+    d1_30_minor: number;
+    d31_60_minor: number;
+    d61_90_minor: number;
+    d90_plus_minor: number;
+  };
+  scenario:
+    | { available: true; days: number; from: string; to: string; net_sales_minor: number; daily_average_minor: number }
+    | { available: false; reason: string };
+  formulas: string[];
+}

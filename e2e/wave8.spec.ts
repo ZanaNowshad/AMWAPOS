@@ -219,3 +219,38 @@ test("business memory: a suggestion from a document waits for a person; a writte
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByTestId("memory-form")).toContainText("does not keep passwords");
 });
+
+test("cash-flow radar: an approved expense is known money going out, linked to its record, never a bank balance", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const t = await owner(page);
+  const cats = await rpc(page, "expenses.categories", {}, t);
+  const ex = await rpc(
+    page,
+    "expenses.save",
+    {
+      expense_id: null,
+      expense: { category_id: cats[0].category_id, description: `Generator rent ${stamp}`, total_minor: 37_500 },
+    },
+    t,
+  );
+  await rpc(page, "expenses.submit", { expense_id: ex.expense_id }, t);
+  const st = await rpc(page, "expenses.get", { expense_id: ex.expense_id }, t);
+  if (st.expense.status === "submitted")
+    await rpc(page, "expenses.decide", { expense_id: ex.expense_id, approve: true }, t);
+
+  await adminAt(page, "#/admin/cashflow");
+  await expect(page.getByRole("heading", { name: "Cash-flow Radar" })).toBeVisible();
+  await expect(page.getByTestId("radar-not-bank")).toContainText("This is not your bank balance");
+  await page.getByRole("tab", { name: "7 days" }).click();
+  const line = page.getByTestId("radar-line").filter({ hasText: `Generator rent ${stamp}` });
+  await expect(line).toHaveCount(1);
+  await expect(line).toContainText("Known");
+  await expect(page.getByTestId("radar-known")).not.toContainText("0.000");
+  await page.getByTestId("radar-formulas").locator("summary").click();
+  await expect(page.getByTestId("radar-formulas")).toContainText("integer minor units");
+  await shot(page, "w8-06-cashflow-radar");
+  await line.click();
+  await expect(page.getByRole("heading", { name: "Expenses" })).toBeVisible();
+});

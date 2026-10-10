@@ -6198,4 +6198,73 @@ export const AR: Record<string, string> = {
   "Correct the wording": "صحّح الصياغة",
   "Still true": "ما زالت صحيحة",
   "Nothing written down about this record.": "لم يُدوَّن شيء عن هذا السجل.",
+  "The Cash-flow Radar is on the main computer. Open it there.": "رادار التدفق النقدي على الجهاز الرئيسي. افتحه هناك.",
+  "Choose 7, 14, 30, 60 or 90 days.": "اختر 7 أو 14 أو 30 أو 60 أو 90 يومًا.",
+  "Cash-flow Radar": "رادار التدفق النقدي",
+  "Read the Cash-flow Radar": "قرأ رادار التدفق النقدي",
+  Known: "معروف",
+  Exposure: "محتمل",
+  "Paid or credited, not matched to an invoice": "مدفوع أو مُضاف كرصيد، غير مطابق لفاتورة",
+  "Approved expense, not paid": "مصروف معتمد، غير مدفوع",
+  "Expense awaiting approval": "مصروف بانتظار الاعتماد",
+  "Repeating expense, drafted": "مصروف متكرر، كمسودة",
+  "Repeating expense": "مصروف متكرر",
+  "Purchase order, not invoiced yet": "أمر شراء، لم تصدر فاتورته بعد",
+  "Approved invoice, not posted yet": "فاتورة معتمدة، لم تُرحَّل بعد",
+  "Credit expected from a return": "رصيد متوقع من مرتجع",
+  "What your records say will go out and come in over the next days, worked out from posted invoices, expenses, repeating expenses, open orders and returns.":
+    "ما تقول سجلاتك إنه سيخرج ويدخل خلال الأيام القادمة، محسوبًا من الفواتير المرحّلة والمصروفات والمصروفات المتكررة والطلبات المفتوحة والمرتجعات.",
+  "Known going out": "خارج معروف",
+  "Posted invoices and approved expenses": "فواتير مرحّلة ومصروفات معتمدة",
+  "Scheduled going out": "خارج مجدول",
+  "Repeating expenses": "مصروفات متكررة",
+  "Exposure going out": "خارج محتمل",
+  "Orders not invoiced, invoices not posted, expenses awaiting approval":
+    "طلبات بلا فواتير، فواتير غير مرحّلة، مصروفات بانتظار الاعتماد",
+  "Sales if the last 28 days repeat": "المبيعات إذا تكررت آخر 28 يومًا",
+  "A scenario, not a fact": "سيناريو، وليس حقيقة",
+  "Fewer than 28 days of sales: no scenario.": "أقل من 28 يومًا من المبيعات: لا يوجد سيناريو.",
+  "Cash recorded in the store now": "النقد المسجل في المتجر الآن",
+  "Drawers, petty cash and riders. Not the bank.": "الأدراج والنثرية والمندوبون. وليس البنك.",
+  "{0} is already past its due date and is counted today.": "{0} تجاوز تاريخ استحقاقه ويُحتسب اليوم.",
+  "Week by week": "أسبوعًا بأسبوع",
+  Week: "الأسبوع",
+  "Scenario sales": "مبيعات السيناريو",
+  "Pressure week": "أسبوع ضغط",
+  "By date": "حسب التاريخ",
+  "Nothing dated in this period": "لا شيء مؤرخ في هذه الفترة",
+  "Posted supplier invoices, approved expenses, repeating expenses and open orders appear here on their dates.":
+    "تظهر هنا فواتير الموردين المرحّلة والمصروفات المعتمدة والمتكررة والطلبات المفتوحة في تواريخها.",
+  "Without a date": "بدون تاريخ",
+  "These have no date in the records, so they are listed apart and not spread over the days.":
+    "هذه بلا تاريخ في السجلات، لذا تُعرض منفصلة ولا تُوزَّع على الأيام.",
+  "Cash recorded in the store": "النقد المسجل في المتجر",
+  "With riders, not handed over": "مع المندوبين، لم يُسلَّم",
+  "Last count at each till": "آخر عدّ في كل جهاز كاشير",
+  "What customers owe": "ما يدين به العملاء",
+  "When it will be paid is not known, so it has no date here.": "موعد السداد غير معروف، لذا ليس له تاريخ هنا.",
+  "Not yet due": "لم يستحق بعد",
+  "More than 90 days late": "متأخر أكثر من 90 يومًا",
+  "Credits expected from supplier returns: {0}": "أرصدة متوقعة من مرتجعات الموردين: {0}",
+  "How these figures are worked out": "كيف تُحسب هذه الأرقام",
+  "This is not your bank balance. AMWAPOS does not see your bank; it shows what your records say will go out and come in.":
+    "هذا ليس رصيدك البنكي. لا يرى AMWAPOS حسابك البنكي؛ بل يعرض ما تقول سجلاتك إنه سيخرج ويدخل.",
+  "Already paid or credited on supplier accounts, not yet matched to an invoice":
+    "مدفوع أو مُضاف كرصيد في حسابات الموردين، ولم يُطابق مع فاتورة بعد",
+  "See the Cash-flow Radar: money the records say will go out and come in":
+    "عرض رادار التدفق النقدي: الأموال التي تقول السجلات إنها ستخرج وتدخل",
+  "Known out = open amount of each posted supplier invoice on its due date + approved expenses not yet paid on their date; anything due earlier counts today, marked overdue.":
+    "الخارج المعروف = المبلغ المفتوح لكل فاتورة مورّد مرحّلة في تاريخ استحقاقها + المصروفات المعتمدة غير المدفوعة في تاريخها؛ وما استحق قبل ذلك يُحتسب اليوم ويُعلَّم كمتأخر.",
+  "Already paid or credited on supplier accounts but not matched to an invoice reduces what is owed; it is shown apart, without a date.":
+    "ما دُفع أو أُضيف كرصيد في حسابات الموردين دون مطابقته مع فاتورة يُخفّض المستحق؛ ويُعرض منفصلًا بلا تاريخ.",
+  "Scheduled out = each repeating expense on each of its next dates in the period, unless an expense was already made for that date (then that expense counts instead, once).":
+    "الخارج المجدول = كل مصروف متكرر في كل تاريخ قادم له ضمن الفترة، إلا إذا أُنشئ مصروف لذلك التاريخ (فيُحتسب ذلك المصروف بدلًا منه، مرة واحدة).",
+  "Exposure out = purchase orders still open less what has been invoiced against them + approved supplier invoices not yet posted + expenses awaiting approval. Exposure in = credits expected from supplier returns.":
+    "الخارج المحتمل = أوامر الشراء المفتوحة ناقص ما صدرت به فواتير + فواتير الموردين المعتمدة غير المرحّلة + المصروفات بانتظار الاعتماد. الداخل المحتمل = الأرصدة المتوقعة من مرتجعات الموردين.",
+  "Scenario in = (sales less refunds over the last 28 days) / 28 x days. Shown only with 28 days of sales.":
+    "داخل السيناريو = (المبيعات ناقص المرتجعات خلال آخر 28 يومًا) ÷ 28 × عدد الأيام. يُعرض فقط مع توفر 28 يومًا من المبيعات.",
+  "A pressure week: known + scheduled out is more than the scenario income for that week; without a scenario, a week holding 40% or more of the next 30 days' known + scheduled out.":
+    "أسبوع الضغط: الخارج المعروف + المجدول أكبر من دخل السيناريو لذلك الأسبوع؛ وبدون سيناريو، أسبوع يحمل 40% أو أكثر من الخارج المعروف + المجدول للثلاثين يومًا القادمة.",
+  "All amounts are integer minor units (fils). Nothing here is a bank balance.":
+    "كل المبالغ بوحدات صحيحة صغرى (فلس). لا شيء هنا رصيد بنكي.",
 };
