@@ -330,3 +330,11 @@ prices are untouched. Old sales have `promo_discount_minor` NULL ("not recorded"
 - The money split of a bundle uses the components' current retail prices as weights at the time
   of pricing. The split is frozen with the sale.
 - Order estimates (WhatsApp, phone, web) show normal prices; offers apply at the till.
+
+## 12. Wave 8 interactions
+
+- Promotion flyers and supplier support agreements can be kept in the Document Library and
+  linked to an offer (`promotion`); links copy no amounts.
+- Business Memory may note how an offer went. It never activates, changes or ends an offer: the
+  existing draft and confirmation rules are unchanged, and the assistant has no tool to switch
+  an offer on.

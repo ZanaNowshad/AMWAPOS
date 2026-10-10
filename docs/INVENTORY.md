@@ -336,3 +336,11 @@ tracking is switched off when it is set up, and a product with recorded stock ca
 - Refunds are of whole bundles and return each component to stock.
 - Replenishment and stock cover work on the components. Nothing is manufactured in advance.
 - Details: [PROMOTIONS_AND_BUNDLES.md](PROMOTIONS_AND_BUNDLES.md) section 4.
+
+## Wave 8 interactions
+
+- Delivery notes and waste or stocktake photos can be kept in the Document Library and linked
+  to the product, supplier, purchase order or supplier return. Nothing in the library moves
+  stock: links point at records and copy no quantity.
+- Business Memory may hold facts about products ("sells out before Eid"). They never change
+  reorder points or suggestions, and the assistant shows them below the records.

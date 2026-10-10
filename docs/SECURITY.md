@@ -92,6 +92,29 @@ share.
 - Backups carry a SHA-256 manifest and are verified (`PRAGMA integrity_check`) after creation and
   before restore. Store off-site copies securely.
 
+## Wave 8: what the assistant can and cannot see
+
+Rules and tests: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md) §3–§4, §9.
+- **Never sent to the provider:** PINs and PIN hashes, API keys, OS credential values, hub
+  credentials, pairing codes, QR secrets, WhatsApp session and device rotation secrets, card
+  data, file bytes, and customer names or phones.
+- **Text from outside the store is DATA.** Documents, OCR, notes, WhatsApp, supplier text and
+  memory source text are wrapped in every read. Text that reads like instructions marks the
+  conversation untrusted, and later proposals carry high risk. DATA can never request a change.
+- **Proposals execute nothing.** Payloads are frozen and keep declared arguments only;
+  duplicates are refused. Confirmation runs as the confirmer, with permissions reloaded on that
+  request.
+- **Document permissions intersect** with the records each document is evidence for. A
+  document the person may not see reads as not found, in search, details, page text, the file
+  and the assistant.
+- **Business Memory refuses** passwords, PINs, keys, codes, card numbers, bank account numbers
+  and personal contact details. Memory is never an authorisation.
+- **Evidence integrity:** library files are content-addressed. A changed file is reported as
+  not matching its fingerprint and is not copied into backups. Linked evidence cannot be
+  deleted (trigger).
+- **Backups now contain the library's files** (`AMWAPOS-files/` beside the backup). Treat that
+  folder like the database file: copy it encrypted.
+
 ## Network
 
 - The hub listens on TCP 47800 and UDP 47801 discovery. The installer's firewall rules allow them

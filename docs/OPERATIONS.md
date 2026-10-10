@@ -291,6 +291,22 @@ Automated coverage exists for everything marked ✅. The ☐ items need a person
 - ✅ Operational control: refused records become one case per till and reason, are tried again or closed with a reason, and the case closes itself after recovery; terminal health shows only reported facts; a credential rotates in stages and a lost till is revoked (wave7, wave7_sync tests; Playwright wave7 flows with in-process tills).
 - ☐ Operational control on the store network: switch a till off mid-shift and see the Alert Centre case after 15 minutes; rotate a till's credential and confirm it keeps selling and syncing; revoke a spare till as lost and confirm it is refused.
 
+- ✅ Document Library, Business Memory and Cash-flow Radar: dedupe, versions, archive-not-delete, permission scoping, earlier receipts adopted, text read per page, search with page citations; memory lifecycle, outdated and contradiction warnings, secrets refused; radar bands without double counting; all three work with the assistant off; backups carry library files and a restore puts them back (wave8_library, wave8_memory, wave8_cashflow, wave8_cross tests; Playwright wave8 flows).
+- ☐ Document Library on the store hub: scan a supplier invoice photo with the bundled OCR and find its words by search; copy a backup folder (with `AMWAPOS-files`) to another PC and restore it there.
+- ☐ Cash-flow Radar against the store's own payables and expenses: the owner checks that the next 30 days match what they expect to pay.
+
+## Wave 8 operations
+
+- **Backups include document files.** Each backup folder now holds `AMWAPOS-files/`, one copy
+  per file, named by its SHA-256. Keep that folder with the `.amwbak` files, and copy both
+  together when moving backups. A restore puts back any missing library file from it.
+- **Library text.** PDFs are read on upload. Photos and scans are read by the OCR worker when
+  OCR is on. "Text could not be extracted." means OCR failed on that file; open it to check.
+- **Rebuild search** (Documents and Business Memory): the index is rebuilt from stored rows if
+  it is ever damaged (`library.reindex`, `memory.reindex`; owner or manager).
+- **The radar is not the bank.** Reconcile it against the bank statement; it only knows what
+  the records say.
+
 ## Soak checklist (owner, before going live)
 
 Read each line and tick it on the store computer. Nothing here is automatic.

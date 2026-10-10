@@ -456,3 +456,10 @@ Relationship with this document:
   is rewritten automatically.
 - Price-embedded scale labels never take ordinary offers. Weight labels do.
 - A bundle's price comes from the resolver like any product's.
+
+## Wave 8: evidence, not prices
+
+- Price lists and quotations can be kept in the Document Library and linked to a supplier or
+  product. A document never changes a price; prices change only through the pricing commands.
+- Business Memory facts about a product show "May be outdated" once the product record changes
+  after they were confirmed. The assistant ranks the product record above memory.

@@ -310,3 +310,27 @@ Design and rules: [OPERATIONAL_CONTROL.md](OPERATIONAL_CONTROL.md).
 - **No jobs table:** the minute check is idempotent and stateless apart from
   `alert_conditions`.
 
+
+## Wave 8: intelligence and evidence
+
+Design and rules: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md).
+
+- **Evidence:** `ai_evidence.rs` attaches `evidence {tool, basis, as_of, branch_id, sources}`
+  to every assistant read. The AI page's "Sources used" is built from stored tool results only.
+- **Sessions** reload the user's role and permissions on every request (`service.rs`), so a
+  removed permission takes effect before any proposal is confirmed.
+- **Document Library:** `library.rs`, migration 0037.
+  - Files are stored once by SHA-256; documents, links, versions and adoptions are separate
+    tables.
+  - FTS5 index `library_fts` (row id = seq × 10000 + page).
+  - A per-minute hub step reads PDF text layers; the OCR worker reads scans and photos.
+  - Backups copy files to `AMWAPOS-files/` beside the backup; restore puts back missing ones.
+- **Business Memory:** `memory.rs`, migration 0038. `business_memories` and FTS5 `memory_fts`.
+  Confirmed statements are immutable (trigger); changes supersede.
+- **Cash-flow Radar:** `cashflow.rs`. A pure read over AP open items, expenses, repeating
+  expenses, POs, returns, shifts, petty cash, rider custody and customer ageing. Integer fils;
+  no table.
+- **Permissions:** `documents.view`, `documents.manage`, `memory.view`, `memory.manage`,
+  `cashflow.view`, granted once to built-in roles whose defaults include them.
+- **Hub-local:** every new table is in `sync::LOCAL_TABLES`; the screens and the assistant's
+  tools refuse on a terminal with a plain message.

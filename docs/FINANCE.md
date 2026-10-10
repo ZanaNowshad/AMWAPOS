@@ -403,3 +403,24 @@ close or reopen a day, act on a case, change a count or change a register:
 - `tests/sync.rs`: a till offline during the close sends its sales into the
   next close, and the hub opens its variance case.
 - `e2e/wave2.spec.ts`: a short drawer becomes a case; the day is closed once.
+
+## Wave 8: Cash-flow Radar and finance evidence
+
+Rules and formulas: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md) §7.
+- **Cash-flow Radar** (`cashflow.view`; owner, manager, accountant) for the next 7–90 days, in
+  integer fils:
+  - **Known:** posted AP on its due dates and approved, unpaid expenses. Anything due earlier
+    counts today, marked overdue. Unmatched payments and credits are shown apart.
+  - **Scheduled:** repeating expenses, counted once even after their draft is made.
+  - **Exposure:** expenses awaiting approval (and the AP items in PROCUREMENT.md).
+  - **Scenario:** sales less refunds over 28 days, only with that much history.
+  - Also shown: cash recorded in drawers, petty cash and with riders; what customers owe by
+    age, with no date.
+  - It is never presented as a bank balance.
+- **Finance documents** (bank, tax and statement categories) need a finance permission on top of
+  `documents.view`. An expense receipt needs `expenses.view`; a supplier invoice needs
+  `payables.view`.
+- **Expense attachments** (Wave 1) appear in the Document Library, linked to their expense, with
+  no copy of the file and their original author and time. They are now carried by backups.
+- **Assistant:** `propose_expense_draft` creates a draft only, and a person submits it. Expense
+  entry alone does not open proposals (the accountant stays read-only for the assistant).

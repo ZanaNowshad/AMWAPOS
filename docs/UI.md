@@ -316,3 +316,42 @@ overdue + hub "Update needed" with the admin banner and nav flyout.
   every terminal is shown to the owner only and needs the typed confirmation.
 - Every new string has Arabic; the English/Arabic sweep covers the three screens.
 
+
+## Wave 8 surfaces
+
+- **Documents** (Admin → Business → Documents, `/admin/documents`, `documents.view`):
+  - a search box (matched words highlighted in the snippet, page chip when known);
+  - tabs Current / Archived / Older versions / All with counts, and a category filter;
+  - empty states that say where documents come from.
+  - The drawer (`?doc=<id>`) shows:
+    - the file, with an image preview or "Save a copy", and whether it still matches its
+      fingerprint;
+    - the date printed on it ("Not entered" when none);
+    - the records it is evidence for, with a link to each;
+    - the text per page, or the reason there is none;
+    - the version chain, and "Suggest a fact from this document";
+    - Edit details, Replace with a new version, Archive / Restore, and Delete only when it was
+      never evidence.
+- **Business Memory** (Admin → Business → Business Memory, `/admin/memory`, `memory.view`):
+  - tabs Confirmed / Needs review / Archived / History, and search;
+  - rows show the statement, the record it is about, its source, "After reading outside text"
+    and "May be outdated" chips.
+  - The drawer (`?m=<id>`) shows:
+    - the outdated reason in the person's language;
+    - for a suggestion, the confirmed facts that may disagree;
+    - provenance, with the words it came from;
+    - actions: Confirm / Correct the wording / Reject (reason needed); Still true / Change /
+      Archive; Restore;
+    - earlier versions.
+- **Cash-flow Radar** (Admin → Business → Cash-flow Radar, `/admin/cashflow`,
+  `cashflow.view`):
+  - the banner "This is not your bank balance…" and horizon tabs 7/14/30/60/90;
+  - tiles: Known, Scheduled, Exposure, the sales scenario (or why there is none), and cash
+    recorded in the store;
+  - an overdue notice and a week-by-week table with pressure weeks;
+  - lines by date with band chips (each opens its record) and a "Without a date" list;
+  - cash in the store with the last count at each till, and what customers owe by age;
+  - "How these figures are worked out".
+- **Supplier page:** Documents and Business Memory panels for that supplier.
+- **AI page:** Sources used chips link documents and memories; the trace names the new tools.
+- Every new string has Arabic; the English/Arabic sweep at 1024×768 covers the three screens.

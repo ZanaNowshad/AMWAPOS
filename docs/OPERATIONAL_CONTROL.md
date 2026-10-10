@@ -320,3 +320,12 @@ The POS path is unchanged (P95 scan 1.40 ms, search 5.67 ms, cart change 1.06 ms
 10.04 ms). Every list is paged (at most 200 rows per request), every count and group is one
 indexed query, and the check never runs one query per row.
 
+
+## 14. Wave 8 interactions
+
+- **Case evidence** (files attached to cases) appears in the Document Library, linked to its
+  case, with no copy of the file. Backups now carry these files.
+- The Library, Business Memory and the Cash-flow Radar are hub-local like cases. On a terminal
+  they say "kept on the main computer", and so do the assistant's reads.
+- Library text reading runs in the existing minute step (PDF text) and the OCR worker (photos
+  and scans); no new background job type was added.

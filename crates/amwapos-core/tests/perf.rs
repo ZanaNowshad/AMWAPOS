@@ -589,3 +589,177 @@ fn perf_100k_products() {
     assert!(health < Duration::from_millis(500), "terminals {health:?}");
     assert!(dash < Duration::from_secs(1), "dashboard {dash:?}");
 }
+
+/// Wave 8: Document Library search over 50,000 documents, Business Memory
+/// search over 5,000 memories, and the Cash-flow Radar over thousands of
+/// records. Documents and memories go in through the same indexing code
+/// the app uses (rows written directly for speed; the index is built by
+/// `library::index_document` and `memory` itself).
+#[test]
+#[ignore]
+fn perf_wave8_intelligence() {
+    let e = env();
+    let t = &e.owner_token;
+    let mut rng = Rng(11);
+    let n_docs = 50_000usize;
+    let started = Instant::now();
+    e.core
+        .db
+        .write(|c| {
+            let now = amwapos_core::time::now_str();
+            for i in 0..n_docs {
+                let sha = format!("{:064x}", i + 1);
+                let id = format!("01BENCHDOC{i:016}");
+                c.execute(
+                    "INSERT INTO library_files(sha256, path, mime, bytes, page_count, text_status, text_source, created_at)
+                     VALUES (?1, ?2, 'application/pdf', 1000, 2, 'extracted', 'pdf_text', ?3)",
+                    rusqlite::params![sha, format!("library/{}/{}.pdf", &sha[..2], sha), now],
+                )?;
+                for p in 1..=2 {
+                    let words: Vec<&str> = (0..40).map(|_| WORDS[rng.next(WORDS.len() as u64) as usize]).collect();
+                    let text = format!("{} invoice {} page {p} {}", KINDS[i % KINDS.len()], i, words.join(" "));
+                    c.execute("INSERT INTO library_file_pages(sha256, page, text) VALUES (?1,?2,?3)", rusqlite::params![sha, p, text])?;
+                }
+                let category = ["invoice", "receipt", "contract", "delivery_note", "bank"][i % 5];
+                c.execute(
+                    "INSERT INTO library_documents(document_id, seq, number, title, category, sha256, original_name, version, status, source,
+                       added_by, added_at, updated_at)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,1,'active','upload','bench',?8,?8)",
+                    rusqlite::params![id, (i + 1) as i64, format!("DOC-{:06}", i + 1), format!("{} document {i}", KINDS[i % KINDS.len()]),
+                        category, sha, format!("doc-{i}.pdf"), now],
+                )?;
+                amwapos_core::library::index_document(c, &id)?;
+            }
+            c.execute("INSERT OR REPLACE INTO sequences(name, value) VALUES ('library_document', ?1)", [n_docs as i64])?;
+            Ok(())
+        })
+        .unwrap();
+    println!("library: {n_docs} documents indexed in {:.1}s", started.elapsed().as_secs_f64());
+    let (_, inv) = e.user("Ali", "role_inventory", "2580");
+    let mut searches = vec![];
+    let mut scoped = vec![];
+    for i in 0..200 {
+        let q = format!("{} {}", WORDS[i % WORDS.len()], KINDS[i % KINDS.len()]);
+        let s = Instant::now();
+        let r = e.core.library_search(t, &q, false, None).unwrap();
+        searches.push(s.elapsed());
+        assert!(r["results"].as_array().unwrap().len() <= 20);
+        let s = Instant::now();
+        e.core.library_search(&inv, &q, false, None).unwrap();
+        scoped.push(s.elapsed());
+    }
+    let mut lists = vec![];
+    for _ in 0..50 {
+        let s = Instant::now();
+        e.core.library_list(t, serde_json::from_value(serde_json::json!({ "limit": 50 })).unwrap()).unwrap();
+        lists.push(s.elapsed());
+    }
+    let (ls, lsc, ll) = (p95(searches), p95(scoped), p95(lists));
+
+    // Business Memory: 5,000 confirmed memories through the real path.
+    let started = Instant::now();
+    for i in 0..5_000 {
+        e.core
+            .memory_add(
+                t,
+                amwapos_core::memory::MemoryInput {
+                    statement: format!(
+                        "{} {} arrives on weekday {} for order group {i}",
+                        WORDS[i % WORDS.len()],
+                        KINDS[i % KINDS.len()],
+                        i % 7
+                    ),
+                    ..Default::default()
+                },
+                true,
+            )
+            .unwrap();
+    }
+    println!("memory: 5,000 memories in {:.1}s", started.elapsed().as_secs_f64());
+    let mut msearch = vec![];
+    for i in 0..200 {
+        let s = Instant::now();
+        let r = e.core.memory_search(t, &format!("{} arrives", WORDS[i % WORDS.len()]), None, None).unwrap();
+        msearch.push(s.elapsed());
+        assert!(r["memories"].as_array().unwrap().len() <= 10);
+    }
+    let ms = p95(msearch);
+
+    // Cash-flow Radar: 2,000 posted supplier invoices, 1,000 expenses, 300 orders, 50 repeating expenses.
+    e.core
+        .db
+        .write(|c| {
+            let now = amwapos_core::time::now_str();
+            let today = chrono::Utc::now().date_naive();
+            let branch: String = c.query_row("SELECT branch_id FROM branches LIMIT 1", [], |r| r.get(0))?;
+            let cat: String = c.query_row("SELECT category_id FROM expense_categories LIMIT 1", [], |r| r.get(0))?;
+            for s in 0..50 {
+                c.execute(
+                    "INSERT INTO suppliers(supplier_id, name, active, created_at, updated_at) VALUES (?1, ?2, 1, ?3, ?3)",
+                    rusqlite::params![format!("01BENCHSUP{s:016}"), format!("Supplier {s}"), now],
+                )?;
+            }
+            for i in 0..2_000 {
+                let sup = format!("01BENCHSUP{:016}", i % 50);
+                let inv = format!("01BENCHINV{i:016}");
+                let due = (today + chrono::Duration::days((i % 120) as i64 - 20)).to_string();
+                c.execute(
+                    "INSERT INTO supplier_invoices(invoice_id, number, doc_type, supplier_id, invoice_number, invoice_date, due_date, subtotal_minor,
+                       vat_minor, total_minor, status, posting, created_by, created_at, updated_at, revision)
+                     VALUES (?1, ?2, 'invoice', ?3, ?2, ?4, ?5, 9000, 900, 9900, 'approved', 'posted', 'bench', ?6, ?6, 1)",
+                    rusqlite::params![inv, format!("SI-{i:06}"), sup, (today - chrono::Duration::days(30)).to_string(), due, now],
+                )?;
+                c.execute(
+                    "INSERT INTO ap_liabilities(liability_id, supplier_id, invoice_id, doc_date, due_date, due_rule, amount_minor, currency, status,
+                       operation_id, posted_by, posted_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, 'invoice', 9900, 'BHD', 'open', ?1, 'bench', ?6)",
+                    rusqlite::params![format!("01BENCHLIA{i:016}"), sup, inv, (today - chrono::Duration::days(30)).to_string(), due, now],
+                )?;
+            }
+            for i in 0..1_000 {
+                c.execute(
+                    "INSERT INTO expenses(expense_id, number, branch_id, business_date, category_id, description, net_minor, vat_minor, total_minor,
+                       status, created_by, revision, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, 'Bench expense', 5000, 0, 5000, ?6, 'bench', 1, ?7, ?7)",
+                    rusqlite::params![format!("01BENCHEXP{i:016}"), format!("EX-{i:06}"), branch,
+                        (today + chrono::Duration::days((i % 60) as i64)).to_string(), cat, if i % 2 == 0 { "approved" } else { "submitted" }, now],
+                )?;
+            }
+            for i in 0..300 {
+                c.execute(
+                    "INSERT INTO purchase_orders(po_id, po_number, supplier_id, branch_id, status, expected_at, subtotal_minor, tax_minor, total_minor,
+                       created_by, created_at, updated_at, version)
+                     VALUES (?1, ?2, ?3, ?4, 'ordered', ?5, 50000, 0, 50000, 'bench', ?6, ?6, 1)",
+                    rusqlite::params![format!("01BENCHPO{i:017}"), format!("PO-B{i:05}"), format!("01BENCHSUP{:016}", i % 50), branch,
+                        (today + chrono::Duration::days((i % 90) as i64)).to_string(), now],
+                )?;
+            }
+            for i in 0..50 {
+                c.execute(
+                    "INSERT INTO expense_recurring(recurring_id, name, category_id, description, net_minor, vat_minor, cadence, day, next_date,
+                       branch_id, active, created_by, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, 'Bench repeating', 2000, 0, ?4, ?5, ?6, ?7, 1, 'bench', ?8, ?8)",
+                    rusqlite::params![format!("01BENCHREC{i:016}"), format!("Repeating {i}"), cat, if i % 2 == 0 { "weekly" } else { "monthly" },
+                        1 + i % 7, (today + chrono::Duration::days((i % 7) as i64)).to_string(), branch, now],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let mut radar = vec![];
+    for h in [7, 14, 30, 60, 90, 90, 30, 90, 60, 90] {
+        let s = Instant::now();
+        let r = e.core.cashflow_radar(t, Some(h)).unwrap();
+        radar.push(s.elapsed());
+        assert!(r["horizons"].as_array().unwrap().len() == 5);
+    }
+    let rd = radar.iter().max().copied().unwrap();
+    println!("Document Library search, 50,000 documents, P95: {:.1} ms", ls.as_secs_f64() * 1e3);
+    println!("  same, scoped to inventory staff, P95:         {:.1} ms", lsc.as_secs_f64() * 1e3);
+    println!("  first list page, P95:                          {:.1} ms", ll.as_secs_f64() * 1e3);
+    println!("Business Memory search, 5,000 memories, P95:     {:.1} ms", ms.as_secs_f64() * 1e3);
+    println!("Cash-flow Radar (2,000 invoices, 1,000 expenses, 300 orders, 50 repeating), slowest: {:.0} ms", rd.as_secs_f64() * 1e3);
+    assert!(ls < Duration::from_millis(500) && lsc < Duration::from_millis(500), "library search {ls:?} {lsc:?}");
+    assert!(ms < Duration::from_millis(100), "memory search {ms:?}");
+    assert!(rd < Duration::from_secs(1), "radar {rd:?}");
+}

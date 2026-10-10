@@ -875,3 +875,65 @@ Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
 
 External acceptance is not claimed: the store's tills, network and a real lost-till drill remain
 part of the soak (OPERATIONS.md acceptance checklist).
+
+## Merchant OS Wave 8: intelligence and evidence, 2026-10-10
+
+Design and rules: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md).
+
+**Integration.**
+- Wave 7 was approved and `main` fast-forwarded from `e5a7871` to `94fc121`. No force push,
+  no squash, no tag.
+- That exact commit, `94fc121`, passed CI run `37763893397` on every job, including the
+  Windows build, tests and installer.
+- Branch `claude/amwapos-merchant-os-wave8` starts at `94fc121`. It has eight checkpoint
+  commits, plus one commit that fixed two CI failures (the Windows line endings in a contract
+  test, and a sync race in a test).
+
+Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
+- **Lint:** `cargo fmt --check` and `cargo clippy --workspace --all-targets -D warnings` are
+  clean.
+- **Rust tests:** core, hub and devserver: 620 passed, 0 failed, 5 ignored (benchmarks and
+  live-network checks). New in Wave 8:
+  - `wave8_ai.rs` (10): tool contract against the real dispatch; evidence; Sources used;
+    terminal reads; DATA injection; frozen and deduplicated proposals; permission removed
+    before confirm; malformed and forbidden calls; secrets;
+  - `wave8_library.rs` (11), `wave8_memory.rs` (8), `wave8_cashflow.rs` (8);
+  - `wave8_cross.rs` (6): upgrades from schemas 1–36, role matrix, no AI provider,
+    backup/restore, failure injection;
+  - unit tests for evidence, refusals and placement.
+- **Frontend:** `tsc`, `eslint`, `prettier --check`, vitest (49) and `vite build` pass.
+- **Playwright:** 29 of 29. New: Document Library (add, page text, search citing the page,
+  same file recognised, new version); Business Memory (document passage → suggestion →
+  confirmed, change keeps history, password refused); Cash-flow Radar (approved expense is
+  Known and links to Expenses; never a bank balance). The English/Arabic sweep at 1024×768
+  covers the three new screens.
+- **Benchmarks** (release):
+  - Library search over 50,000 documents: P95 216 ms (207 ms role-scoped);
+  - Memory search over 5,000 memories: P95 11.5 ms;
+  - Radar (2,000 invoices, 1,000 expenses, 300 orders, 50 repeating): 45 ms;
+  - POS P95: scan 1.29 ms, search 5.99 ms, cart 1.02 ms, sale commit 9.97 ms. Wave 7 measured
+    1.40 / 5.67 / 1.06 / 10.04 ms, so there is no regression.
+- **Found and fixed while building:**
+  - sessions kept the permissions they had at sign-in until the next login; they are now
+    reloaded on every request;
+  - backups held the database but none of the attachment files; library files (including
+    adopted expense, scan and case files) now travel with backups and restores;
+  - a proposal kept any extra arguments the model added; only declared arguments are kept now.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| AI read coverage across Waves 1–7; deliberate omissions stated | Complete | INTELLIGENCE_AND_EVIDENCE.md §1; `wave8_ai.rs`; `ai_admin.rs` every-command test | — |
+| Evidence on every read; Sources used only from tool results; fact/derived/estimate | Complete | `ai_evidence.rs` tests; `wave8_ai.rs` | — |
+| Proposal safety (no execution, frozen, declared args only, dedupe, current-session confirm, permission re-check) | Complete | `wave8_ai.rs`; `ai_hardening.rs` | — |
+| Prompt injection: all external text DATA; no secrets to the provider | Complete | `wave8_ai.rs`; `wave8_library.rs`; `wave8_memory.rs` | — |
+| Document Library: SHA-256 dedupe, versions, links, archive not delete, adoption, text, FTS5, permissions | Complete | `wave8_library.rs`; `wave8_cross.rs`; Playwright | OCR of photos with the store's scanner and phone |
+| Library files in backups and restores | Complete | `wave8_library.rs`; `wave8_cross.rs` | Restore on a second Windows PC |
+| Business Memory: lifecycle, provenance, records win, contradictions, refusals, permissions, starts empty | Complete | `wave8_memory.rs`; `wave8_cross.rs`; Playwright | — |
+| Cash-flow Radar: bands, no double counting, scenario rule, pressure weeks, formulas, permission | Complete | `wave8_cashflow.rs`; Playwright | Owner check against the store's real payables |
+| Library, Memory and Radar without an AI provider | Complete | `wave8_cross.rs` | — |
+| Arabic for every new string; 1024×768 | Complete | vitest; Playwright sweep | Visual check on the store's screens |
+| Migrations fabricate nothing; upgrades from older schemas | Complete | `wave8_cross.rs` | — |
+| Merchant Twin, Supplier Autopilot, ShelfLens, Time Machine, advanced memory learning | Not started (out of scope) | — | — |
+
+External acceptance is not claimed: the store's hardware, data and owner checks remain part of
+the soak (OPERATIONS.md acceptance checklist).

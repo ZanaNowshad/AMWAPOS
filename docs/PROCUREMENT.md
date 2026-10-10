@@ -405,3 +405,18 @@ The upgrade test builds a schema-29 store and checks all of this.
 - **Pricing policies** can be scoped to a product's preferred supplier. They work from the
   average cost or the last cost paid, as each policy states. A new supplier cost puts the product
   under "Cost changed" in the pricing review; no price changes by itself.
+
+## Wave 8 interactions
+
+- **Documents:** delivery notes, quotations, price lists and contracts link to a supplier,
+  purchase order, supplier invoice, requisition or supplier return in the Document Library.
+  Supplier documents read by Document Intelligence join the library linked to their supplier,
+  invoice and PO (not rejected ones). The supplier page has Documents and Business Memory
+  panels.
+- **Cash-flow Radar:** posted supplier invoices are Known on their due dates. A purchase order
+  still open counts as Exposure for what has not yet been invoiced against it, so an order is
+  never counted twice. Approved invoices not yet posted are Exposure. Credits expected from
+  confirmed supplier returns are possible money in, without a date.
+- **Business Memory** holds what no record says ("delivers on Sundays before 9"). When the
+  supplier record changes after a memory was confirmed, the memory is shown as possibly
+  outdated: the record is right.

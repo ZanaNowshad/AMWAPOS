@@ -467,3 +467,23 @@ No parallel source of truth: cases are the alerts, `sync_dead_letters` the recon
 The assistant reads; it never acts on operational control. Wave 8 (document library, knowledge
 base, memory, merchant twin, time machine, cashflow radar, broad AI automation) was not started.
 
+
+## Wave 8 delivered: intelligence and evidence (2026-10-10)
+
+Design and rules: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md). Eight checkpoints,
+one pushed commit each, plus one fix for two CI failures:
+
+1. read coverage audit, evidence on every read, "Sources used" from tool results, contract tests;
+2. proposal audit and hardening; permissions reloaded per request; adversarial tests;
+3. Document Library backend: storage by SHA-256, versions, links, permissions, FTS5, backups
+   carry files, the assistant's library contract (migration 0037);
+4. Document Library UI, Arabic, end-to-end test;
+5. Business Memory backend and the assistant's memory contract (migration 0038);
+6. Business Memory UI, Arabic, end-to-end test;
+7. Cash-flow Radar;
+8. cross-wave verification, performance, documentation.
+
+AI remains a reader, explainer and proposer. Records win over memory and documents; memory never
+authorises. The migrations create empty tables, and earlier evidence is adopted with its
+original author and time. Not started: advanced memory learning, Merchant Twin, Supplier
+Autopilot, ShelfLens and Business Time Machine.
