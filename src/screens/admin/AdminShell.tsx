@@ -17,6 +17,7 @@ import {
   FileInput,
   FolderInput,
   FolderOpen,
+  Brain,
   FileScan,
   FileText,
   Gauge,
@@ -109,6 +110,7 @@ import {
 import { WhatsAppPage, InvoiceScanPage, PaymentReviewsPage } from "./automation";
 import { DocumentReviewPage } from "./documents";
 import { LibraryPage } from "./library";
+import { MemoryPage } from "./memory";
 import { WhatsAppOrdersPage } from "./waOrders";
 import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
@@ -349,6 +351,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       },
       { path: "cases", label: t("Alert Centre"), icon: ClipboardList, perm: "cases.view", element: CasesPage },
       { path: "documents", label: t("Documents"), icon: FolderOpen, perm: "documents.view", element: LibraryPage },
+      { path: "memory", label: t("Business Memory"), icon: Brain, perm: "memory.view", element: MemoryPage },
       {
         path: "phone-view",
         label: t("Phone view"),

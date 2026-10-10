@@ -4016,3 +4016,60 @@ export interface LibraryAddInput {
   note?: string | null;
   links?: { entity_type: LibraryEntityType; entity_id: string }[];
 }
+
+// ---- Wave 8: Business Memory -----------------------------------------------
+
+export interface MemoryRow {
+  memory_id: string;
+  number: string;
+  statement: string;
+  status: "candidate" | "confirmed" | "superseded" | "archived" | "rejected";
+  scope: "business" | "branch";
+  branch_id: string | null;
+  entity_type: LibraryEntityType | null;
+  entity_id: string | null;
+  entity_label?: string | null;
+  source_kind: "person" | "assistant" | "document";
+  source_ref: string | null;
+  /** The words it came from (people's text). Shown as text. */
+  source_excerpt: string | null;
+  from_untrusted: boolean;
+  proposed_by: string;
+  proposed_by_name: string | null;
+  proposed_at: string;
+  confirmed_by: string | null;
+  confirmed_by_name: string | null;
+  confirmed_at: string | null;
+  last_verified_at: string | null;
+  valid_until: string | null;
+  supersedes: string | null;
+  superseded_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  revision: number;
+  updated_at: string;
+  /** "May be outdated: …" when the record changed, ended or nobody checked it. */
+  outdated?: string | null;
+}
+
+export interface MemoryList {
+  rows: MemoryRow[];
+  counts: { confirmed: number; review: number; archived: number };
+}
+
+export interface MemoryDetail {
+  memory: MemoryRow;
+  /** Confirmed memories about the same record or close in wording. */
+  related: MemoryRow[];
+  earlier: MemoryRow[];
+}
+
+export interface MemoryInput {
+  statement: string;
+  entity_type?: LibraryEntityType | null;
+  entity_id?: string | null;
+  scope?: "business" | "branch";
+  valid_until?: string | null;
+  document_id?: string | null;
+  excerpt?: string | null;
+}

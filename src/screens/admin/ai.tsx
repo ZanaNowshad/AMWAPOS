@@ -16,6 +16,8 @@ import { t, tb } from "../../i18n";
 
 export const TOOL_LABEL: Record<string, () => string> = {
   library_search: () => t("Searched the documents"),
+  memory_search: () => t("Checked Business Memory"),
+  propose_memory: () => t("Suggested a fact for Business Memory"),
   library_document: () => t("Opened a document"),
   library_page_text: () => t("Read a document page"),
   propose_document_link: () => t("Proposed linking a document"),

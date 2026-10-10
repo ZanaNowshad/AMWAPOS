@@ -263,6 +263,25 @@ export const api = {
     unarchive: (document_id: string) => call<{ document_id: string }>("library.unarchive", { document_id }),
     remove: (document_id: string) => call<{ document_id: string; deleted: boolean }>("library.delete", { document_id }),
   },
+  memory: {
+    list: (filter: {
+      tab: "confirmed" | "review" | "archived" | "history";
+      q?: string | null;
+      entity_type?: string | null;
+      entity_id?: string | null;
+      limit?: number;
+    }) => call<T.MemoryList>("memory.list", { filter }),
+    get: (memory_id: string) => call<T.MemoryDetail>("memory.get", { memory_id }),
+    add: (memory: T.MemoryInput, confirm: boolean) => call<T.MemoryRow>("memory.add", { memory, confirm }),
+    decide: (
+      memory_id: string,
+      action: "confirm" | "reject" | "archive" | "restore" | "verify",
+      revision: number,
+      note?: string | null,
+    ) => call<T.MemoryRow>("memory.decide", { memory_id, action, revision, note: note ?? null }),
+    edit: (memory_id: string, revision: number, memory: T.MemoryInput) =>
+      call<T.MemoryRow>("memory.edit", { memory_id, revision, memory }),
+  },
   statements: {
     get: (customer_id: string, from?: string | null, to?: string | null) =>
       call<T.CustomerStatement>("customers.statement", { customer_id, from: from ?? null, to: to ?? null }),

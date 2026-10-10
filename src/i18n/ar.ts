@@ -6141,4 +6141,61 @@ export const AR: Record<string, string> = {
     "عرض معلومات النشاط المؤكدة والاقتراحات (فقط للسجلات التي يحق للدور رؤيتها)",
   "Write down, confirm, reject, change and archive business facts":
     "تدوين معلومات النشاط وتأكيدها ورفضها وتعديلها وأرشفتها",
+  "Checked Business Memory": "راجع ذاكرة النشاط",
+  "Suggested a fact for Business Memory": "اقترح معلومة لذاكرة النشاط",
+  "Suggest a fact from this document": "اقترح معلومة من هذا المستند",
+  "Written by a person": "كتبها شخص",
+  "Suggested by the assistant": "اقترحها المساعد",
+  "From a document": "من مستند",
+  Replaced: "مُستبدلة",
+  "May be outdated: the record it is about no longer exists.": "قد تكون قديمة: السجل الذي تخصه لم يعد موجودًا.",
+  "May be outdated: the record it is about is switched off.": "قد تكون قديمة: السجل الذي تخصه متوقف.",
+  "May be outdated: the record it is about changed after this was confirmed. The record is right.":
+    "قد تكون قديمة: تغيّر السجل الذي تخصه بعد تأكيدها. السجل هو الصحيح.",
+  "May be outdated: it was valid until {0}.": "قد تكون قديمة: كانت صالحة حتى {0}.",
+  "May be outdated: nobody has checked it for more than 180 days.":
+    "قد تكون قديمة: لم يراجعها أحد منذ أكثر من 180 يومًا.",
+  "May be outdated": "قد تكون قديمة",
+  "Facts about this business that no record holds, each with where it came from and who confirmed it. Records always win; memory never authorises anything.":
+    "معلومات عن هذا النشاط لا يحفظها أي سجل، مع مصدر كل منها ومن أكّدها. السجلات هي الأصح دائمًا؛ والذاكرة لا تمنح أي صلاحية.",
+  "Write down a fact": "دوّن معلومة",
+  "Search what the business knows": "ابحث فيما يعرفه النشاط",
+  "Nothing to review": "لا يوجد ما يُراجع",
+  "Facts the assistant suggests, or that someone takes from a document, wait here until a person confirms them.":
+    "المعلومات التي يقترحها المساعد أو يأخذها أحد من مستند تنتظر هنا حتى يؤكدها شخص.",
+  "Nothing written down yet": "لم يُدوَّن شيء بعد",
+  "Write down what the team knows but no record holds: delivery days, a landlord's preferences, what sells before Eid. Business Memory starts empty; nothing is guessed.":
+    "دوّن ما يعرفه الفريق ولا يحفظه أي سجل: أيام التوصيل، تفضيلات المالك، ما يُباع قبل العيد. تبدأ ذاكرة النشاط فارغة؛ ولا يُخمَّن شيء.",
+  "After reading outside text": "بعد قراءة نص من الخارج",
+  "Saved as a suggestion to review": "حُفظت كاقتراح للمراجعة",
+  "Change this fact": "غيّر هذه المعلومة",
+  "The confirmed fact stays in the history; this one replaces it.":
+    "تبقى المعلومة المؤكدة في السجل التاريخي؛ وهذه تحل محلها.",
+  "The fact, in one sentence": "المعلومة في جملة واحدة",
+  "No passwords, codes or personal phone numbers.": "بدون كلمات مرور أو رموز أو أرقام هواتف شخصية.",
+  "The passage it comes from": "المقطع الذي أُخذت منه",
+  "Only for this branch": "لهذا الفرع فقط",
+  "True until": "صحيحة حتى",
+  "Optional. After this date it is shown as possibly outdated.":
+    "اختياري. بعد هذا التاريخ تظهر على أنها قد تكون قديمة.",
+  "This branch only": "هذا الفرع فقط",
+  "The whole business": "النشاط بأكمله",
+  "True until {0}": "صحيحة حتى {0}",
+  "Check these confirmed facts before confirming: they are about the same thing and may disagree.":
+    "راجع هذه المعلومات المؤكدة قبل التأكيد: فهي عن الموضوع نفسه وقد تتعارض.",
+  "Where it came from": "مصدرها",
+  "Open the document": "افتح المستند",
+  "The assistant had read text from outside the store in that conversation. Check it carefully.":
+    "كان المساعد قد قرأ نصًا من خارج المتجر في تلك المحادثة. راجعها بعناية.",
+  "The words it came from": "الكلمات التي جاءت منها",
+  "The assistant": "المساعد",
+  "Last checked": "آخر مراجعة",
+  "A newer fact replaced this one.": "حلّت معلومة أحدث محل هذه.",
+  "Open the current fact": "افتح المعلومة الحالية",
+  "Earlier versions": "الإصدارات السابقة",
+  "Note (needed to reject)": "ملاحظة (مطلوبة للرفض)",
+  "Confirm: this is true": "أكّد: هذا صحيح",
+  "Correct the wording": "صحّح الصياغة",
+  "Still true": "ما زالت صحيحة",
+  "Nothing written down about this record.": "لم يُدوَّن شيء عن هذا السجل.",
 };

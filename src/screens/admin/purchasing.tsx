@@ -34,6 +34,7 @@ import { codeLabel } from "../../i18n/codes";
 import { PoApprovalCard, PoDiscrepanciesCard, PoReceivePanel, SupplierTermsCard } from "./procurement";
 import { t } from "../../i18n";
 import { LinkedDocuments } from "./library";
+import { LinkedMemories } from "./memory";
 
 const PO_TONE: Record<string, "default" | "info" | "warning" | "success"> = {
   draft: "default",
@@ -267,6 +268,9 @@ export function SupplierDetailPage() {
       {tab === "overview" ? (
         <div style={{ marginTop: 16 }}>
           <LinkedDocuments entityType="supplier" entityId={s.supplier_id} defaultCategory="contract" />
+          <div style={{ marginTop: 16 }}>
+            <LinkedMemories entityType="supplier" entityId={s.supplier_id} />
+          </div>
         </div>
       ) : null}
       {tab === "pos" ? (

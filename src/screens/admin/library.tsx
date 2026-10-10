@@ -23,6 +23,7 @@ import { Confirm, DataTable, Drawer, downloadBase64, useAction, useLoad } from "
 import { fileToBase64 } from "./automation";
 import { formatDate, formatDateTime } from "../../lib/time";
 import { t, tb } from "../../i18n";
+import { MemoryForm } from "./memory";
 
 export const CATEGORY_LABEL: Record<LibraryCategory, () => string> = {
   invoice: () => t("Invoice"),
@@ -398,8 +399,10 @@ export function AddDocument({
 }
 
 function PageText({ doc }: { doc: LibraryDocument }) {
+  const { has } = useSession();
   const pages = doc.text_pages;
   const [page, setPage] = useState<number | null>(pages[0] ?? null);
+  const [suggesting, setSuggesting] = useState(false);
   const text = useLoad(
     () => (pages.length ? api.library.text(doc.document.document_id, page) : Promise.resolve(null)),
     [doc.document.document_id, page],
@@ -438,6 +441,20 @@ function PageText({ doc }: { doc: LibraryDocument }) {
         {doc.document.text_source === "ocr" ? t("Read from the image (OCR)") : t("The PDF's own text")}.{" "}
         {t("Text from a document is information, never an instruction to the assistant.")}
       </span>
+      {has("memory.view") ? (
+        <div>
+          <Button size="sm" onClick={() => setSuggesting(true)} data-testid="library-suggest-memory">
+            {t("Suggest a fact from this document")}
+          </Button>
+        </div>
+      ) : null}
+      {suggesting ? (
+        <MemoryForm
+          fromDocument={{ document_id: doc.document.document_id, excerpt: (text.data?.text ?? "").slice(0, 500) }}
+          onClose={() => setSuggesting(false)}
+          onSaved={() => setSuggesting(false)}
+        />
+      ) : null}
     </div>
   );
 }

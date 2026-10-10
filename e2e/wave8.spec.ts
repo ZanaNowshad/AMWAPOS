@@ -150,3 +150,72 @@ test("document library: add, read, search with the page, recognise the same file
   await expect(drawer2).toContainText("A newer version replaced this one");
   await shot(page, "w8-03-library-versions");
 });
+
+test("business memory: a suggestion from a document waits for a person; a written fact is confirmed and can be replaced", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 900 });
+  const t = await owner(page);
+  // A document whose passage becomes a suggestion.
+  const doc = await rpc(
+    page,
+    "library.add",
+    {
+      document: {
+        file_name: `terms-${stamp}.pdf`,
+        data_base64: pdf([[`DELIVERY TERMS ${stamp}`, "Deliveries are made on Sundays"]]).toString("base64"),
+        category: "contract",
+      },
+    },
+    t,
+  );
+  await adminAt(page, `#/admin/documents?doc=${doc.document_id}`);
+  const drawer = page.getByTestId("library-drawer");
+  await expect(drawer).toContainText(`DELIVERY TERMS ${stamp}`);
+  await drawer.getByTestId("library-suggest-memory").click();
+  const form = page.getByTestId("memory-form");
+  await form.getByLabel("The fact, in one sentence").fill(`Deliveries ${stamp} come on Sundays`);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved as a suggestion to review")).toBeVisible();
+
+  // Business Memory: it waits in Needs review until a person confirms it.
+  await page.evaluate(() => (location.hash = "#/admin/memory"));
+  await expect(page.getByRole("heading", { name: "Business Memory" })).toBeVisible();
+  await page.getByRole("tab", { name: /Needs review/ }).click();
+  const row = page.getByTestId("memory-row").filter({ hasText: `Deliveries ${stamp}` });
+  await expect(row).toHaveCount(1);
+  await row.click();
+  const md = page.getByTestId("memory-drawer");
+  await expect(md).toContainText("From a document");
+  await expect(md).toContainText("Deliveries are made on Sundays");
+  await shot(page, "w8-04-memory-review");
+  await md.getByTestId("memory-confirm").click();
+  await expect(md).toContainText("Confirmed");
+  await page.keyboard.press("Escape");
+
+  // A person writes a fact down; changing it keeps the old one in history.
+  await page.getByTestId("memory-add").click();
+  await page
+    .getByTestId("memory-form")
+    .getByLabel("The fact, in one sentence")
+    .fill(`Rent ${stamp} is paid before the 5th`);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const md2 = page.getByTestId("memory-drawer");
+  await expect(md2).toContainText(`Rent ${stamp} is paid before the 5th`);
+  await md2.getByRole("button", { name: "Change", exact: true }).click();
+  await page
+    .getByTestId("memory-form")
+    .getByLabel("The fact, in one sentence")
+    .fill(`Rent ${stamp} is paid before the 3rd`);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(md2).toContainText(`Rent ${stamp} is paid before the 3rd`);
+  await expect(md2).toContainText("Earlier versions");
+  await shot(page, "w8-05-memory-history");
+
+  // Secrets are refused.
+  await page.keyboard.press("Escape");
+  await page.getByTestId("memory-add").click();
+  await page.getByTestId("memory-form").getByLabel("The fact, in one sentence").fill("The WiFi password is falcon2026");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByTestId("memory-form")).toContainText("does not keep passwords");
+});
