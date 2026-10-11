@@ -231,7 +231,21 @@ See SECURITY.md "Release-candidate security review".
 
 ## 11. RC record
 
-Filled from the RC commit's own CI run.
+| | |
+| --- | --- |
+| Qualified commit | `60f86eed8d2e71455a66512dcb91bde8fdb4d73c` (Wave 8 `ab1ac07` + DR test + docs; no application code) |
+| CI | Run `38143382277`: Rust, Frontend, End-to-end, Dependency audit, **Windows build + tests + installer** — all success |
+| Installer | `AMWAPOS_0.1.0_x64-setup.exe`, 48,328,653 bytes |
+| SHA-256 | `bb0a6480c2c51bf15a345693a83321ab8c6537950250372f8e7a32f0f23eca43` |
+| Signing | **UNSIGNED** (`Get-AuthenticodeSignature`: NotSigned) |
+| Built by | GitHub Actions `windows-2022`, stable Rust, NSIS 3.11, artifact `amwapos-windows-unsigned` (id 11704861272, kept 90 days) |
+| Installer smoke (same run) | packaged files and installed program scanned for secrets, sessions and test data; silent install → product version 0.1.0; setup, products with pictures, WhatsApp pages, till, cash sale; schema 38, integrity ok; log names build `60f86eed8d2e`; relaunch keeps data; reinstall over the top; uninstall keeps `%ProgramData%\AMWAPOS`. Evidence artifact id 11704995920 |
+| Bundled Tesseract | `libtesseract-5.dll` / `tesseract.exe` dated 2026-07-24 (Tesseract 5, UB Mannheim build) |
+| Main | `ab1ac07`, CI run `38138883983` all success (including Windows) |
+
+This record is committed in a documentation-only follow-up commit, which has its own CI run;
+that commit's installer differs only by the embedded build commit. Neither installer is
+published, tagged or marked as a release.
 
 ## 12. Owner sign-off
 
