@@ -12,6 +12,15 @@ Classes:
 - **Deferred:** deliberately not built yet. The admin page says **Not enabled**. Each needs an
   owner, a key and a rollback plan.
 
+## Release candidate (2026-10-11)
+
+**RELEASE CANDIDATE VERIFIED — STORE ACCEPTANCE PENDING.** `main` was fast-forwarded to the
+approved Wave 8 commit `ab1ac07`. The RC branch `claude/amwapos-release-candidate` adds only a
+disaster-recovery test and documentation; no application code changed. Version **0.1.0**,
+schema 38, sync protocol 2, installer **UNSIGNED**. The full record (identity, automated
+results, defects, the store acceptance matrix, the 14 external blockers and owner sign-off) is
+[RELEASE_ACCEPTANCE.md](RELEASE_ACCEPTANCE.md). No tag and no published release exist.
+
 ## Soak installer (CI)
 
 | | |

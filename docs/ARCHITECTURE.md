@@ -334,3 +334,21 @@ Design and rules: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md).
   `cashflow.view`, granted once to built-in roles whose defaults include them.
 - **Hub-local:** every new table is in `sync::LOCAL_TABLES`; the screens and the assistant's
   tools refuse on a terminal with a plain message.
+
+## Release identity and upgrade path (release candidate)
+
+Read from the manifests at the release-candidate commit.
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Version | `0.1.0` everywhere | `Cargo.toml` `[workspace.package]` (all crates inherit), `src-tauri/tauri.conf.json`, `package.json`, `audit::APP_VERSION` (`CARGO_PKG_VERSION`) |
+| Product / bundle identifier | `AMWAPOS` / `com.amwapos.pos` | `tauri.conf.json` (do not change: Windows uses it to recognise upgrades) |
+| Installer | NSIS, per-machine, `AMWAPOS_0.1.0_x64-setup.exe`, WebView2 bootstrapper embedded | `tauri.conf.json` `bundle.windows` |
+| Build commit | Embedded as `AMWAPOS_BUILD_SHA` (12 chars) and logged at start-up | `src-tauri/build.rs`, `lib.rs` |
+| Schema | Migrations 1–38; `db::latest_schema_version()` = 38 | `db.rs` `MIGRATIONS` |
+| Upgrade | Forward only. Pending migrations run at start-up, each in its own transaction, after `VACUUM INTO backups/pre-migration-v<N>-<time>.db`. A failure leaves the database at the last good schema | `db.rs` `migrate_until` |
+| Downgrade | **Not supported.** A database with an unknown (newer) migration is refused at start-up; a changed migration checksum stops start-up | `db.rs` |
+| Hub ↔ till compatibility | Sync protocol 2 only; a mismatch is answered with HTTP 426 and shown as "Update needed". Install the same version on hub and tills | `sync.rs` `PROTOCOL_VERSION` |
+| Ports | TCP 47800 (hub API, firewall rule added by the installer, private profile); UDP 47801 discovery responder (no firewall rule) | `sync.rs` `DEFAULT_PORT`, `discovery.rs`, `windows/hooks.nsh` |
+| Updates | Ed25519-signed manifest; only active if `AMWAPOS_UPDATE_PUBKEY` is set at build time. CI builds do not set it, so they never check for or install updates. The installer is started visibly, after a safety backup | `amwapos-hub/src/updater.rs`, `release.yml` |
+| External binaries | Tesseract (UB Mannheim build via Chocolatey at build time, **version not pinned**), bundled under `tesseract/`; OCR models `eng`/`ara` from `ocr/models` | `scripts/bundle-tesseract.ps1`, `tauri.windows.conf.json` |

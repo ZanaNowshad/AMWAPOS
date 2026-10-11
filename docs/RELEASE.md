@@ -1,6 +1,7 @@
 # Release
 
-1. Bump `version` in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`.
+1. Bump `version` in `Cargo.toml` (`[workspace.package]`; every crate inherits it), `package.json` and
+   `src-tauri/tauri.conf.json`, then run `cargo check` and `npm install --package-lock-only` so the lock files follow.
 2. Tag `vX.Y.Z` and push. `.github/workflows/release.yml` then:
    - runs the Rust tests on Windows;
    - builds the NSIS installer (the WebView2 bootstrapper is embedded, for offline tills);

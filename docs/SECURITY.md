@@ -49,7 +49,7 @@ These are known and deliberate. None of them is silently weakened by the code.
 | HTTP headers are readable on the LAN: route, device id, timestamp, nonce, signature, protocol version | The channel encrypts bodies, not HTTP framing | No business data is in headers; the device id alone grants nothing (every request needs the device key) |
 | Message sizes and timing are visible | Encryption does not hide length or when a till syncs | Reveals activity level, not content |
 | `/health` and `/info` are public: product, version, business and hub name, hub instance id, outbox position | A till must find and identify a hub before pairing | No secrets; a till reads `/info` only when probing an address during setup; signed status comes from `/sync/status` |
-| UDP discovery broadcasts the hub name and address | Tills find the hub without typing an IP | Private-profile firewall rule; pairing still needs the code |
+| The hub answers UDP discovery probes (port 47801) with its name and address | Lets a till on the same PC or an allowed network find the hub | The installer adds **no** inbound rule for 47801 and deletes the old one, so other PCs normally cannot reach it and tills enter the hub address; if Windows asks to allow AMWAPOS on public networks, refuse. Pairing still needs the code |
 | No forward secrecy for synced traffic | Traffic keys derive from each device key, which derives from the hub master secret | A recording is only readable with the hub's Windows credential; reset hub credentials after a suspected compromise (pairing exchanges use fresh SPAKE2 keys) |
 | Database and backups are not encrypted at rest | SQLite with no page encryption | BitLocker on tills and hub; encrypted drives or access-controlled shares for backups (below) |
 | Hub/till secrets are per Windows account | Windows Credential Manager | Run AMWAPOS under one Windows account per computer; a missing credential is reported, never silently replaced |
@@ -148,6 +148,23 @@ Rules and tests: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md) §
   export is audited.
 - Inbound message text is stored as data and never interpreted as an instruction.
 - The module opens no listening port; it only makes outbound TLS connections to WhatsApp.
+
+## Release-candidate security review (2026-10-11)
+
+Read from the source at the release-candidate commit, not from earlier summaries.
+
+| Check | Result | Where |
+| --- | --- | --- |
+| PINs stored only as Argon2id hashes | Pass | `auth.rs` `hash_pin` (Argon2id, 19 MiB, t=2) |
+| Hub secret, device keys, AI keys only in the OS credential store | Pass | `src-tauri/src/secrets.rs` (`keyring`, service `AMWAPOS`); `ai.rs` stores keys through `SecretStore` only |
+| Command log lines carry the command name, duration and error code, never arguments | Pass | `commands.rs` dispatcher; no `tracing` call names a PIN, key, token, secret or pairing code |
+| The assistant cannot read secrets | Pass | `wave8_ai.rs`, `wave8_memory.rs`, `ai_hardening.rs` |
+| Permissions enforced in the backend on every request (role reloaded each call) | Pass | `service.rs` `session()`; role matrix tests in `wave8_cross.rs` and earlier waves |
+| Fake WhatsApp adapter, fake terminals, `/dev/*` routes | Not reachable in the installer | Only `amwapos-devserver` (`--fake-whatsapp`, `--fake-terminal`) enables them; the devserver is not bundled (`tauri.conf.json` bundles the `amwapos` binary only; release SBOM step excludes it); the desktop shell never calls `set_whatsapp_adapter` |
+| The "Offline test model" AI provider | **Ships, owner decision** | Selectable in Settings → AI, labelled "Offline test model (no key, nothing sent)" / "Test model". It sends nothing off the PC, and its proposals still need a person to confirm. `ai.enabled` is off by default. Recorded as P2 in RELEASE_ACCEPTANCE.md |
+| IPC surface | Pass | One `rpc` command; capabilities `core:default` + webview zoom; no fs/shell/http plugins; CSP `default-src 'self'` |
+| Installer signing | **Unsigned** | No certificate is configured; nothing is self-signed or presented as signed |
+| Dependency audit | Pass | `npm audit --omit=dev`: 0; `cargo audit`: 0 vulnerabilities, 10 informational warnings (unmaintained/yanked crates; `glib` is Linux-only and not in the Windows build) |
 
 ## Reporting
 

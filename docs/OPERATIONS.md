@@ -5,8 +5,9 @@
 1. Run `AMWAPOS_<ver>_x64-setup.exe` as an administrator. It is a per-machine install, adds
    firewall rules and creates `%ProgramData%\AMWAPOS\data`.
 2. First launch opens the setup wizard with three choices:
-   - **New store:** enter the business (name, VAT, CR), branch, VAT rate, owner PIN, till code,
-     receipt text, printer and backup folder.
+   - **New store, one till (standalone)** or **New store, this PC is the hub:** enter the
+     business (name, VAT, CR), branch, VAT rate, owner PIN, till code, receipt text, printer and
+     backup folder.
    - **Join a hub:** enter the hub address and the pairing code from the hub's Admin →
      Sync / Hub.
 3. Upgrades install over the top. Data is never touched by install, upgrade or uninstall, and a
@@ -323,3 +324,113 @@ Read each line and tick it on the store computer. Nothing here is automatic.
 - ☐ **AI dual control (`ai.dual_control`) is off.** Turn it on if high-risk AI proposals must be confirmed by a second person.
 - ☐ **Product pictures look right.** The default source asks Bing for one picture per barcode + name. Open a few new products and replace any wrong picture by uploading one.
 - ☐ **Delivery riders get `orders.manage`** with the Delivery role (to move digital orders to "out for delivery"). Remove it in Users → Roles if riders should not see orders.
+
+## What a backup holds, and what it does not
+
+A backup folder holds the `.amwbak` database copy, its `.amwbak.json` manifest (SHA-256, schema,
+record counts) and `AMWAPOS-files/` (Document Library files, including adopted expense
+attachments, invoice scans and case evidence). Product pictures, receipt snapshots, Z closes,
+staff, PIN hashes and Business Memory are inside the database.
+
+**Not in a backup** (keep this in mind before relying on a restore):
+
+| Not included | Where it lives | After a restore on another PC |
+| --- | --- | --- |
+| Hub pairing secret, device key, AI provider keys, update key | Windows Credential Manager of the Windows account that ran AMWAPOS | Hub: reset hub credentials and pair every till again. AI: enter the key again. |
+| WhatsApp session | `data\whatsapp\session.db` | Link WhatsApp again with the QR code. |
+| Payment-review screenshots, WhatsApp media and outbox | `data\payment-reviews`, `data\whatsapp-media`, `data\whatsapp-outbox` | The review decisions and messages are in the database; the image files are not. Copy these folders by hand if you need them. |
+| Saved receipt PDFs, AI images | `data\receipts`, `data\ai-images` | Receipts reprint from their snapshots; the PDF copies are not needed. |
+| Logs | `%ProgramData%\AMWAPOS\logs` | Not needed. |
+
+To keep everything, also copy the whole `%ProgramData%\AMWAPOS\data` folder while AMWAPOS is
+closed (for example once a week to the backup drive).
+
+## Restore on a second PC (disaster-recovery procedure)
+
+Use this when the hub PC is lost or broken. It is tested automatically
+(`crates/amwapos-core/tests/release_dr.rs`) but has **not yet been done on a second store PC**;
+do it once as a drill before going live.
+
+1. Install the **same AMWAPOS version** on the new PC as an administrator.
+2. Copy the newest backup folder (the `.amwbak`, its `.amwbak.json` and `AMWAPOS-files\`) from
+   the backup drive to the new PC, keeping them together.
+3. Start AMWAPOS and run the setup wizard as **New store, this PC is the hub**, with any name and
+   a temporary owner PIN. This only gets you to Admin; it is replaced by the restore.
+4. Admin → Backups → **Restore**, choose the `.amwbak`. The check must show "Integrity: ok" and a
+   matching hash.
+5. The backup belongs to a different business than the temporary one: tick the confirmation.
+6. AMWAPOS takes a safety backup of the temporary data, restores, puts back the document files
+   and signs everyone out. The result shows the record counts and "files restored".
+7. Sign in with **your own owner PIN** (the temporary one no longer exists).
+8. Check: the Dashboard, the last Z close, a receipt reprint, Documents opens a file, Business
+   Memory search, staff list.
+9. Admin → Sync / Hub: **reset hub credentials** (the secret was in the old PC's Credential
+   Manager) and pair every till again. Tills keep unsynced sales and upload them after pairing.
+10. Re-enter AI keys and link WhatsApp again if used; set the backup folder; take a **Backup Now**.
+
+## Upgrade and rollback
+
+**Before upgrading:** close the trading day, make sure every till has synced, take a **Backup
+Now** and copy it to the backup drive. Write down the version you are on (Admin → Settings → About).
+
+AMWAPOS upgrades its database automatically and takes `backups\pre-migration-v<N>-<time>.db`
+before changing it. **A database cannot be moved back to an older schema.** An older AMWAPOS
+refuses to open a newer database ("This database was created by a newer AMWAPOS…"). There is no
+downgrade command.
+
+If an upgrade goes wrong:
+1. Stop trading on the affected PC. Do not try to repair the database by hand.
+2. Close AMWAPOS and copy the whole `%ProgramData%\AMWAPOS\data` folder somewhere safe (the
+   failed state is evidence).
+3. Uninstall, then install the **previous** installer (check its SHA-256 against STATUS.md).
+   Business data is not removed by uninstall.
+4. Restore the backup taken before the upgrade (Admin → Backups → Restore). If only the
+   pre-migration copy exists, ask for support before using it: it is a plain database file.
+5. Check the last Z close, today's sales and stock on a few products.
+6. Any sales made **after** the upgrade are not in that backup. Tills that had not synced still
+   hold theirs and send them once paired; sales taken on the hub itself after the upgrade must
+   be re-entered from the paper/receipt record and reconciled with the cash count.
+
+## Go-live runbook
+
+**Before go-live**
+- Installer SHA-256 checked against RELEASE_ACCEPTANCE.md; SmartScreen warning expected (unsigned).
+- Windows updated, BitLocker on, the PC never sleeps while open, network profile *Private*.
+- Products, prices and customers imported only through Admin → Import or Admin → Migration (CSV/XLSX/ZIP), never by editing the database; spot-check 20.
+- Staff created with their own PINs and roles; nobody shares the owner PIN.
+- Backup folder on a second drive; Backup Now done; restore drill done once (above).
+
+**Hub setup**
+- Install, choose "this PC is the hub", fill the business details, set the printer.
+- Leave AMWAPOS open on the hub during trading and overnight (backups run only while it is open).
+
+**Till setup**
+- Install, choose "Join a hub", enter the hub address and the pairing code from the hub.
+- Scan three products, print a test receipt, open the drawer.
+
+**First live sale**
+- Open shift with the counted float; sell one item for cash; check the receipt and drawer;
+  check the sale appears on the hub.
+
+**First end of day**
+- Close every shift with a count; make sure every till shows synced; run the Z close on the hub;
+  take Backup Now; compare the Z total with the cash counted and card terminal totals.
+
+**Recovery**
+- Till offline: keep selling; it syncs when the hub is back.
+- Hub down: tills keep selling; restart the hub PC; see "Multi-terminal troubleshooting".
+- Hub lost: "Restore on a second PC" above.
+- Bad upgrade: "Upgrade and rollback" above.
+
+## Pilot
+
+1. One store, one hub and one till first; a second till after a clean week.
+2. Run the old system or a paper log alongside for the first 3 trading days.
+3. Every evening compare the Z close with cash, card terminal and the old record.
+4. Daily: Backup Now and check the Dashboard backup status.
+5. Keep optional modules (WhatsApp, AI, credit, loyalty) off for the first week.
+6. Write down every problem with the time, screen and what was pressed; never share PINs or keys.
+7. End of week 1: owner reviews stock on 20 products against a count.
+8. Do the restore drill on a second PC during the pilot.
+9. Add one module at a time after week 1, with staff trained on it.
+10. The owner signs off in RELEASE_ACCEPTANCE.md only after two clean weeks.
