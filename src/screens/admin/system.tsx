@@ -2350,6 +2350,10 @@ const FEATURE_HELP: Partial<Record<FeatureName, () => string>> = {
     t(
       "Shows staff products often bought with the items in a WhatsApp order. Suggestions are never sent to the customer automatically.",
     ),
+  "orders.whatsapp_autopilot": () =>
+    t(
+      'Customers order, confirm, cancel and ask for the status on WhatsApp without a person. Replies come from your prices, stock and delivery zones; a "yes" confirms only the exact order the customer was shown. Anything unclear, a complaint or a request for a person goes to staff, and the autopilot then stays quiet in that chat.',
+    ),
   "org.multi_branch": () =>
     t(
       "Several branches on one hub: shared catalogue with optional branch prices, stock per branch, staff assigned to branches, transfers between branches and reports per branch. With it off, AMWAPOS works as one branch.",

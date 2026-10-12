@@ -874,6 +874,9 @@ export const api = {
     catalogRetry: (product_id?: string) => call<{ queued: number }>("whatsapp.catalog_retry", { product_id }),
     catalogConfigure: (auto_sync: boolean) => call<{ auto_sync: boolean }>("whatsapp.catalog_configure", { auto_sync }),
     catalogRecheck: () => call<{ requested: boolean }>("whatsapp.catalog_recheck"),
+    /** WAHA gateway API key: stored in the credential store, never returned. */
+    wahaKeySet: (api_key: string) => call<{ configured: boolean }>("whatsapp.waha_key_set", { api_key }),
+    wahaKeyStatus: () => call<{ configured: boolean }>("whatsapp.waha_key_status"),
     catalogProduct: (product_id: string) => call<T.WaCatalogProductState>("whatsapp.catalog_product", { product_id }),
     phoneContactsImport: (jids: string[] | null, update_existing: boolean) =>
       call<{ created: number; updated: number; skipped: number }>("whatsapp.phone_contacts_import", {
@@ -1155,6 +1158,18 @@ export const api = {
       call<{ product_id: string; name: string; to_branch_id: string; to_branch_name: string; qty_milli: number }[]>(
         "transfers.in_transit",
       ),
+  },
+  orderSync: {
+    list: () => call<T.OrderSyncOverview>("order_sync.list"),
+    create: (target: T.OrderSyncInput) =>
+      call<{ target: T.OrderSyncTarget; secret: string | null }>("order_sync.create", { target }),
+    update: (sink_id: string, target: T.OrderSyncInput) =>
+      call<T.OrderSyncTarget>("order_sync.update", { sink_id, target }),
+    remove: (sink_id: string) => call<null>("order_sync.delete", { sink_id }),
+    failures: (sink_id: string) => call<T.OrderSyncFailure[]>("order_sync.failures", { sink_id }),
+    failureAction: (sink_id: string, action: "retry" | "dismiss", event_seq?: number | null) =>
+      call<number>("order_sync.failure_action", { sink_id, action, event_seq }),
+    test: (sink_id: string) => call<{ ok: boolean; error?: string }>("order_sync.test", { sink_id }),
   },
   orders: {
     list: (status?: string | null) => call<T.DigitalOrder[]>("orders.list", { status }),

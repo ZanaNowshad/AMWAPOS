@@ -149,6 +149,21 @@ Rules and tests: [INTELLIGENCE_AND_EVIDENCE.md](INTELLIGENCE_AND_EVIDENCE.md) §
 - Inbound message text is stored as data and never interpreted as an instruction.
 - The module opens no listening port; it only makes outbound TLS connections to WhatsApp.
 
+- **WAHA gateway (optional, `docs/WHATSAPP_AUTOPILOT.md`).** When the connection is set to WAHA,
+  the WhatsApp session lives in the WAHA container's sessions volume instead. Treat that volume
+  like `session.db`. The WAHA API key is kept in the OS credential store (`whatsapp.waha_api_key`),
+  never shown again or logged, and sent only to the configured WAHA origin; media links that
+  point anywhere else are refused. Bind WAHA to `127.0.0.1`, or put it behind HTTPS.
+- **Autopilot.** Replies are built by rules from POS data; the model only reads messages, so it
+  cannot promise a price or product. The autopilot acts as `system:autopilot` with only
+  `orders.manage` and `whatsapp.send`, and every action is audited.
+- **Order sync.** Webhook bodies are signed with HMAC-SHA256 using a per-target secret of 32
+  random bytes. The secret is shown once and kept in the credential store. Redirects are not
+  followed. The payload carries order data, including the customer's phone and address, to the
+  targets the owner adds, so add only systems that may hold that data. A CSV target is a file
+  with that same data: keep it on a protected share. Sync is outbound only, so no answer from a
+  receiver can change an order.
+
 ## Reporting
 
 Report vulnerabilities privately to the repository owner. Do not open public issues for them.

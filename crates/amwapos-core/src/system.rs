@@ -147,6 +147,42 @@ impl AppCore {
         Ok(v)
     }
 
+    /// Store (or, with an empty key, remove) the WAHA gateway API key. It is
+    /// kept in the credential store only and never returned.
+    pub fn wa_waha_key_set(&self, token: &str, api_key: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("settings.manage")?;
+        let k = api_key.trim();
+        if k.len() > 500 || k.chars().any(|c| c.is_control()) {
+            return Err(AppError::validation("That does not look like a WAHA API key."));
+        }
+        if k.is_empty() {
+            self.secrets.delete(settings::WAHA_API_KEY_SLOT)?;
+        } else {
+            self.secrets.set(settings::WAHA_API_KEY_SLOT, k)?;
+        }
+        let actor = self.actor(&s, None);
+        self.db.write(|tx| {
+            audit::record(
+                tx,
+                &actor,
+                "whatsapp.waha_key_changed",
+                "settings",
+                Some("whatsapp"),
+                None,
+                Some(&json!({ "configured": !k.is_empty() })),
+            )?;
+            Ok(())
+        })?;
+        Ok(json!({ "configured": !k.is_empty() }))
+    }
+
+    pub fn wa_waha_key_status(&self, token: &str) -> AppResult<Value> {
+        let s = self.session(token)?;
+        s.require("settings.manage")?;
+        Ok(json!({ "configured": self.secrets.get(settings::WAHA_API_KEY_SLOT)?.is_some_and(|k| !k.is_empty()) }))
+    }
+
     /// Record the outcome of an OS step-up (Windows Hello) check.
     pub fn audit_step_up(&self, token: &str, command: &str, outcome: &str, detail: &str) -> AppResult<()> {
         let s = self.session(token)?;

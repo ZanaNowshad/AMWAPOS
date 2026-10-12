@@ -937,3 +937,21 @@ Evidence (this environment, Linux, Rust 1.99.0 = CI toolchain):
 
 External acceptance is not claimed: the store's hardware, data and owner checks remain part of
 the soak (OPERATIONS.md acceptance checklist).
+
+## WhatsApp autopilot and order sync, 2026-10-12
+
+Customers order over WhatsApp from the first message to delivery or
+cancellation, with no person typing replies. Every order and delivery change
+goes out, in order, to the shop's other systems. Design, flow, assumptions and
+limits: [WHATSAPP_AUTOPILOT.md](WHATSAPP_AUTOPILOT.md). There is no Meta Cloud
+API. The connection is either the built-in WhatsApp Web client or a
+self-hosted **WAHA Core** gateway.
+
+| Item | Status | Evidence | Pending |
+| --- | --- | --- | --- |
+| WAHA gateway adapter: QR, connect, pull with cursor and 6 h catch-up, dedupe, paced sends, lost-answer dedupe, file fallback to text, foreign media refused, key only sent to the WAHA origin | Partially complete | `amwapos-hub/tests/waha.rs` (fake WAHA server, full runtime flow) | Live run against a real WAHA container and phone number |
+| Autopilot replies from POS data. "Yes" confirms only the exact quote sent; cancel; STATUS, HELP and AGENT in English and Arabic; handoff with priority; loop cap; stale messages left to staff | Complete | `amwapos-core/tests/autopilot.rs` (9) | Owner soak with real customers |
+| Status messages from the event feed, sent once each, with no old news when switched on | Complete | `autopilot.rs`; `amwapos-hub/tests/autopilot_sync.rs` | — |
+| Order event feed: database triggers, a version per order, cursors, pruning | Complete | `amwapos-core/tests/order_sync.rs` (6) | — |
+| Sync targets: signed webhook and CSV file. In order, at least once; retry with backoff and Retry-After; park after 8 attempts; send again or dismiss; formula-safe CSV | Complete | `order_sync.rs`; `autopilot_sync.rs` (503 then 200, signature, ordering, CSV once) | A receiver at the shop (ERP or sheet) |
+| Admin: connection settings, Order sync page, Arabic | Complete | vitest; Playwright route sweep (`order-sync`) | Visual check on the store's screens |

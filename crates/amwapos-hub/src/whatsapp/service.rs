@@ -105,6 +105,8 @@ pub struct WhatsAppService {
     core: Arc<AppCore>,
     session_path: SessionPath,
     adapter: Mutex<Arc<dyn WhatsAppAdapter>>,
+    /// An adapter given by `set_adapter` (tests) is used whatever the settings say.
+    adapter_fixed: std::sync::atomic::AtomicBool,
     status: watch::Sender<WaStatus>,
     session: watch::Sender<Session>,
     cmd: Mutex<Option<mpsc::Sender<Cmd>>>,
@@ -158,6 +160,7 @@ impl WhatsAppService {
             core,
             session_path,
             adapter: Mutex::new(adapter),
+            adapter_fixed: std::sync::atomic::AtomicBool::new(false),
             status,
             session,
             cmd: Mutex::new(None),
@@ -175,6 +178,7 @@ impl WhatsAppService {
 
     /// Replace the adapter (tests). Takes effect on the next client start.
     pub fn set_adapter(&self, a: Arc<dyn WhatsAppAdapter>) {
+        self.adapter_fixed.store(true, std::sync::atomic::Ordering::SeqCst);
         self.status.send_modify(|s| s.adapter = a.name().into());
         *self.adapter.lock().unwrap() = a;
     }
@@ -586,6 +590,22 @@ async fn supervise(svc: Arc<WhatsAppService>, mut rx: mpsc::Receiver<Cmd>) {
     }
 }
 
+/// The built-in client, or a WAHA gateway when Settings → WhatsApp says so
+/// (read at every start, so a change takes effect on the next start).
+fn chosen_adapter(svc: &Arc<WhatsAppService>) -> Arc<dyn WhatsAppAdapter> {
+    let base = svc.adapter.lock().unwrap().clone();
+    if svc.adapter_fixed.load(std::sync::atomic::Ordering::SeqCst) {
+        return base;
+    }
+    let w: amwapos_core::settings::WhatsAppSettings =
+        svc.core.db.read(|c| amwapos_core::settings::get(c, amwapos_core::settings::KEY_WHATSAPP)).unwrap_or_default();
+    if w.connection != "waha" {
+        return base;
+    }
+    let api_key = svc.core.secrets.get(super::waha::API_KEY_SLOT).ok().flatten();
+    Arc::new(super::waha::WahaAdapter::new(super::waha::WahaConfig { base_url: w.waha_url, session: w.waha_session, api_key }))
+}
+
 /// Start the client on its own task. A panic during start is caught.
 async fn start_client(
     svc: &Arc<WhatsAppService>,
@@ -602,7 +622,8 @@ async fn start_client(
         s.process = "starting".into();
         s.next_retry_at = None;
     });
-    let adapter = svc.adapter.lock().unwrap().clone();
+    let adapter = chosen_adapter(svc);
+    svc.status.send_modify(|s| s.adapter = adapter.name().into());
     let sink: Arc<dyn AdapterSink> =
         Arc::new(Sink { core: svc.core.clone(), status: svc.status.clone(), inbox_rev: svc.inbox_rev.clone() });
     let opts = StartOptions { session_db: svc.session_path.path().to_path_buf(), pair_phone };

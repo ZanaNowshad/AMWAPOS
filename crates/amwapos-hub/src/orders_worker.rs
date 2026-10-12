@@ -3,6 +3,8 @@
 //! run; the configured AI provider is asked only for messages the rules left
 //! unresolved, and its reply is validated and applied only if the
 //! conversation has not changed meanwhile. AI failures leave the rules result.
+//! With the autopilot on, each message is then answered and status changes
+//! from the order event feed are sent to the customer (docs/WHATSAPP_AUTOPILOT.md).
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -68,6 +70,16 @@ impl OrdersWorker {
                 }
                 Err(e) => tracing::info!(seq, error = %e.message, "AI unavailable for WhatsApp orders; rules result kept"),
             }
+        }
+        // Autopilot (when on): answer what was just read, then tell
+        // customers about status changes from the order event feed.
+        let c = self.core.clone();
+        if let Err(e) = blocking(move || c.wa_autopilot_pending(25)).await {
+            tracing::warn!(error = %e.message, "WhatsApp autopilot pass failed");
+        }
+        let c = self.core.clone();
+        if let Err(e) = blocking(move || c.wa_autopilot_notify(50)).await {
+            tracing::warn!(error = %e.message, "WhatsApp status notices failed");
         }
         Ok(n)
     }

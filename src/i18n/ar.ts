@@ -6267,4 +6267,72 @@ export const AR: Record<string, string> = {
     "أسبوع الضغط: الخارج المعروف + المجدول أكبر من دخل السيناريو لذلك الأسبوع؛ وبدون سيناريو، أسبوع يحمل 40% أو أكثر من الخارج المعروف + المجدول للثلاثين يومًا القادمة.",
   "All amounts are integer minor units (fils). Nothing here is a bank balance.":
     "كل المبالغ بوحدات صحيحة صغرى (فلس). لا شيء هنا رصيد بنكي.",
+  "WhatsApp orders: answer and confirm automatically (autopilot)":
+    "طلبات واتساب: الرد والتأكيد تلقائياً (الطيار الآلي)",
+  'Customers order, confirm, cancel and ask for the status on WhatsApp without a person. Replies come from your prices, stock and delivery zones; a "yes" confirms only the exact order the customer was shown. Anything unclear, a complaint or a request for a person goes to staff, and the autopilot then stays quiet in that chat.':
+    'يطلب العملاء ويؤكدون ويلغون ويسألون عن حالة الطلب عبر واتساب دون تدخل أحد. الردود مبنية على أسعارك ومخزونك ومناطق التوصيل؛ وكلمة "نعم" تؤكد فقط الطلب نفسه الذي عُرض على العميل. أي أمر غير واضح أو شكوى أو طلب للتحدث مع شخص يُحال إلى الموظفين، ويتوقف الطيار الآلي عن الرد في تلك المحادثة.',
+  "API key saved": "تم حفظ مفتاح API",
+  "Autopilot: how customers pay (added to the order summary)": "الطيار الآلي: طريقة دفع العملاء (تُضاف إلى ملخص الطلب)",
+  "Built-in link (scan the QR code in AMWAPOS)": "الربط المدمج (امسح رمز QR في AMWAPOS)",
+  "How AMWAPOS reaches WhatsApp": "طريقة اتصال AMWAPOS بواتساب",
+  "Key saved": "المفتاح محفوظ",
+  "No key": "لا يوجد مفتاح",
+  "Save key": "حفظ المفتاح",
+  "Saved (enter a new one to replace it)": "محفوظ (أدخل مفتاحاً جديداً لاستبداله)",
+  "The key is kept in the Windows credential store and only sent to this WAHA address. After saving a new connection, stop and start WhatsApp on the WhatsApp page; the QR code then comes from WAHA. If WAHA refuses a file, the receipt is sent as text instead.":
+    "يُحفظ المفتاح في مخزن بيانات الاعتماد في ويندوز ولا يُرسل إلا إلى عنوان WAHA هذا. بعد حفظ اتصال جديد، أوقف واتساب ثم شغّله من صفحة واتساب؛ وعندها يأتي رمز QR من WAHA. إذا رفض WAHA إرسال ملف، يُرسل الإيصال نصاً بدلاً منه.",
+  "WAHA API key": "مفتاح API لـ WAHA",
+  "WAHA address": "عنوان WAHA",
+  "WAHA gateway (WhatsApp HTTP API)": "بوابة WAHA (واجهة واتساب عبر HTTP)",
+  "WAHA session name": "اسم جلسة WAHA",
+  "Add a sync target": "إضافة وجهة مزامنة",
+  "Add a webhook to send order events to an ERP, an accounting system or a spreadsheet service, or a CSV file on a shared folder.":
+    "أضف عنوان ويب هوك لإرسال أحداث الطلبات إلى نظام ERP أو نظام محاسبة أو خدمة جداول بيانات، أو ملف CSV في مجلد مشترك.",
+  "Add target": "إضافة وجهة",
+  "CSV file (one line per event)": "ملف CSV (سطر لكل حدث)",
+  "CSV file": "ملف CSV",
+  "I have copied it": "لقد نسخته",
+  "Latest order event: {0} at {1}": "آخر حدث للطلبات: {0} في {1}",
+  "Next try": "المحاولة التالية",
+  "No sync targets": "لا توجد وجهات مزامنة",
+  "Not sent": "لم يُرسل",
+  "Order sync": "مزامنة الطلبات",
+  "Orders are not affected. The receiving system gets no further events from AMWAPOS.":
+    "لا تتأثر الطلبات. لن يستلم النظام المستقبِل أي أحداث أخرى من AMWAPOS.",
+  "Queued again": "في الانتظار مجدداً",
+  "Receiving address": "عنوان الاستلام",
+  "Remove this sync target?": "إزالة وجهة المزامنة هذه؟",
+  Retrying: "جارٍ إعادة المحاولة",
+  "Send a test": "إرسال تجربة",
+  "Send again": "إرسال مجدداً",
+  "Send all again": "إرسال الكل مجدداً",
+  "Sends every order and delivery change to your other systems, in order. AMWAPOS stays the record: nothing a receiving system answers changes an order.":
+    "يرسل كل تغيير في الطلبات والتوصيل إلى أنظمتك الأخرى بالترتيب. يبقى AMWAPOS هو السجل المعتمد: لا يغيّر أي رد من النظام المستقبِل أي طلب.",
+  "Signing secret: copy it now": "مفتاح التوقيع: انسخه الآن",
+  "Test event accepted": "تم قبول حدث التجربة",
+  "The receiving system checks each event with this secret: X-Amwapos-Signature is sha256= followed by the HMAC-SHA256 of the body. It is shown only once.":
+    "يتحقق النظام المستقبِل من كل حدث بهذا المفتاح: الترويسة X-Amwapos-Signature تساوي sha256= متبوعة بقيمة HMAC-SHA256 لمحتوى الرسالة. يظهر المفتاح مرة واحدة فقط.",
+  "The target starts with the next order change; earlier history is not sent. Each event carries an event id and a version per order, so the receiving system can ignore repeats and older states.":
+    "تبدأ الوجهة من تغيير الطلب التالي؛ ولا يُرسل السجل السابق. يحمل كل حدث معرّفاً ورقم إصدار لكل طلب، ليتمكن النظام المستقبِل من تجاهل التكرار والحالات الأقدم.",
+  "Up to date": "محدّث",
+  "Webhook (HTTP POST, signed)": "ويب هوك (طلب HTTP موقّع)",
+  Webhook: "ويب هوك",
+  "e.g. ERP": "مثلاً: ERP",
+  "{0} not sent": "{0} لم تُرسل",
+  "A sync target is a webhook or a CSV file.": "وجهة المزامنة إما ويب هوك أو ملف CSV.",
+  "Choose retry or dismiss.": "اختر إعادة الإرسال أو التجاهل.",
+  "Enter the full path of a .csv file, for example on a shared folder.":
+    "أدخل المسار الكامل لملف ‎.csv، مثلاً في مجلد مشترك.",
+  "Enter the receiving address, starting with https:// (or http:// on the store network).":
+    "أدخل عنوان الاستلام بدءاً بـ https://‎ (أو http://‎ على شبكة المتجر).",
+  "Order event": "حدث الطلب",
+  "Sync target": "وجهة المزامنة",
+  "Enter the WAHA address, for example http://localhost:3000.": "أدخل عنوان WAHA، مثلاً http://localhost:3000.",
+  "The WAHA session name may use letters, digits, - and _ only.": "اسم جلسة WAHA يقبل الحروف والأرقام و- و_ فقط.",
+  "The WhatsApp connection must be the built-in link or a WAHA gateway.":
+    "يجب أن يكون اتصال واتساب الربط المدمج أو بوابة WAHA.",
+  "The payment note is limited to 500 characters.": "ملاحظة الدفع محدودة بـ 500 حرف.",
+  "That does not look like a WAHA API key.": "لا يبدو هذا مفتاح API صالحاً لـ WAHA.",
+  "The webhook has no address.": "لا يوجد عنوان لهذا الويب هوك.",
+  "Unknown sync target kind '{0}'.": "نوع وجهة مزامنة غير معروف '{0}'.",
 };

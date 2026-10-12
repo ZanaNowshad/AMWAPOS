@@ -1224,6 +1224,108 @@ interface WaSettings {
   delivered: { en: string; ar: string };
   reminder: { en: string; ar: string };
   payment_ack: { en: string; ar: string };
+  autopilot_payment_note: { en: string; ar: string };
+  connection: "builtin" | "waha";
+  waha_url: string;
+  waha_session: string;
+}
+
+/** Settings → WhatsApp: how AMWAPOS reaches WhatsApp (docs/WHATSAPP_AUTOPILOT.md). */
+function WaGatewaySettings({
+  data,
+  setData,
+  editable,
+}: {
+  data: WaSettings;
+  setData: (d: WaSettings) => void;
+  editable: boolean;
+}) {
+  const toast = useToast();
+  const [key, setKey] = useState("");
+  const { data: keyStatus, reload } = useLoad(
+    () => (editable ? api.whatsapp.wahaKeyStatus() : Promise.resolve({ configured: false })),
+    [editable],
+  );
+  const act = useAction();
+  return (
+    <div className="col gap-8" data-testid="wa-connection">
+      <h3>{t("Connection")}</h3>
+      <div className="form-grid">
+        <Field label={t("How AMWAPOS reaches WhatsApp")}>
+          <select
+            className="select"
+            disabled={!editable}
+            value={data.connection || "builtin"}
+            onChange={(e) => setData({ ...data, connection: e.target.value as "builtin" | "waha" })}
+          >
+            <option value="builtin">{t("Built-in link (scan the QR code in AMWAPOS)")}</option>
+            <option value="waha">{t("WAHA gateway (WhatsApp HTTP API)")}</option>
+          </select>
+        </Field>
+      </div>
+      {data.connection === "waha" ? (
+        <>
+          <div className="form-grid">
+            <Field label={t("WAHA address")}>
+              <input
+                className="input"
+                dir="ltr"
+                placeholder="http://localhost:3000"
+                disabled={!editable}
+                value={data.waha_url}
+                onChange={(e) => setData({ ...data, waha_url: e.target.value })}
+              />
+            </Field>
+            <Field label={t("WAHA session name")}>
+              <input
+                className="input"
+                dir="ltr"
+                disabled={!editable}
+                value={data.waha_session}
+                onChange={(e) => setData({ ...data, waha_session: e.target.value })}
+              />
+            </Field>
+          </div>
+          {editable ? (
+            <div className="row wrap gap-8">
+              <Field label={t("WAHA API key")}>
+                <input
+                  className="input"
+                  type="password"
+                  dir="ltr"
+                  autoComplete="off"
+                  value={key}
+                  placeholder={keyStatus?.configured ? t("Saved (enter a new one to replace it)") : ""}
+                  onChange={(e) => setKey(e.target.value)}
+                />
+              </Field>
+              <Button
+                loading={act.busy}
+                disabled={!key.trim()}
+                onClick={async () => {
+                  const r = await act.run(() => api.whatsapp.wahaKeySet(key.trim()));
+                  if (r) {
+                    setKey("");
+                    toast("success", t("API key saved"));
+                    void reload();
+                  }
+                }}
+              >
+                {t("Save key")}
+              </Button>
+              {keyStatus?.configured ? <Chip tone="success">{t("Key saved")}</Chip> : <Chip>{t("No key")}</Chip>}
+            </div>
+          ) : null}
+          {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
+          <div className="tiny">
+            {t(
+              "The key is kept in the Windows credential store and only sent to this WAHA address. After saving a new connection, stop and start WhatsApp on the WhatsApp page; the QR code then comes from WAHA. If WAHA refuses a file, the receipt is sent as text instead.",
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 export function WaTemplates() {
@@ -1235,7 +1337,7 @@ export function WaTemplates() {
   if (!data) return <Skeleton />;
   const editable = has("settings.manage");
   const tpl = (
-    k: "receipt" | "received" | "dispatch" | "delivered" | "reminder" | "payment_ack",
+    k: "receipt" | "received" | "dispatch" | "delivered" | "reminder" | "payment_ack" | "autopilot_payment_note",
     label: string,
     vars: string,
   ) => (
@@ -1270,6 +1372,7 @@ export function WaTemplates() {
   );
   return (
     <div className="card card-pad col gap-16">
+      <WaGatewaySettings data={data} setData={setData} editable={editable} />
       <div className="form-grid">
         <Field label={t("Default message language")}>
           <select
@@ -1319,6 +1422,7 @@ export function WaTemplates() {
       {tpl("delivered", t("Delivered"), "{business} {customer} {ticket} {delivery} {amount} {total} {address} {area}")}
       {tpl("reminder", t("Payment reminder"), "{business} {customer} {delivery} {amount}")}
       {tpl("payment_ack", t("Payment received"), "{business} {customer} {amount} {reference} {delivery}")}
+      {tpl("autopilot_payment_note", t("Autopilot: how customers pay (added to the order summary)"), "—")}
       {act.error ? <Banner tone="danger">{act.error}</Banner> : null}
       {editable ? (
         <div className="row">

@@ -253,6 +253,24 @@ How the rules are enforced:
   checked against `ocr/models/models.json`; without the English model OCR reports
   `ocr_model_missing` and cannot be switched on.
 
+### Autopilot, WAHA and order sync
+
+See `docs/WHATSAPP_AUTOPILOT.md`.
+
+- **`WahaAdapter`** (`whatsapp/waha.rs`) is a third `WhatsAppAdapter`, chosen when the
+  `connection` setting is `waha`. It pulls messages over WAHA's REST API, keeping a cursor file,
+  and paces its sends. The supervisor, outbox and inbox are unchanged.
+- **The autopilot** (`waorders/autopilot.rs`) runs in the OrdersWorker after the AI pass. It
+  answers each inbound message at most once, recorded in `wa_autopilot_log`. It confirms
+  through the same `order_confirm_as` path as staff.
+- **`order_events`** is filled by SQL triggers on `digital_orders` and `delivery_orders`. Each
+  consumer keeps its own cursor:
+  - the customer notifier (`wa_autopilot_notify`);
+  - the `OrderSyncWorker` on the hub or a standalone computer.
+
+  Each sync target is an `OrderSink` adapter (webhook or CSV). Retries, ordering and parking
+  live in the core, so a new adapter only implements `deliver`.
+
 ## Wave 5: pricing and catalogue
 
 See [PRICING_AND_CATALOGUE.md](PRICING_AND_CATALOGUE.md).

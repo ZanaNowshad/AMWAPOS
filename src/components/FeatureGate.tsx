@@ -35,6 +35,7 @@ export const FEATURE_PARENT: Partial<Record<FeatureName, FeatureName>> = {
   "ocr.supplier_invoices": "ocr.enabled",
   "orders.whatsapp_ai": "orders.digital",
   "orders.whatsapp_upsell": "orders.whatsapp_ai",
+  "orders.whatsapp_autopilot": "orders.whatsapp_ai",
 };
 
 export const FEATURE_LABELS: Record<FeatureName, () => string> = {
@@ -58,6 +59,7 @@ export const FEATURE_LABELS: Record<FeatureName, () => string> = {
   "orders.digital": () => t("Digital orders (phone, WhatsApp, web)"),
   "orders.whatsapp_ai": () => t("WhatsApp orders: read chats into draft orders"),
   "orders.whatsapp_upsell": () => t("WhatsApp orders: suggest related items to staff"),
+  "orders.whatsapp_autopilot": () => t("WhatsApp orders: answer and confirm automatically (autopilot)"),
   "org.multi_branch": () => t("Multiple branches"),
   "pwa.companion": () => t("Owner phone view"),
 };

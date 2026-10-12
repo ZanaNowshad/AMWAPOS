@@ -63,11 +63,11 @@ pub struct Processed {
     pub ai_wanted: bool,
 }
 
-fn now() -> String {
+pub(super) fn now() -> String {
     time::now_str()
 }
 
-fn branch(core: &AppCore, c: &Connection) -> AppResult<String> {
+pub(super) fn branch(core: &AppCore, c: &Connection) -> AppResult<String> {
     if let Some(d) = core.device() {
         return Ok(d.branch_id);
     }
@@ -90,12 +90,12 @@ pub(crate) fn event(
     Ok(())
 }
 
-fn pending(tx: &Connection, session: &str) -> AppResult<Vec<Question>> {
+pub(super) fn pending(tx: &Connection, session: &str) -> AppResult<Vec<Question>> {
     let s: Option<String> = tx.query_row("SELECT pending_json FROM wa_order_sessions WHERE session_id=?1", [session], |r| r.get(0))?;
     Ok(s.and_then(|x| serde_json::from_str(&x).ok()).unwrap_or_default())
 }
 
-fn set_pending(tx: &Connection, session: &str, q: &[Question]) -> AppResult<()> {
+pub(super) fn set_pending(tx: &Connection, session: &str, q: &[Question]) -> AppResult<()> {
     tx.execute(
         "UPDATE wa_order_sessions SET pending_json=?2 WHERE session_id=?1",
         params![session, serde_json::to_string(q).unwrap_or_default()],
@@ -133,7 +133,7 @@ fn active_session(tx: &Connection, chat: &str) -> AppResult<Option<String>> {
         .optional()?)
 }
 
-fn order_status(tx: &Connection, order: &str) -> AppResult<Option<String>> {
+pub(super) fn order_status(tx: &Connection, order: &str) -> AppResult<Option<String>> {
     Ok(tx.query_row("SELECT status FROM digital_orders WHERE order_id=?1", [order], |r| r.get(0)).optional()?)
 }
 
@@ -523,12 +523,12 @@ fn apply_address(tx: &Connection, session: &str, a: &interpret::AddressMention, 
     Ok(())
 }
 
-fn money_str(v: i64) -> String {
+pub(super) fn money_str(v: i64) -> String {
     money::format_decimal(v, 3)
 }
 
 /// Totals from POS prices (never from the model).
-fn totals(tx: &Connection, order: &str, branch_id: &str) -> AppResult<(i64, Vec<Value>, bool)> {
+pub(crate) fn totals(tx: &Connection, order: &str, branch_id: &str) -> AppResult<(i64, Vec<Value>, bool)> {
     let mut sub = 0;
     let mut out = vec![];
     let mut complete = true;
@@ -551,7 +551,7 @@ fn totals(tx: &Connection, order: &str, branch_id: &str) -> AppResult<(i64, Vec<
     Ok((sub, out, complete))
 }
 
-fn is_arabic_chat(tx: &Connection, chat: &str) -> AppResult<bool> {
+pub(super) fn is_arabic_chat(tx: &Connection, chat: &str) -> AppResult<bool> {
     let t: Option<String> = tx
         .query_row("SELECT COALESCE(body, caption) FROM wa_inbox WHERE chat=?1 AND kind='text' ORDER BY seq DESC LIMIT 1", [chat], |r| {
             r.get(0)
@@ -889,6 +889,15 @@ impl AppCore {
         let text = body.or(caption).unwrap_or_default();
         let branch_id = branch(self, tx)?;
         let mut session = active_session(tx, &chat)?;
+        // With the autopilot on, STATUS / HELP / AGENT are commands, never
+        // order lines; the autopilot answers them.
+        if kind == "text" && super::autopilot::command(&text).is_some() && self.features()?.is_on("orders.whatsapp_autopilot") {
+            tx.execute(
+                "UPDATE wa_inbox_processing SET status='skipped', intent='command', reason='customer_command', session_id=?2 WHERE inbox_seq=?1",
+                params![seq, session],
+            )?;
+            return Ok(Some(Processed { seq, session_id: session, intent: "command".into(), ai_wanted: false }));
+        }
         // A session whose draft was confirmed, converted or cancelled elsewhere is closed.
         if let Some(s) = &session {
             let o: Option<String> = tx.query_row("SELECT order_id FROM wa_order_sessions WHERE session_id=?1", [s], |r| r.get(0))?;
@@ -1583,29 +1592,9 @@ impl AppCore {
                 out["suggested_reply"] = json!(qs.iter().map(|q| q.text.clone()).collect::<Vec<_>>().join("\n"));
                 // Questions about products: real prices and stock to answer with.
                 if matches!(s["intent"].as_str(), Some("price_question" | "availability_question" | "product_question")) {
-                    let last: Option<String> = c.query_row("SELECT COALESCE(body, caption) FROM wa_inbox WHERE chat=?1 AND kind='text' ORDER BY seq DESC LIMIT 1", [&chat], |r| r.get(0)).optional()?.flatten();
-                    let mut info = vec![];
-                    for m in interpret::read("text", &last.unwrap_or_default(), false).items {
-                        let r = resolve::resolve(c, &m, &branch_id)?;
-                        for p in r.product.iter().chain(r.options.iter()).take(4) {
-                            info.push(json!({ "product_id": p.product_id, "name": p.name, "price_minor": p.price_minor, "availability": p.availability }));
-                        }
-                    }
+                    let info = product_info(c, &chat, &branch_id)?;
                     out["product_info"] = json!(info);
-                    out["suggested_reply"] = json!(info
-                        .iter()
-                        .map(|p| format!(
-                            "{}: {}{}",
-                            p["name"].as_str().unwrap_or(""),
-                            p["price_minor"].as_i64().map(|v| format!("{} BHD", money_str(v))).unwrap_or_else(|| "price on request".into()),
-                            match p["availability"].as_str() {
-                                Some("unavailable") => " (out of stock)",
-                                Some("low") => " (few left)",
-                                _ => "",
-                            }
-                        ))
-                        .collect::<Vec<_>>()
-                        .join("\n"));
+                    out["suggested_reply"] = json!(product_info_text(&info, false));
                 }
             }
             let mut rows: Vec<LineRow> = vec![];
@@ -2021,13 +2010,17 @@ impl AppCore {
             .then(|| v["order"]["total_minor"].as_i64())
             .flatten();
         self.db.write(|tx| {
+            let fp = match quoted {
+                Some(q) => quote_fingerprint(tx, &sid)?.filter(|(t, _)| *t == q).map(|(_, f)| f),
+                None => None,
+            };
             event(
                 tx,
                 &sid,
                 None,
                 "reply_queued",
                 "person",
-                &json!({ "message_id": queued.message_id, "quoted_total_minor": quoted }),
+                &json!({ "message_id": queued.message_id, "quoted_total_minor": quoted, "quote_fp": fp }),
                 Some(&s.user_id),
             )?;
             tx.execute("UPDATE wa_order_sessions SET handled=1 WHERE session_id=?1", [&sid])?;
@@ -2061,7 +2054,7 @@ impl AppCore {
 }
 
 /// Add a priority reason to a conversation (kept until staff handle it).
-fn add_priority(tx: &Connection, session: &str, reason: &str) -> AppResult<()> {
+pub(super) fn add_priority(tx: &Connection, session: &str, reason: &str) -> AppResult<()> {
     let mut reasons: Vec<String> = tx
         .query_row("SELECT priority_reasons FROM wa_order_sessions WHERE session_id=?1", [session], |r| r.get::<_, Option<String>>(0))?
         .and_then(|x| serde_json::from_str(&x).ok())
@@ -2117,4 +2110,71 @@ fn upsell(c: &Connection, order: &str, branch_id: &str) -> AppResult<Vec<Value>>
         }
     }
     Ok(out)
+}
+
+/// Real prices and stock for the products the chat's last text asks about.
+pub(super) fn product_info(c: &Connection, chat: &str, branch_id: &str) -> AppResult<Vec<Value>> {
+    let last: Option<String> = c
+        .query_row("SELECT COALESCE(body, caption) FROM wa_inbox WHERE chat=?1 AND kind='text' ORDER BY seq DESC LIMIT 1", [chat], |r| {
+            r.get(0)
+        })
+        .optional()?
+        .flatten();
+    let mut info = vec![];
+    for m in interpret::read("text", &last.unwrap_or_default(), false).items {
+        let r = resolve::resolve(c, &m, branch_id)?;
+        for p in r.product.iter().chain(r.options.iter()).take(4) {
+            info.push(json!({ "product_id": p.product_id, "name": p.name, "price_minor": p.price_minor, "availability": p.availability }));
+        }
+    }
+    Ok(info)
+}
+
+pub(super) fn product_info_text(info: &[Value], arabic: bool) -> String {
+    info.iter()
+        .map(|p| {
+            format!(
+                "{}: {}{}",
+                p["name"].as_str().unwrap_or(""),
+                p["price_minor"].as_i64().map(|v| format!("{} BHD", money_str(v))).unwrap_or_else(|| {
+                    if arabic {
+                        "السعر عند الطلب".into()
+                    } else {
+                        "price on request".into()
+                    }
+                }),
+                match (p["availability"].as_str(), arabic) {
+                    (Some("unavailable"), false) => " (out of stock)",
+                    (Some("unavailable"), true) => " (غير متوفر)",
+                    (Some("low"), false) => " (few left)",
+                    (Some("low"), true) => " (كمية قليلة)",
+                    _ => "",
+                }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// What the customer is agreeing to when they say yes: the matched lines,
+/// delivery mode, address, fee and total. A "yes" confirms only the exact
+/// order that was last sent to them.
+pub(super) fn quote_fingerprint(tx: &Connection, session: &str) -> AppResult<Option<(i64, String)>> {
+    let (order, mode, address_json, fee): (Option<String>, String, Option<String>, Option<i64>) = tx.query_row(
+        "SELECT order_id, delivery_mode, address_json, delivery_fee_minor FROM wa_order_sessions WHERE session_id=?1",
+        [session],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    )?;
+    let Some(order) = order else { return Ok(None) };
+    let branch_id: String = tx.query_row("SELECT branch_id FROM digital_orders WHERE order_id=?1", [&order], |r| r.get(0))?;
+    let (sub, rows, _) = totals(tx, &order, &branch_id)?;
+    let addr: Value = address_json.and_then(|x| serde_json::from_str(&x).ok()).unwrap_or(Value::Null);
+    let parts: AddressParts = serde_json::from_value(addr["parts"].clone()).unwrap_or_default();
+    let mut key = format!("{mode}|{}|{}|", parts.line().unwrap_or_default(), fee.map(|f| f.to_string()).unwrap_or_default());
+    for r in &rows {
+        key.push_str(&format!("{}:{}:{};", r["product_id"].as_str().unwrap_or("-"), r["qty_milli"], r["line_total_minor"]));
+    }
+    let total = sub + fee.unwrap_or(0);
+    key.push_str(&total.to_string());
+    Ok(Some((total, hex::encode(<sha2::Sha256 as sha2::Digest>::digest(key.as_bytes())))))
 }

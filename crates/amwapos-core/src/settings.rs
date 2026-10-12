@@ -377,6 +377,12 @@ pub struct FeatureFlags {
     /// Show a few in-stock add-on suggestions to staff (never added by itself).
     #[serde(rename = "orders.whatsapp_upsell")]
     pub orders_whatsapp_upsell: bool,
+    /// Answer WhatsApp customers by itself and let them confirm and cancel
+    /// their own orders (docs/WHATSAPP_AUTOPILOT.md). Needs
+    /// `orders.whatsapp_ai`. Replies are built from POS data, never written
+    /// freely by an AI; anything unclear is handed to a person.
+    #[serde(rename = "orders.whatsapp_autopilot")]
+    pub orders_whatsapp_autopilot: bool,
     /// Several branches in one organisation (branch stock, prices, users).
     #[serde(rename = "org.multi_branch")]
     pub multi_branch: bool,
@@ -409,6 +415,9 @@ impl FeatureFlags {
             "orders.whatsapp_ai" => self.orders_digital && self.whatsapp_enabled && self.orders_whatsapp_ai,
             "orders.whatsapp_upsell" => {
                 self.orders_digital && self.whatsapp_enabled && self.orders_whatsapp_ai && self.orders_whatsapp_upsell
+            }
+            "orders.whatsapp_autopilot" => {
+                self.orders_digital && self.whatsapp_enabled && self.orders_whatsapp_ai && self.orders_whatsapp_autopilot
             }
             "org.multi_branch" => self.multi_branch,
             "pwa.companion" => self.pwa_companion,
@@ -451,6 +460,17 @@ pub struct WhatsAppSettings {
     pub reminder: MessageTemplate,
     /// Payment acknowledgement (after a person confirmed the payment).
     pub payment_ack: MessageTemplate,
+    /// Autopilot: how the customer pays, added to the order summary and the
+    /// confirmation (e.g. "Pay cash on delivery or by BenefitPay to 3xxxxxxx").
+    pub autopilot_payment_note: MessageTemplate,
+    /// How AMWAPOS reaches WhatsApp: "builtin" (the in-process WhatsApp Web
+    /// client) or "waha" (a WAHA gateway; docs/WHATSAPP_AUTOPILOT.md).
+    pub connection: String,
+    /// WAHA base address, e.g. http://localhost:3000 (the API key is kept in
+    /// the credential store, never here).
+    pub waha_url: String,
+    /// WAHA session name ("default" on WAHA Core).
+    pub waha_session: String,
 }
 
 impl Default for WhatsAppSettings {
@@ -486,6 +506,13 @@ impl Default for WhatsAppSettings {
                 en: "Hello {customer}, {business} has received your payment of {amount} (ref {reference}). Thank you.".into(),
                 ar: "مرحباً {customer}، استلم {business} دفعتك بمبلغ {amount} (المرجع {reference}). شكراً لك.".into(),
             },
+            autopilot_payment_note: MessageTemplate {
+                en: "Payment: cash on delivery or at pickup.".into(),
+                ar: "الدفع: نقداً عند التوصيل أو الاستلام.".into(),
+            },
+            connection: "builtin".into(),
+            waha_url: String::new(),
+            waha_session: "default".into(),
         }
     }
 }
@@ -596,6 +623,8 @@ pub const KEY_DELIVERY: &str = "delivery";
 pub const KEY_UPDATES: &str = "updates";
 pub const KEY_FEATURES: &str = "features";
 pub const KEY_WHATSAPP: &str = "whatsapp";
+/// Credential-store slot of the WAHA gateway API key (never in settings).
+pub const WAHA_API_KEY_SLOT: &str = "whatsapp.waha_api_key";
 pub const KEY_POS: &str = "pos";
 pub const KEY_SHIFT: &str = "shift";
 pub const KEY_PAYMENTS: &str = "payments";
@@ -714,6 +743,24 @@ pub fn validate(key: &str, value: serde_json::Value) -> AppResult<serde_json::Va
             let w: WhatsAppSettings = serde_json::from_value(value).map_err(|e| AppError::validation(format!("Invalid settings: {e}")))?;
             if !["en", "ar"].contains(&w.default_lang.as_str()) {
                 return Err(AppError::validation("Default message language must be English or Arabic."));
+            }
+            if !["builtin", "waha"].contains(&w.connection.as_str()) {
+                return Err(AppError::validation("The WhatsApp connection must be the built-in link or a WAHA gateway."));
+            }
+            if w.connection == "waha" {
+                let u = w.waha_url.trim();
+                if !(u.starts_with("http://") || u.starts_with("https://")) || u.len() > 300 || u.contains(char::is_whitespace) {
+                    return Err(AppError::validation("Enter the WAHA address, for example http://localhost:3000."));
+                }
+                if w.waha_session.is_empty()
+                    || w.waha_session.len() > 64
+                    || !w.waha_session.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                {
+                    return Err(AppError::validation("The WAHA session name may use letters, digits, - and _ only."));
+                }
+            }
+            if w.autopilot_payment_note.en.len() > 500 || w.autopilot_payment_note.ar.len() > 500 {
+                return Err(AppError::validation("The payment note is limited to 500 characters."));
             }
             for t in [&w.receipt, &w.received, &w.dispatch, &w.delivered, &w.reminder, &w.payment_ack] {
                 if t.en.trim().is_empty() || t.ar.trim().is_empty() || t.en.len() > 2000 || t.ar.len() > 2000 {

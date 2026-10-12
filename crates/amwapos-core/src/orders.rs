@@ -542,6 +542,13 @@ impl AppCore {
     /// stock is reserved.
     pub fn order_confirm_checked(&self, token: &str, order_id: &str, acknowledge_shortage: bool) -> AppResult<OrderView> {
         let s = self.order_session(token, "orders.manage")?;
+        self.order_confirm_as(&s, order_id, acknowledge_shortage)
+    }
+
+    /// Confirm as an already-authorised session (staff, or the WhatsApp
+    /// autopilot's system session): the same checks and audit either way.
+    pub(crate) fn order_confirm_as(&self, s: &Session, order_id: &str, acknowledge_shortage: bool) -> AppResult<OrderView> {
+        let s = s.clone();
         let id = validate::id(order_id, "Order")?;
         let actor = self.actor(&s, None);
         self.db.write(|tx| {
@@ -598,6 +605,12 @@ impl AppCore {
 
     pub fn order_cancel(&self, token: &str, order_id: &str, reason: Option<String>) -> AppResult<OrderView> {
         let s = self.order_session(token, "orders.manage")?;
+        self.order_cancel_as(&s, order_id, reason)
+    }
+
+    /// Cancel as an already-authorised session (see `order_confirm_as`).
+    pub(crate) fn order_cancel_as(&self, s: &Session, order_id: &str, reason: Option<String>) -> AppResult<OrderView> {
+        let s = s.clone();
         let id = validate::id(order_id, "Order")?;
         let reason = clean_opt(&reason, "Reason", 300)?;
         let actor = self.actor(&s, None);

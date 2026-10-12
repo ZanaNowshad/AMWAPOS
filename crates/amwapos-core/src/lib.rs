@@ -47,6 +47,7 @@ pub mod migration;
 pub mod money;
 pub mod ocrflow;
 pub mod ops;
+pub mod order_sync;
 pub mod orders;
 pub mod payables;
 pub mod pdf;

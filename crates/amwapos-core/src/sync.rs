@@ -142,6 +142,14 @@ pub const DEFAULT_PORT: u16 = 47800;
 /// added to one of the two lists (a test fails otherwise), so no record can be
 /// quietly kept on one computer when it should be shared, or the reverse.
 pub const LOCAL_TABLES: &[&str] = &[
+    // The order event feed and its consumers (docs/WHATSAPP_AUTOPILOT.md):
+    // written on the hub by triggers as orders and deliveries change there
+    // or arrive from tills; WhatsApp and the sync targets run on the hub.
+    "order_events",
+    "sync_sinks",
+    "sync_sink_failures",
+    "order_event_cursors",
+    "wa_autopilot_log",
     // Back office: written on the hub only (`require_back_office_writable`).
     // The Z close is the hub's record; a terminal never keeps a private one.
     "day_closes",

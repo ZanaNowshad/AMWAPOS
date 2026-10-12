@@ -207,6 +207,28 @@ impl AppCore {
             .with_details(serde_json::json!({ "permission": perm, "summary": summary, "binding": b })))
     }
 
+    /// A session for work AMWAPOS does by itself in the shop's name (the
+    /// WhatsApp autopilot). It holds only the permissions passed here, is
+    /// never put in the session store and has no token, so no caller can use
+    /// it; the audit log names `user_id` as the actor.
+    pub(crate) fn system_session(&self, user_id: &str, display_name: &str, permissions: &[&str]) -> AppResult<Session> {
+        let d = self.require_device()?;
+        let now = chrono::Utc::now();
+        Ok(Session {
+            token: String::new(),
+            user_id: user_id.into(),
+            display_name: display_name.into(),
+            role_id: "system".into(),
+            role_name: "System".into(),
+            permissions: permissions.iter().map(|p| p.to_string()).collect(),
+            device_id: d.device_id,
+            branch_id: d.branch_id,
+            created_at: now,
+            last_activity: now,
+            locked: false,
+        })
+    }
+
     pub fn actor(&self, s: &Session, approved_by: Option<String>) -> Actor {
         Actor { user_id: Some(s.user_id.clone()), device_id: Some(s.device_id.clone()), branch_id: Some(s.branch_id.clone()), approved_by }
     }

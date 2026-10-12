@@ -236,6 +236,26 @@ reads paper into drafts; every supplier invoice is reviewed, posted, voided and 
   the sale. Lines with a manual discount, a changed price, or a fixed-price scale label do not
   take automatic offers.
 
+## WhatsApp autopilot and order sync
+
+Full guide: [WHATSAPP_AUTOPILOT.md](WHATSAPP_AUTOPILOT.md).
+
+- **Going live.**
+  1. Run a few days with the autopilot off, and check the drafts in the order inbox.
+  2. Fill in the delivery zones and the payment note.
+  3. Turn on **WhatsApp autopilot**.
+  4. Send a test order from a staff phone: order, YES, dispatch, delivered, then STATUS.
+- **Daily.**
+  - Priority chats in the WhatsApp inbox are handoffs. A person answers them, then releases the
+    takeover.
+  - On the Order sync page, every target should read **Up to date**. **Not sent** lists parked
+    events: fix the receiver, then choose **Send again**.
+- **WAHA.** Keep the container running (`--restart unless-stopped`) and back up its sessions
+  volume. If the WhatsApp page shows a QR code again, the session was lost: scan it again.
+- **Rollback.**
+  - Turn off **WhatsApp autopilot**. Staff then answer chats as before; nothing else changes.
+  - Turn a sync target off. Its place in the feed is kept, and it catches up when turned on again.
+
 ## Restore
 
 Admin → Backups → Restore does the following:

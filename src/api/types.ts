@@ -122,6 +122,7 @@ export interface FeatureFlags {
   "orders.digital": boolean;
   "orders.whatsapp_ai": boolean;
   "orders.whatsapp_upsell": boolean;
+  "orders.whatsapp_autopilot": boolean;
   "org.multi_branch": boolean;
   "pwa.companion": boolean;
 }
@@ -4151,4 +4152,49 @@ export interface CashflowRadar {
     | { available: true; days: number; from: string; to: string; net_sales_minor: number; daily_average_minor: number }
     | { available: false; reason: string };
   formulas: string[];
+}
+
+/** A system order events are sent to (docs/WHATSAPP_AUTOPILOT.md, "Sync"). */
+export interface OrderSyncTarget {
+  sink_id: string;
+  name: string;
+  kind: "webhook" | "csv";
+  url: string | null;
+  path: string | null;
+  enabled: boolean;
+  cursor_seq: number;
+  /** Events not yet handed to this target. */
+  behind: number;
+  attempts: number;
+  next_at: string | null;
+  last_error: string | null;
+  last_ok_at: string | null;
+  delivered: number;
+  parked: number;
+  created_at: string;
+}
+
+export interface OrderSyncOverview {
+  targets: OrderSyncTarget[];
+  head_seq: number;
+  last_event: { seq: number; kind: string; at: string } | null;
+}
+
+export interface OrderSyncInput {
+  name: string;
+  kind?: "webhook" | "csv";
+  url?: string;
+  path?: string;
+  enabled?: boolean;
+}
+
+export interface OrderSyncFailure {
+  event_seq: number;
+  attempts: number;
+  error: string;
+  status: "parked" | "retry";
+  updated_at: string;
+  kind: string | null;
+  occurred_at: string | null;
+  order_number: string | null;
 }

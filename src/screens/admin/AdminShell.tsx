@@ -114,6 +114,7 @@ import { LibraryPage } from "./library";
 import { MemoryPage } from "./memory";
 import { CashflowPage } from "./cashflow";
 import { WhatsAppOrdersPage } from "./waOrders";
+import { OrderSyncPage } from "./orderSync";
 import { AiAssistantPage } from "./aiChat";
 import { MigrationPage } from "./migration";
 import { PayablesPage } from "./payables";
@@ -177,6 +178,15 @@ const NAV: { group: string; items: NavItem[] }[] = [
         feature: "ocr.payment_screenshots",
       },
       { path: "customers", label: t("Customers"), icon: Users, perm: "customers.view", element: CustomersPage },
+      {
+        path: "order-sync",
+        label: t("Order sync"),
+        icon: ArrowLeftRight,
+        perm: "settings.manage",
+        element: OrderSyncPage,
+        feature: "orders.digital",
+        advanced: true,
+      },
     ],
   },
   {

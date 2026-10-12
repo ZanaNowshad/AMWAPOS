@@ -670,6 +670,11 @@ impl AppCore {
         if !self.features().map(|f| f.is_on("whatsapp.delivery_notices")).unwrap_or(false) {
             return;
         }
+        // A WhatsApp order's customer hears from the autopilot's status
+        // notices (one message per change, from the order event feed).
+        if self.autopilot_owns_delivery_notices(delivery_id) {
+            return;
+        }
         // Never by itself unless the shop turned on the automatic notice.
         if !self.db.read(|c| settings::get::<WhatsAppSettings>(c, settings::KEY_WHATSAPP)).map(|w| w.auto_delivery_notice).unwrap_or(false)
         {

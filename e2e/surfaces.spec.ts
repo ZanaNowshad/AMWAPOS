@@ -86,6 +86,7 @@ const ROUTES = [
   "documents",
   "memory",
   "cashflow",
+  "order-sync",
   "phone-view",
   "whatsapp",
   "ai",
@@ -130,7 +131,7 @@ const SETTINGS = [
 // Latin words allowed in the Arabic interface: brand, currency, file and
 // product names, keys and protocol words people see on their devices.
 const LATIN_OK =
-  /^(AMWAPOS|BHD|PIN|WhatsApp|OCR|PDF|CSV|ZIP|XLSX|JSON|BenefitPay|IPv4|Ctrl|Esc|Enter|Tab|Shift|OpenAI|Anthropic|Google|OpenRouter|Gemini|Claude|GPT|ESC|POS|EPSON|USB|LAN|Wi|Fi|Hello|Windows|SKU|API|URL|QR|SMS|ID|TCP|IP|HTTP|HTTPS|Tesseract|Bing|Open|Food|Facts|Programmable|Search|Custom|Excel|zip)$/;
+  /^(AMWAPOS|BHD|PIN|WhatsApp|OCR|PDF|CSV|ZIP|XLSX|JSON|BenefitPay|IPv4|Ctrl|Esc|Enter|Tab|Shift|OpenAI|Anthropic|Google|OpenRouter|Gemini|Claude|GPT|ESC|POS|EPSON|USB|LAN|Wi|Fi|Hello|Windows|SKU|API|URL|QR|SMS|ID|TCP|IP|HTTP|HTTPS|Tesseract|Bing|Open|Food|Facts|Programmable|Search|Custom|Excel|zip|WAHA|ERP)$/;
 
 interface Finding {
   route: string;

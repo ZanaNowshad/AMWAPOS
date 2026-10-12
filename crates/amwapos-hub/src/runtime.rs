@@ -61,6 +61,8 @@ pub struct Runtime {
     pub images: Arc<crate::image_worker::ImageWorker>,
     /// WhatsApp AI orders (feature `orders.whatsapp_ai`).
     pub orders: Arc<crate::orders_worker::OrdersWorker>,
+    /// Order events to other systems (webhook, CSV; hub / standalone).
+    pub order_sync: Arc<crate::order_sync::OrderSyncWorker>,
     /// Signed update checker/installer.
     pub updater: Arc<crate::updater::Updater>,
     /// OS step-up provider (set by the desktop shell on Windows).
@@ -91,6 +93,7 @@ impl Runtime {
             ocr: OcrWorker::new(core.clone()),
             images: crate::image_worker::ImageWorker::new(core.clone()),
             orders: crate::orders_worker::OrdersWorker::new(core.clone()),
+            order_sync: crate::order_sync::OrderSyncWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
             bind_ip: Ipv4Addr::UNSPECIFIED,
@@ -109,6 +112,7 @@ impl Runtime {
             ocr: OcrWorker::new(core.clone()),
             images: crate::image_worker::ImageWorker::new(core.clone()),
             orders: crate::orders_worker::OrdersWorker::new(core.clone()),
+            order_sync: crate::order_sync::OrderSyncWorker::new(core.clone()),
             updater: crate::updater::Updater::new(),
             step_up: Mutex::new(None),
             bind_ip: ip,
@@ -273,12 +277,14 @@ impl Runtime {
         self.images.ensure();
         self.orders.follow_inbox(self.whatsapp.subscribe());
         self.orders.ensure();
+        self.order_sync.ensure();
         // Maintenance: scheduled backups.
         let mut g = self.maintenance.lock().unwrap();
         if g.as_ref().map(|h| h.is_finished()).unwrap_or(true) {
             let core = self.core.clone();
             let updater = self.updater.clone();
-            let (wa, ocr, images, orders) = (self.whatsapp.clone(), self.ocr.clone(), self.images.clone(), self.orders.clone());
+            let (wa, ocr, images, orders, order_sync) =
+                (self.whatsapp.clone(), self.ocr.clone(), self.images.clone(), self.orders.clone(), self.order_sync.clone());
             *g = Some(tokio::spawn(async move {
                 let mut minutes: u64 = 0;
                 loop {
@@ -289,6 +295,7 @@ impl Runtime {
                     ocr.ensure();
                     images.ensure();
                     orders.ensure();
+                    order_sync.ensure();
                     // Stock held for confirmed orders that were not sold in time is released.
                     let c = core.clone();
                     if let Ok(Ok(n)) = tokio::task::spawn_blocking(move || c.orders_expire_reservations()).await {
@@ -590,6 +597,17 @@ impl Runtime {
                 .await?;
                 self.whatsapp.resync_contacts().await?;
                 Ok(json!({ "requested": true }))
+            }
+            "order_sync.test" => {
+                let token = token.ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Sign in first."))?;
+                self.order_sync.test(&token, &arg(&args, "sink_id")?).await
+            }
+            "order_sync.create" | "order_sync.update" | "order_sync.failure_action" => {
+                let core = self.core.clone();
+                let (c, t) = (cmd.to_string(), token.clone());
+                let out = blocking(move || amwapos_core::commands::dispatch(&core, &c, t.as_deref(), args)).await?;
+                self.order_sync.poke.notify_one();
+                Ok(out)
             }
             "whatsapp.catalog_status" => {
                 let t = token.clone().ok_or_else(|| AppError::new(amwapos_core::ErrorCode::Unauthenticated, "Please log in."))?;
