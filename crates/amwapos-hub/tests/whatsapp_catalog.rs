@@ -706,3 +706,50 @@ async fn an_unreachable_capability_check_is_retried_slowly_and_publishes_nothing
     call(&e.rt, "whatsapp.catalog_recheck", Some(&e.t), json!({})).await;
     capability(&e, "supported").await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_whatsapp_that_keeps_not_answering_is_explained_and_asked_less_often() {
+    let e = env(Some(CatalogCapability::Supported)).await;
+    e.fake.state.catalog.fail_capability.store(true, Ordering::SeqCst);
+    // Three checks in a row that WhatsApp leaves unanswered.
+    for n in 1..=3 {
+        let before = e.fake.state.catalog.capability_checks.load(Ordering::SeqCst);
+        call(&e.rt, "whatsapp.catalog_recheck", Some(&e.t), json!({})).await;
+        for _ in 0..600 {
+            e.rt.whatsapp.catalog_poke.notify_one();
+            if e.fake.state.catalog.capability_checks.load(Ordering::SeqCst) > before {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        // The status is written right after the check: wait for this check's text.
+        let silent = |d: &str| d.contains("linked devices") && d.contains("orders are priced from the POS");
+        let mut detail = String::new();
+        for _ in 0..600 {
+            let st = capability(&e, "unavailable").await;
+            detail = st["capability"]["detail"].as_str().unwrap_or_default().to_string();
+            if silent(&detail) == (n == 3) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        if n < 3 {
+            assert_eq!(detail, "WhatsApp did not answer in time.", "check {n}");
+        } else {
+            assert!(silent(&detail), "{detail}");
+        }
+    }
+    // It is no longer asked every minute: wake-ups do not re-check it.
+    let before = e.fake.state.catalog.capability_checks.load(Ordering::SeqCst);
+    for _ in 0..10 {
+        e.rt.whatsapp.catalog_poke.notify_one();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(e.fake.state.catalog.capability_checks.load(Ordering::SeqCst), before);
+    assert_eq!(writes(&e.fake), (0, 0, 0));
+    // "Check again" still asks at once, and an answer clears the explanation.
+    e.fake.state.catalog.fail_capability.store(false, Ordering::SeqCst);
+    call(&e.rt, "whatsapp.catalog_recheck", Some(&e.t), json!({})).await;
+    let st = capability(&e, "supported").await;
+    assert!(st["capability"]["detail"].is_null());
+}

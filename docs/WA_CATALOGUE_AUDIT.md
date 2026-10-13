@@ -117,3 +117,21 @@ A run moves `open → remote check (verify pending → done | skipped) → finis
   - a second Sync writes nothing.
 - WhatsApp's real limits (name and description length, picture rules, rate) are not published. The limits used are conservative choices.
 - The remote check lists the catalogue in pages (at most 40 × 50 products). Past that, the check is skipped and the run says so.
+
+## WhatsApp no longer answers catalogue requests from linked devices (2026-10-13)
+
+In a live check on the shop's number, the catalogue screen showed "WhatsApp did not answer in time". The
+business-profile check passes, but the `w:biz:catalog` read is never answered. Other linked-device tools report
+the same thing since mid-2026: Baileys / Evolution API users see every `w:biz:catalog` request (read, add,
+edit, delete) time out after about 60 s, and no fix exists upstream. The stanza AMWAPOS sends is the same
+as Baileys' `getCatalog`, so this is a change on WhatsApp's side, not an AMWAPOS defect.
+
+What AMWAPOS does:
+- It never treats a timeout as an empty catalogue, so it never deletes or re-creates products because
+  of one.
+- After three unanswered checks in a row, it shows a plain explanation and checks again every 30 minutes
+  instead of every minute. **Check again** still asks at once. Test:
+  `a_whatsapp_that_keeps_not_answering_is_explained_and_asked_less_often`.
+
+Messages, receipts and WhatsApp orders are not affected, because orders are priced from the POS, not from
+the catalogue. Until WhatsApp answers again, keep the catalogue in the WhatsApp Business app on the phone.

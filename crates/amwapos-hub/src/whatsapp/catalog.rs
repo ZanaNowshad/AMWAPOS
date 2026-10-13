@@ -42,6 +42,16 @@ const RECHECK: Duration = Duration::from_secs(30 * 60);
 /// Re-check an "unavailable" capability this often (not on every tick).
 const RECHECK_UNAVAILABLE: Duration = Duration::from_secs(60);
 const DETECT_TIMEOUT: Duration = Duration::from_secs(40);
+/// The answer WhatsApp gives no answer with. Since mid-2026 WhatsApp leaves
+/// catalogue requests from linked devices unanswered (seen the same way by
+/// Baileys and Evolution API users), so a timeout that repeats is not a
+/// network blip: say so, and stop asking every minute.
+const TIMEOUT_MSG: &str = "WhatsApp did not answer in time.";
+const SILENT_AFTER: u32 = 3;
+const SILENT_MSG: &str =
+    "WhatsApp is not answering catalogue requests from linked devices (a change on WhatsApp's side that affects every \
+linked-device tool, not only AMWAPOS). Messages, receipts and WhatsApp orders are not affected: orders are priced from the POS, not the \
+catalogue. Keep the catalogue in the WhatsApp Business app on the phone for now. AMWAPOS checks again every 30 minutes.";
 const OP_TIMEOUT: Duration = Duration::from_secs(60);
 /// Products per claim; one remote change at a time, spaced out by the
 /// service's catalogue pace (1.2 s by default).
@@ -304,6 +314,8 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
     let mut rx = svc.session_watch();
     // (account, checked at, result was "unavailable")
     let mut detected: Option<(String, Instant, bool)> = None;
+    // Catalogue checks in a row that WhatsApp left unanswered.
+    let mut timeouts: u32 = 0;
     let mut last_session: Option<usize> = None;
     let mut last_scan: Option<Instant> = None;
     let mut index: Option<RemoteIndex> = None;
@@ -341,8 +353,9 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
         let force = svc.take_catalog_recheck();
         let stale = force
             || detected.as_ref().is_none_or(|(a, t, unavailable)| {
-                // "Unavailable" is re-checked after a minute, the others after RECHECK.
-                a != &account || t.elapsed() > if *unavailable { RECHECK_UNAVAILABLE } else { RECHECK }
+                // "Unavailable" is re-checked after a minute, the others (and a
+                // WhatsApp that keeps not answering) after RECHECK.
+                a != &account || t.elapsed() > if *unavailable && timeouts < SILENT_AFTER { RECHECK_UNAVAILABLE } else { RECHECK }
             });
         if stale {
             svc.set_catalog(|i| {
@@ -352,9 +365,17 @@ pub(super) async fn catalog_worker(svc: Arc<WhatsAppService>) {
             let cap = match tokio::time::timeout(DETECT_TIMEOUT, session.catalog_capability()).await {
                 Ok(Ok(c)) => c,
                 Ok(Err(e)) => CatalogCapability::Unavailable(e.message),
-                Err(_) => CatalogCapability::Unavailable("WhatsApp did not answer in time.".into()),
+                Err(_) => CatalogCapability::Unavailable(TIMEOUT_MSG.into()),
             };
-            let (name, detail) = capability_name(&cap);
+            let (name, mut detail) = capability_name(&cap);
+            if detail.as_deref() == Some(TIMEOUT_MSG) {
+                timeouts = timeouts.saturating_add(1);
+                if timeouts >= SILENT_AFTER {
+                    detail = Some(SILENT_MSG.into());
+                }
+            } else {
+                timeouts = 0;
+            }
             tracing::info!(capability = name, "WhatsApp catalogue capability detected");
             let collections = session.catalog_collections_writable();
             svc.set_catalog(|i| {

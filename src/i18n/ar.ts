@@ -3406,6 +3406,8 @@ export const AR: Record<string, string> = {
   "The product was deleted on WhatsApp.": "حُذف المنتج على واتساب.",
   "WhatsApp is not connected.": "واتساب غير متصل.",
   "WhatsApp did not answer in time.": "لم يرد واتساب في الوقت المحدد.",
+  "WhatsApp is not answering catalogue requests from linked devices (a change on WhatsApp's side that affects every linked-device tool, not only AMWAPOS). Messages, receipts and WhatsApp orders are not affected: orders are priced from the POS, not the catalogue. Keep the catalogue in the WhatsApp Business app on the phone for now. AMWAPOS checks again every 30 minutes.":
+    "لا يرد واتساب على طلبات الكتالوج من الأجهزة المرتبطة (تغيير من جهة واتساب يؤثر على كل الأدوات المرتبطة، وليس AMWAPOS وحده). الرسائل والإيصالات وطلبات واتساب لا تتأثر: تُسعَّر الطلبات من نقطة البيع وليس من الكتالوج. أدِر الكتالوج من تطبيق واتساب للأعمال على الهاتف حالياً. يتحقق AMWAPOS مرة أخرى كل 30 دقيقة.",
   "OCR: supplier documents (invoices, credit notes, delivery notes)":
     "التعرف الضوئي: مستندات الموردين (فواتير، إشعارات دائنة، إشعارات تسليم)",
   "OCR: AI help for unresolved document values": "التعرف الضوئي: مساعدة الذكاء الاصطناعي للقيم غير المحسومة",
